@@ -9,6 +9,11 @@ namespace WorldGeneration;
 public static class ChunkGenerator
 {
     public const int Size = 16;
+    public const int MinChunkY = -2;
+    public const int MaxChunkY = 2;
+    public const int MinWorldY = MinChunkY * Size;
+    public const int MaxWorldY = (MaxChunkY + 1) * Size - 1;
+    public static bool InWorld(int y) => y >= MinWorldY && y <= MaxWorldY;
     private const int HalfCellDetail = 2;
 
     /// <summary>
@@ -24,6 +29,8 @@ public static class ChunkGenerator
             if (packed != 0 && new BlockState(packed).Shape != BlockShape.Cube)
                 return HalfCellDetail;
 
+        int y0 = key.Y * Size - 1;
+        int y1 = (key.Y + 1) * Size;
         int x0 = key.X * Size - 1;
         int z0 = key.Z * Size - 1;
         int x1 = (key.X + 1) * Size;
@@ -31,7 +38,7 @@ public static class ChunkGenerator
         foreach (var pair in edits)
         {
             BlockPosition p = pair.Key;
-            if (p.Y >= 0 && p.Y < Size &&
+            if (p.Y >= y0 && p.Y <= y1 &&
                 p.X >= x0 && p.X <= x1 &&
                 p.Z >= z0 && p.Z <= z1 &&
                 pair.Value != 0 &&
@@ -54,7 +61,7 @@ public static class ChunkGenerator
 
     public static ushort BaseBlock(int worldX, int y, int worldZ, int seed)
     {
-        if (y < 0 || y >= Size) return 0;
+        if (!InWorld(y)) return 0;
         int height = Height(worldX, worldZ, seed);
         return y >= height ? (ushort)0
             : y == height - 1 ? (ushort)1
@@ -64,7 +71,7 @@ public static class ChunkGenerator
     public static ushort GetBlock(int worldX, int y, int worldZ, int seed,
         IReadOnlyDictionary<BlockPosition, ushort> edits)
     {
-        if (y < 0 || y >= Size) return 0;
+        if (!InWorld(y)) return 0;
         return edits.TryGetValue(new BlockPosition(worldX, y, worldZ), out ushort value)
             ? value : BaseBlock(worldX, y, worldZ, seed);
     }
@@ -79,18 +86,23 @@ public static class ChunkGenerator
                 int worldX = key.X * Size + x;
                 int worldZ = key.Z * Size + z;
                 int height = Height(worldX, worldZ, seed);
-                for (int y = 0; y < height; y++)
-                    blocks[Index(x, y, z)] = BaseBlock(worldX, y, worldZ, seed);
+                for (int y = 0; y < Size; y++)
+                {
+                    int worldY = key.Y * Size + y;
+                    if (worldY < height)
+                        blocks[Index(x, y, z)] = BaseBlock(worldX, worldY, worldZ, seed);
+                }
             }
 
         // Copy-on-write edit dictionaries are immutable for worker lifetimes.
         foreach (var pair in edits)
         {
             BlockPosition p = pair.Key;
-            if (p.Y < 0 || p.Y >= Size ||
+            if (FloorDiv(p.Y, Size) != key.Y ||
                 FloorDiv(p.X, Size) != key.X || FloorDiv(p.Z, Size) != key.Z)
                 continue;
-            blocks[Index(p.X - key.X * Size, p.Y, p.Z - key.Z * Size)] = pair.Value;
+            blocks[Index(p.X - key.X * Size, p.Y - key.Y * Size,
+                p.Z - key.Z * Size)] = pair.Value;
         }
         return blocks;
     }
@@ -116,27 +128,28 @@ public static class ChunkGenerator
 
         ushort StateAt(int x, int y, int z)
         {
-            if (y < 0 || y >= grid) return 0;
+            int worldY = key.Y * Size + FloorDiv(y, detail);
+            if (!InWorld(worldY)) return 0;
             int blockX = FloorDiv(x, detail);
             int blockZ = FloorDiv(z, detail);
             int blockY = y / detail;
             if ((uint)blockX < Size && (uint)blockZ < Size)
                 return blocks[Index(blockX, blockY, blockZ)];
-            return GetBlock(key.X * Size + blockX, blockY,
+            return GetBlock(key.X * Size + blockX, worldY,
                 key.Z * Size + blockZ, seed, edits);
         }
 
         bool Occupied(int x, int y, int z)
         {
-            if (y < 0) return true; // Keep the world's bottom closed.
-            if (y >= grid) return false;
+            int worldY = key.Y * Size + FloorDiv(y, detail);
+            if (!InWorld(worldY)) return false;
             var state = new BlockState(StateAt(x, y, z));
             if (state.IsAir) return false;
             if (detail == 1)
                 return true; // All nearby visible shapes are whole cubes.
             int innerX = x - FloorDiv(x, detail) * detail;
             int innerZ = z - FloorDiv(z, detail) * detail;
-            return state.ContainsMicro(innerX, y % detail, innerZ);
+            return state.ContainsMicro(innerX, y - FloorDiv(y, detail) * detail, innerZ);
         }
 
         for (int faceId = 0; faceId < ChunkFace.All.Length; faceId++)
