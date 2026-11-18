@@ -24,6 +24,13 @@ internal static class VerticalChunkTests
         var above = new ChunkKey(0, 1, 0);
         check(ChunkGenerator.GetBlock(3, -1, 3, seed, edits.Snapshot) == 3,
             "Underground terrain Y=-1 is stone");
+        check(ChunkGenerator.Height(3, 3, seed) < 4,
+            "Low terrain location exercises shallow surface dirt");
+        check(ChunkGenerator.BaseBlock(3, -1, 3, seed) == 3 &&
+            ChunkGenerator.BaseBlock(3, -32, 3, seed) == 3,
+            "Low hills must not extend their dirt layer into negative Y");
+        check(ChunkGenerator.BaseBlock(3, 2, 3, seed) == 0,
+            "Above the low-hill surface remains air");
         check(ChunkGenerator.GetBlock(3, 16, 3, seed, edits.Snapshot) == 0,
             "Above-ground Y=16 is air by default");
         ushort[] belowBlocks = ChunkGenerator.CreateBlocks(below, seed, edits.Snapshot);
