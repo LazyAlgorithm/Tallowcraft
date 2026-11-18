@@ -32,6 +32,10 @@ public static class WorldBiomes
 
     public static Biome At(int x, int z, int seed)
     {
+        // Preserve the already-playtested spawn area's original grass/dirt
+        // palette while blending biome presentation in farther away.
+        if (DevelopmentBlend(x, z) <= 0f)
+            return Biome.Meadow;
         float temperature = Temperature(x, z, seed);
         float moisture = Moisture(x, z, seed);
         float relief = Relief(x, z, seed);
