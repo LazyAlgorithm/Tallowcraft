@@ -1,0 +1,61 @@
+object 1 parent 0 active 1 name "Player"
+transform 0 9.593174 -4 0 0 0 1 1 1 1
+component Tallow.NetworkIdentity enabled 1
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "Tallowcraft.FirstPersonCharacter"
+field scriptAsset "cbd4b3f2e6dcf9108375680a9644d83d"
+field fieldOverrides ""
+field referenceNames ""
+field referenceTargets 0
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "WorldGeneration.BlockEditor"
+field scriptAsset "9b48eac0d33d4bcda4cd5131e8a2fb99"
+field fieldOverrides ""
+field referenceNames ""
+field referenceTargets 0
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:capsule"
+field color 0.92156863 0.54901963 0.23529412 1
+field metallic 0
+field roughness 0.85
+field emissive 0 0 0 1
+field emissiveIntensity 0
+field emissiveFromColor 0
+field flatShading 1
+field unlit 0
+field castShadows 1
+field backFaceCulling 1
+field lightmap ""
+field lightmapDirection ""
+field lightmapShadowmask ""
+field lightmapScaleOffset 1 1 0 0
+field lightmapDecode 1 0 0 0
+field windSway 0
+field shadowOnly 0
+field bakedLighting 0
+field screenReflections 0
+field inReflectionProbes 1
+field planarReflection 0
+field texture ""
+field material ""
+field useModelMaterials 1
+field occluder 0
+component Tallow.CharacterController enabled 1
+field shape Capsule
+field radius 0.5
+field height 2
+field boxSize 0.8 1 0.8
+field edgeRadius 0.1
+field center 0 0 0
+field stepHeight 0.4
+field maxSlope 50
+field mass 70
+field pushStrength 100
+field gravityScale 1
+field turnShapeWithObject 0
+field jumpGrace 0.12
+field softCharacterContact 1
+field separationSpeed 8
+field canSwim 1
+field swimDepth 1.2
+field swimSpeed 0.6
