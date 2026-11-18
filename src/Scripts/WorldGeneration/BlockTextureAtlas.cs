@@ -3,7 +3,7 @@ using System.Numerics;
 namespace WorldGeneration;
 
 /// <summary>
-/// Nine approved 32×32 pixel-art tiles packed in a 108×108 PNG
+/// Twelve 32×32 pixel-art tiles packed in a 144×144 PNG
 /// with 2px extruded gutters. Texture import settings in the adjacent
 /// .png.import file disable filtering, mipmaps, and GPU compression.
 /// The PNG is a committed asset, not created on every game startup.
@@ -13,8 +13,8 @@ public static class BlockTextureAtlas
     public const string Path = "Textures/block_atlas.png";
     public const int TileSize = 32;
     public const int Gutter = 2;
-    public const int Columns = 3;
-    public const int Rows = 3;
+    public const int Columns = 4;
+    public const int Rows = 4;
     private const int Stride = TileSize + 2 * Gutter;
     private const int Width = Stride * Columns;
     private const int Height = Stride * Rows;
@@ -39,7 +39,8 @@ public static class BlockTextureAtlas
         };
 
     // 0 grass top, 1 grass side, 2 dirt, 3 stone,
-    // 4 log bark, 5 log end, 6 forge side, 7 forge front, 8 planks.
+    // 4 log bark, 5 log end, 6 forge side, 7 forge front, 8 planks,
+    // 9 coal ore, 10 iron ore, 11 opaque leaves.
     public static int TileFor(BlockState state, int face) =>
         state.Type switch
         {
@@ -55,8 +56,9 @@ public static class BlockTextureAtlas
                 _ => 3
             }) ? 7 : 6,
             6 => 8,
-            7 => 6, // Coal ore: dark forge tile until dedicated ore atlas is approved.
-            8 => 5, // Iron ore: bright log-end tile until dedicated ore atlas is approved.
+            7 => 9,
+            8 => 10,
+            9 => 11,
             _ => 3
         };
 }
