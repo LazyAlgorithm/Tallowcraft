@@ -470,7 +470,7 @@ public class BlockWorld : Script
                 {
                     if (!live.Dirty) return;
                 }
-                else if (!ChunkGenerator.HasPotentialBlocks(key, _edits.Snapshot))
+                else if (!ChunkGenerator.HasPotentialBlocks(key, Seed, _edits.Snapshot))
                     return; // Avoid transient objects for empty upper layers.
                 if (distance < bestDistance)
                 {
