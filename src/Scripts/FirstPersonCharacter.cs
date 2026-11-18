@@ -1,4 +1,5 @@
 using System.Numerics;
+using WorldGeneration;
 using Tallow;
 
 namespace Tallowcraft;
@@ -26,6 +27,7 @@ public class FirstPersonCharacter : Script
     private float _eyeStart;
     private float _eyeTarget;
     private float _eyeTransitionTime;
+    private bool _spawnAligned;
 
     /// <summary>
     /// Tallow attaches the skinned model's visible mesh to a MeshRenderer.
@@ -67,6 +69,7 @@ public class FirstPersonCharacter : Script
 
     public override void Start()
     {
+        _spawnAligned = false;
         _eyeNow = EyeHeight;
         _eyeStart = EyeHeight;
         _eyeTarget = EyeHeight;
@@ -87,6 +90,28 @@ public class FirstPersonCharacter : Script
 
         if (GetCharacterController() is { } controller)
         {
+            // Only the authoritative server relocates new player instances.
+            // A fixed scene spawn Y can start inside terrain (or high in the
+            // air), especially with vertical chunks. The mesh is deterministic
+            // and the BlockWorld also checks edits and partial shapes.
+            if (Scene.IsServer && !_spawnAligned &&
+                Scene.Find("BlockWorld")?.GetComponent<BlockWorld>() is { } world)
+            {
+                Vector3 position = Transform.Position;
+                float safeY = world.SafeSpawnHeight(position.X, position.Z,
+                    StandHeight);
+                if (System.MathF.Abs(position.Y - safeY) > 0.001f)
+                {
+                    position.Y = safeY;
+                    Transform.Position = position;
+                }
+                // Update the native Jolt character as well as the transform
+                // once physics has created it, so it cannot snap back into
+                // the old spawn point during the next simulation step.
+                if (controller.HasCharacter)
+                    _spawnAligned = controller.Teleport(position);
+            }
+
             float speed = input.Crouch ? CrouchSpeed : input.Sprint ? SprintSpeed : WalkSpeed;
             controller.SimpleMove(input.MoveDirection * speed, deltaTime,
                 input.Pressed(InputButton.Jump) ? JumpSpeed : 0f);
