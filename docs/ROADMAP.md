@@ -205,3 +205,7 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 After tests, launch Play mode, head more than 60 blocks from origin into woodland/meadow biomes, check trunk/leaf texture sharpness, seam-free chunk streaming and ability to mine tree blocks, and monitor the existing `[Tallowcraft chunk profile]` logs. This pass intentionally uses opaque collidable leaves; transparent cutouts and leaf decay are future work.
+
+### Benchmark correction
+
+As part of the tree pass, corrected `MeshBenchmarks.Generate` to apply artificial dense partial-shape edits only to density cases 2 and 3. Previous `underground-caves` and `biome-upper-layer` results unintentionally included dense partial-block edits and should not be compared to the new pure natural terrain results. New `woodland-trees` and `forest-upper-layer` tests use no edits. The updated atlas's three new tiles have matching left/right and top/bottom edge pixels to reduce visible texture seams, with 2px extruded gutters still intact.
