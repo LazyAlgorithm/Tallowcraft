@@ -162,10 +162,10 @@ public static class ChunkGenerator
                         float u1 = (u % Detail + width) / (float)Detail;
                         float v0 = (v % Detail) / (float)Detail;
                         float v1 = (v % Detail + height) / (float)Detail;
-                        uvs.Add(BlockTextureAtlas.UV(tile, u0, v0));
-                        uvs.Add(BlockTextureAtlas.UV(tile, u1, v0));
-                        uvs.Add(BlockTextureAtlas.UV(tile, u1, v1));
-                        uvs.Add(BlockTextureAtlas.UV(tile, u0, v1));
+                        uvs.Add(BlockTextureAtlas.FaceUV(tile, faceId, u0, v0));
+                        uvs.Add(BlockTextureAtlas.FaceUV(tile, faceId, u1, v0));
+                        uvs.Add(BlockTextureAtlas.FaceUV(tile, faceId, u1, v1));
+                        uvs.Add(BlockTextureAtlas.FaceUV(tile, faceId, u0, v1));
                         triangles.Add(start); triangles.Add(start + 1); triangles.Add(start + 2);
                         triangles.Add(start); triangles.Add(start + 2); triangles.Add(start + 3);
 

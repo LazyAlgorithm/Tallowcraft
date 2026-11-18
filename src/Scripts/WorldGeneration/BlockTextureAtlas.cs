@@ -42,6 +42,25 @@ public sealed class BlockTextureAtlas : IDisposable
             (1 + v * TileSize) / Height);
     }
 
+    /// <summary>
+    /// Map each face's mesh coordinates to texture coordinates. For wall faces
+    /// texture V must follow world Y (top = 0), not the arbitrary u/v basis
+    /// chosen for correct triangle winding. Without this, half the walls draw
+    /// the grass border as vertical green stripes.
+    /// </summary>
+    public static Vector2 FaceUV(int tile, int face, float u, float v)
+    {
+        return face switch
+        {
+            // +Z / -X faces: mesh U is horizontal, mesh V is world up.
+            0 or 3 => UV(tile, u, 1f - v),
+            // -Z / +X faces: mesh U is world up, mesh V is horizontal.
+            1 or 2 => UV(tile, v, 1f - u),
+            // Horizontal top and bottom already have planar U and V.
+            _ => UV(tile, u, v)
+        };
+    }
+
     public static int TileFor(BlockState state, int face)
     {
         // Faces: +Z, -Z, +X, -X, +Y, -Y.
