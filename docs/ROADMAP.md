@@ -15,7 +15,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 **Goal:** replace the *visible* capsule with a conventionally modeled, skinned humanoid, **not** a block-character.
 
-- [x] Add original rounded low-poly glTF model with 11 named joints and skinned vertex weights, with license/provenance
+- [x] Add original rounded low-poly binary glTF 2.0 (GLB) model with 11 named joints and skinned vertex weights, with license/provenance
 - [x] Keep the Jolt `CharacterController` capsule **invisible** as the collision proxy
 - [x] Add rigged model to the player prefab as a visual child at estimated feet offset (needs Play-mode alignment check)
 - [x] Set up Tallow Animator with Idle/Walk/Run/Jump clips and per-client movement-driven visual script (runtime test pending)
