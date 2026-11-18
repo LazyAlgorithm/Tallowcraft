@@ -8,4 +8,6 @@ public static class QuaterniusClips
     public const string Walk = "Walk_Loop";
     public const string Run = "Sprint_Loop";
     public const string Jump = "Jump_Loop";
+    public const string CrouchIdle = "Crouch_Idle_Loop";
+    public const string CrouchForward = "Crouch_Fwd_Loop";
 }
