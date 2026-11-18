@@ -50,18 +50,14 @@ transform 0 -1 0 0 0 0 1 1 1 1
 component Tallow.MeshRenderer enabled 1
 field shadowOnly 0
 component Tallow.SkinnedMeshRenderer enabled 1
-field model "Models/Adventurer.glb"
-field clip ""
-field clipLibrary ""
+field model "Models/QuaterniusBaseCharacter.glb"
+field clip "Idle_Loop"
+field clipLibrary "Animations/QuaterniusUniversalLibrary.glb"
 field speed 1
 field loop 1
-field exposeBones 1
+field exposeBones 0
 field gpuSkinning 1
 field materials ""
 field hiddenParts ""
 field shadowOnlyParts ""
 field partColors ""
-component Tallow.Animator enabled 1
-field clips "Animations/idle.tanim;Animations/walk.tanim;Animations/run.tanim;Animations/jump.tanim"
-field defaultClip "Idle"
-field speed 1

@@ -11,7 +11,8 @@ from pathlib import Path
 import struct
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL = ROOT / "src/Models/Adventurer.glb"
+MODEL = ROOT / "src/Models/QuaterniusBaseCharacter.glb"
+LIBRARY = ROOT / "src/Animations/QuaterniusUniversalLibrary.glb"
 PREFAB = ROOT / "src/Prefabs/Player.tprefab"
 ANIMATIONS = ROOT / "src/Animations"
 INPUT = ROOT / "src/Input.tinput"
@@ -26,8 +27,8 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def glb() -> tuple[dict, bytes]:
-    raw = MODEL.read_bytes()
+def glb(path: Path = MODEL) -> tuple[dict, bytes]:
+    raw = path.read_bytes()
     check(len(raw) >= 28, "GLB header is incomplete")
     magic, version, length = struct.unpack_from("<III", raw, 0)
     check(magic == 0x46546C67 and version == 2 and length == len(raw),
@@ -62,75 +63,68 @@ def accessor(doc: dict, buf: bytes, index: int) -> list[tuple]:
 
 def verify() -> None:
     doc, buf = glb()
-    check(doc["asset"]["version"] == "2.0", "Not glTF 2.0")
-    check(len(doc["skins"]) == 1, "Expected a single humanoid skin")
-    skin = doc["skins"][0]
-    joint_names = [doc["nodes"][index]["name"] for index in skin["joints"]]
-    check(len(joint_names) == 11 and len(set(joint_names)) == 11,
-          "Expected eleven distinct named joints")
-    check({"Hips", "Chest", "Head", "UpperArm.L", "LowerArm.L",
-           "UpperArm.R", "LowerArm.R", "UpperLeg.L", "LowerLeg.L",
-           "UpperLeg.R", "LowerLeg.R"} == set(joint_names),
-          "Skeleton no longer matches the animation clips")
-    check(len(accessor(doc, buf, skin["inverseBindMatrices"])) == len(joint_names),
-          "Inverse bind matrix count does not match skeleton")
-
+    library, _ = glb(LIBRARY)
+    check(doc.get("skins") and library.get("skins"), "Quaternius humanoid skeleton absent")
+    model_bones = {doc["nodes"][joint].get("name")
+                   for skin in doc["skins"] for joint in skin["joints"]}
+    library_bones = {library["nodes"][joint].get("name")
+                     for skin in library["skins"] for joint in skin["joints"]}
+    joint_names = sorted(model_bones - {None})
+    check(len(joint_names) >= 30, "Expected a real multi-joint skinned humanoid")
+    check(len((model_bones & library_bones) - {None}) >= 24,
+          "Quaternius model and library have incompatible rigs")
     vertices = 0
     triangles = 0
-    for primitive in doc["meshes"][0]["primitives"]:
-        attrs = primitive["attributes"]
-        check({"POSITION", "NORMAL", "JOINTS_0", "WEIGHTS_0"} <= attrs.keys(),
-              "Missing required skinned mesh attributes")
-        positions = accessor(doc, buf, attrs["POSITION"])
-        normals = accessor(doc, buf, attrs["NORMAL"])
-        joints = accessor(doc, buf, attrs["JOINTS_0"])
-        weights = accessor(doc, buf, attrs["WEIGHTS_0"])
-        check(len(positions) == len(normals) == len(joints) == len(weights),
-              "Skin attribute lengths disagree")
-        check(all(abs(sum(w) - 1) < 0.001 for w in weights),
-              "Skin weights are not normalized")
-        check(all(0 <= j < len(joint_names) for v in joints for j in v),
-              "Skin references a missing joint")
-        indices = [x[0] for x in accessor(doc, buf, primitive["indices"])]
-        check(len(indices) % 3 == 0 and all(0 <= x < len(positions) for x in indices),
-              "Invalid triangle indices")
-        vertices += len(positions)
-        triangles += len(indices) // 3
+    skinned = 0
+    for mesh in doc["meshes"]:
+        for primitive in mesh["primitives"]:
+            attributes = primitive["attributes"]
+            count = doc["accessors"][attributes["POSITION"]]["count"]
+            vertices += count
+            if {"JOINTS_0", "WEIGHTS_0"} <= attributes.keys():
+                skinned += 1
+                joints = accessor(doc, buf, attributes["JOINTS_0"])
+                weights = accessor(doc, buf, attributes["WEIGHTS_0"])
+                check(len(joints) == len(weights) == count,
+                      "Quaternius skin attributes have mismatched lengths")
+            triangles += doc["accessors"][primitive["indices"]]["count"] // 3
+    check(skinned > 0, "The imported Quaternius mesh must be skinned")
 
-    for stem, name in [("idle", "Idle"), ("walk", "Walk"), ("run", "Run"), ("jump", "Jump")]:
-        lines = (ANIMATIONS / (stem + ".tanim")).read_text().splitlines()
-        check(lines and lines[0].startswith("clip " + name + " "),
-              name + " clip name mismatch")
-        tracks = [line[6:] for line in lines if line.startswith("track ")]
-        check(bool(tracks) and set(tracks) <= set(joint_names),
-              name + " animation has unmatched or missing bones")
+    metadata = json.loads((ROOT / "src/Animations/QuaterniusImport.json").read_text())
+    selected = metadata["selected"]
+    available = {a["name"] for a in library["animations"]}
+    check(set(selected) == {"Idle", "Walk", "Run", "Jump"},
+          "Missing movement clip role")
+    check(all(clip in available for clip in selected.values()),
+          "Referenced movement clip is missing from Quaternius library")
+    clip_source = (ROOT / "src/Scripts/QuaterniusClips.cs").read_text()
+    for name, clip in selected.items():
+        check(f'public const string {name} = {json.dumps(clip)};' in clip_source,
+              "Generated C# clip mapping does not match imported clips")
 
     prefab = PREFAB.read_text()
-    check('field model "Models/Adventurer.glb"' in prefab, "Prefab model path mismatch")
+    check('field model "Models/QuaterniusBaseCharacter.glb"' in prefab,
+          "Player prefab does not reference the CC0 Quaternius character")
+    check('field clipLibrary "Animations/QuaterniusUniversalLibrary.glb"' in prefab,
+          "Skinned character is missing the CC0 Universal Animation Library")
     check("component Tallow.SkinnedMeshRenderer enabled 1" in prefab,
-          "No skinned mesh renderer in player prefab")
-    check("component Tallow.MeshRenderer enabled 1" in prefab
-          and "field shadowOnly 0" in prefab,
-          "Player visual needs its own local shadow-only renderer")
-    character = (ROOT / "src/Scripts/FirstPersonCharacter.cs").read_text()
-    check("UpdateLocalModelVisibility()" in character
-          and "public override void LocalUpdate" in character
-          and "renderer.ShadowOnly = shadowOnly" in character
-          and "bool shadowOnly = ControlsCamera" in character,
-          "Owner-only first-person model hiding is missing")
-    check("if (!renderer.CastShadows)" in character
-          and "renderer.CastShadows = true;" in character,
-          "Player body shadows must stay enabled even in shadow-only mode")
-    check("renderer.CastShadows = !shadowOnly" not in character,
-          "Owner-only shadow suppression must not return")
-    check("component Tallow.Animator enabled 1" in prefab,
-          "Player is missing an Animator")
+          "Player is missing skinned model renderer")
+    check("component Tallow.Animator enabled 1" not in prefab,
+          "Old procedural Animator would conflict with Quaternius imported clips")
     check("component Tallow.CharacterController enabled 1" in prefab,
-          "Player is missing Jolt collision controller")
+          "Player must keep invisible Jolt collision capsule")
     check("builtin:capsule" not in prefab,
-          "Visible placeholder capsule has reappeared")
+          "Visible capsule must not be drawn in the game")
     check('field scriptType "Tallowcraft.CharacterAnimation"' in prefab,
-          "Character animation script is not attached")
+          "Character playback script is missing")
+    animation = (ROOT / "src/Scripts/CharacterAnimation.cs").read_text()
+    check("GetComponentInChildren<SkinnedMeshRenderer>()" in animation
+          and "_rig.Clip = clip" in animation,
+          "Character script does not play native Quaternius clips")
+    character = (ROOT / "src/Scripts/FirstPersonCharacter.cs").read_text()
+    check("renderer.ShadowOnly = shadowOnly" in character
+          and "renderer.CastShadows = true;" in character,
+          "Local first-person body should be hidden while keeping its shadow")
 
     atlas_path = ROOT / "src/Textures/block_atlas.png"
     atlas_bytes = atlas_path.read_bytes()
