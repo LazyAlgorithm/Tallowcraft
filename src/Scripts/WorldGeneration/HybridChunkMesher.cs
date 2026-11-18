@@ -22,12 +22,14 @@ public static class HybridChunkMesher
 
         BlockState At(int x, int y, int z)
         {
-            if (y < 0 || y >= ChunkGenerator.Size)
+            int worldY = key.Y * ChunkGenerator.Size + y;
+            if (!ChunkGenerator.InWorld(worldY))
                 return default;
-            if ((uint)x < ChunkGenerator.Size && (uint)z < ChunkGenerator.Size)
+            if ((uint)x < ChunkGenerator.Size && (uint)y < ChunkGenerator.Size &&
+                (uint)z < ChunkGenerator.Size)
                 return new BlockState(blocks[ChunkGenerator.Index(x, y, z)]);
             return new BlockState(ChunkGenerator.GetBlock(
-                key.X * ChunkGenerator.Size + x, y,
+                key.X * ChunkGenerator.Size + x, worldY,
                 key.Z * ChunkGenerator.Size + z, seed, edits));
         }
 
@@ -41,8 +43,6 @@ public static class HybridChunkMesher
             while (mx >= 2) { bx++; mx -= 2; }
             while (my >= 2) { by++; my -= 2; }
             while (mz >= 2) { bz++; mz -= 2; }
-            if (by < 0) return true; // No world-bottom faces.
-            if (by >= ChunkGenerator.Size) return false;
             return At(bx, by, bz).ContainsMicro(mx, my, mz);
         }
 
@@ -114,7 +114,6 @@ public static class HybridChunkMesher
                 {
                     ChunkFace face = ChunkFace.All[faceId];
                     BlockState adjacent = At(x + face.DX, y + face.DY, z + face.DZ);
-                    if (face.DY < 0 && y == 0) continue;
                     // Adjacent cubes cover the entire outside face.
                     // An ordinary cube against air exposes one whole face,
                     // without checking any individual half-cells.
