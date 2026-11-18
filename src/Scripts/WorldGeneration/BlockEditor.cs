@@ -86,7 +86,7 @@ public class BlockEditor : Script
 
         // Visual-only overlay; all game edits still originate in TickInput.
         GUI.Box(left - 10, top - 37, total + 20, 119, new Color(0.03f, 0.04f, 0.06f, 0.72f));
-        GUI.Label(left + 8, top - 31, "TALLOWCRAFT        LMB break   E place");
+        GUI.Label(left + 8, top - 31, "TALLOWCRAFT        LMB PLACE   RMB REMOVE");
         for (int slot = 0; slot < 6; slot++)
         {
             float x = left + slot * (width + gap);

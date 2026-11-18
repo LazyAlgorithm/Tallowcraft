@@ -126,7 +126,21 @@ def verify() -> None:
     check('field scriptType "Tallowcraft.CharacterAnimation"' in prefab,
           "Character animation script is not attached")
 
+    atlas_path = ROOT / "src/Textures/block_atlas.png"
+    atlas_bytes = atlas_path.read_bytes()
+    check(atlas_bytes[:8] == bytes.fromhex("89504e470d0a1a0a"),
+          "Atlas must be a PNG file")
+    check(struct.unpack_from(">II", atlas_bytes, 16) == (54, 54),
+          "Atlas size changed without updating BlockTextureAtlas.cs")
+    world_source = (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text()
+    check("renderer.Texture = BlockTextureAtlas.Path;" in world_source,
+          "Chunk renderer is not using the committed texture atlas")
+
     actions = INPUT.read_text()
+    check("action Fire button\\nbind mouse 1" in actions,
+          "Right mouse must remove blocks")
+    check("action Use button\\nbind mouse 0" in actions,
+          "Left mouse must place blocks")
     for i in range(1, 7):
         check("action Custom" + str(i) + " button" in actions
               and "bind key Alpha" + str(i) in actions,

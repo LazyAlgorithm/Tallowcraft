@@ -31,7 +31,6 @@ public class BlockWorld : Script
     [Sync] public string EditState = "";
 
     private readonly BlockEdits _edits = new();
-    private BlockTextureAtlas? _atlas;
     private readonly Dictionary<ChunkKey, LiveChunk> _loaded = new();
     private readonly Dictionary<ChunkKey, ChunkJob> _jobs = new();
     private readonly Dictionary<ChunkKey, int> _versions = new();
@@ -48,7 +47,6 @@ public class BlockWorld : Script
 
     public override void Start()
     {
-        _atlas = new BlockTextureAtlas();
         if (Scene.IsServer)
         {
             _publishedSeed = Seed;
@@ -81,7 +79,6 @@ public class BlockWorld : Script
                 return;
         }
 
-        _atlas ??= new BlockTextureAtlas();
         GameObject anchor = Viewer();
         GameObject view = ViewCamera.IsValid ? ViewCamera : Scene.Find("Main Camera") ?? anchor;
         Vector3 position = anchor.IsValid ? anchor.Transform.Position : Vector3.Zero;
@@ -276,7 +273,7 @@ public class BlockWorld : Script
 
             MeshRenderer renderer = obj.AddComponent<MeshRenderer>();
             renderer.FlatShading = true;
-            renderer.Texture = _atlas?.Name ?? "";
+            renderer.Texture = BlockTextureAtlas.Path;
             renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
 
             bool collision = ShouldHaveCollider(pair.Key, cx, cz);
@@ -517,8 +514,6 @@ public class BlockWorld : Script
     public override void OnDestroy()
     {
         _stop.Cancel();
-        _atlas?.Dispose();
-        _atlas = null;
         foreach (LiveChunk chunk in _loaded.Values)
         {
             if (!chunk.Object.IsValid)

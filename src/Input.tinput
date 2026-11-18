@@ -16,9 +16,10 @@ action Crouch button
 bind key LeftControl
 bind pad East
 action Fire button
-bind mouse 0
+bind mouse 1
 bind pad RightTrigger
 action Use button
+bind mouse 0
 bind key E
 bind pad North
 action Reload button

@@ -14,8 +14,9 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Space: jump
 - Shift: sprint
 - Ctrl: crouch
-- Left mouse: break the targeted block
-- E (Use): place a block on the targeted face
+- Left mouse: place the selected block
+- Right mouse: remove the targeted block
+- E (Use): alternate place control
 - 1–6: select grass, dirt, stone, log, forge, planks
 - Mouse wheel: cycle selected block
 - Q: cycle cube, slab, stair and half-wall shapes
@@ -32,7 +33,7 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 - **Character:** the network-spawned player has an invisible Jolt capsule controller, an original smooth low-poly **skinned glTF 2.0 GLB humanoid** in `Models/Adventurer.glb`, an Animator on its visual child, and local pose selection (Idle/Walk/Run/Jump). The same animated presentation is calculated on each client from its locally observed player movement. See `src/Models/ASSET_LICENSE.md`.
 - **Building UX:** on-screen local-player hotbar driven by authoritative network `TickInput` (`Custom1..8`, Ability1 and Ability2). The project includes an `Input.tinput` map for number keys and mouse wheel.
 - **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
-- **Textures:** a local deterministic 16px pixel-art texture atlas is generated with Tallow's C# Texture API; no external art dependency. Greedy meshes include UVs; renderers share one atlas.
+- **Textures:** a real committed `src/Textures/block_atlas.png` (54×54 RGBA), with nine hand-designed 16×16 pixel-art tiles and duplicate-color gutters; Tallow imports it as a shared texture, not generated every frame. Greedy meshes include UVs; renderers share one atlas.
 - **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well.
 - **Network authority:** only server-side player TickInput can edit blocks. The player is a networked prefab; procedural chunk GameObjects remain transient and local to each machine.
 - **Sync and joining:** the shared BlockWorld has a NetworkIdentity with Relevance=Everyone; its [Sync] EditState carries the world seed and the server's sparse, version-2 block-state snapshot. Clients wait for this snapshot before generating and reject invalid payloads. Worker jobs use immutable edit snapshots; stale completed jobs are discarded.

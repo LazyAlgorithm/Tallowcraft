@@ -5,7 +5,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 ## Foundation — existing prototype
 
 - [x] Deterministic 16×16×16 voxel chunks, directional streaming, Jolt chunk colliders
-- [x] Greedy-meshed full and partial block faces, procedural pixel-art texture atlas
+- [x] Greedy-meshed full and partial block faces, committed pixel-art PNG texture atlas
 - [x] Block states: grass/dirt/stone/log/forge/planks; horizontal facing; cube/slab/stair/half wall
 - [x] Authoritative break/place requests and bounded v2 edit-state replication for late joiners
 - [x] Corrected side-face grass UV orientation (tested visually in Tallow)
@@ -33,6 +33,8 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Bind hotbar selection to network-aware input (1–6, mouse wheel via Custom1..8) and validate chosen state on server
 - [x] Shape selector: cube, slab, stair, half-wall (Q), upper/lower via crouch held while placing
 - [ ] Facing preview/rotation; prevent placing inside player and occupied subcells
+- [x] Swap mouse buttons: left-click place / right-click remove (E still places)
+- [x] Commit nine-slot 3×3 pixel-art PNG atlas and map chunk UVs to it
 - [ ] Crosshair, outline and reach indicator; lightweight first-person hand/tool later
 - [ ] Host/client: confirm correct type, facing, shape and selection per owner; late join sees same blocks
 
