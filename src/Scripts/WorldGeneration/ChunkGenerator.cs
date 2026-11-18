@@ -96,6 +96,14 @@ public static class ChunkGenerator
     {
         if (key.Y <= 0)
             return true;
+        // Upper chunks may now contain elevated highland terrain. Check
+        // every column so rare peaks cannot disappear due to sparse probes.
+        if (key.Y * Size <= 34)
+            for (int z = 0; z < Size; z++)
+            for (int x = 0; x < Size; x++)
+                if (Height(key.X * Size + x, key.Z * Size + z, 42) >
+                    key.Y * Size)
+                    return true;
         foreach (var edit in edits)
             if (edit.Value != 0 &&
                 FloorDiv(edit.Key.X, Size) == key.X &&
@@ -112,7 +120,8 @@ public static class ChunkGenerator
         float height = 8f
             + 3f * MathF.Sin(((long)worldX + seed) * 0.11f)
             + 3f * MathF.Cos(((long)worldZ - seed) * 0.09f);
-        return Math.Clamp((int)MathF.Round(height), 1, Size - 1);
+        height += WorldBiomes.HeightOffset(worldX, worldZ, seed);
+        return Math.Clamp((int)MathF.Round(height), 1, 35);
     }
 
     public static ushort BaseBlock(int worldX, int y, int worldZ, int seed)
@@ -125,9 +134,13 @@ public static class ChunkGenerator
             return WorldGeology.IsCave(worldX, y, worldZ, seed)
                 ? (ushort)0 : WorldGeology.OreAt(worldX, y, worldZ, seed);
         int height = Height(worldX, worldZ, seed);
-        return y >= height ? (ushort)0
-            : y == height - 1 ? (ushort)1
-            : y >= height - 4 ? (ushort)2 : (ushort)3;
+        if (y >= height) return 0;
+        WorldBiomes.Biome biome = WorldBiomes.At(worldX, worldZ, seed);
+        if (y == height - 1)
+            return biome == WorldBiomes.Biome.Highlands ? (ushort)3
+                : biome == WorldBiomes.Biome.Drylands ? (ushort)2 : (ushort)1;
+        return y >= height - 4 && biome != WorldBiomes.Biome.Highlands
+            ? (ushort)2 : (ushort)3;
     }
 
     public static ushort GetBlock(int worldX, int y, int worldZ, int seed,
