@@ -22,6 +22,7 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Q: cycle cube, slab, stair and half-wall shapes
 - F: rotate the next placed block in 90° increments
 - Ctrl while placing: place an upper slab or upside-down stair
+- Left-click a lower slab's top (or an upper slab's bottom) with the same slab type selected to combine both halves into one full block
 - On-screen hotbar displays selection, shape, and rotation. Controls are networked with `Input.tinput`.
 - Red wireframe shows the voxel that right-click will remove; green wireframe previews the chosen block shape/orientation on left-click. Orange indicates blocked placement. Previews are client-local and gameplay edits remain server-authoritative.
 
@@ -35,7 +36,7 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 - **Building UX:** on-screen local-player hotbar driven by authoritative network `TickInput` (`Custom1..8`, Ability1 and Ability2). The project includes an `Input.tinput` map for number keys and mouse wheel.
 - **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
 - **Textures:** the approved 3×3 block artwork is now in `src/Textures/block_atlas.png`: a lossless, indexed-color 108×108 PNG with nine 32×32 pixel-art tiles and 2px extruded borders. UVs point at texel centers; chunky source pixels are preserved by nearest-neighbor sampling. `src/Textures/block_atlas.png.import` configures `filter = nearest`, `wrap = clamp`, `mipmaps = 0`, `compression = 0`, and `fullResolution = 1`. Tallowcraft's build config also explicitly excludes this atlas from BC1/BC3 compression. Greedy chunk meshes share the atlas.
-- **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well.
+- **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well. Placement checks the occupied half-cells rather than one oversized full-block overlap volume, and merges a matching slab into a full block when clicked on its exposed horizontal face.
 - **Network authority:** only server-side player TickInput can edit blocks. The player is a networked prefab; procedural chunk GameObjects remain transient and local to each machine.
 - **Sync and joining:** the shared BlockWorld has a NetworkIdentity with Relevance=Everyone; its [Sync] EditState carries the world seed and the server's sparse, version-2 block-state snapshot. Clients wait for this snapshot before generating and reject invalid payloads. Worker jobs use immutable edit snapshots; stale completed jobs are discarded.
 - **WorldGeneration:** a separate C# assembly definition with one primary type per source file.
@@ -58,7 +59,7 @@ This atlas uses the per-picture import controls from the current Tallow `feature
 
 ### Targeting preview
 
-The red target outline and shape-specific green placement outline use the same ray-to-block targeting method as the authoritative server. Some partial blocks show internal half-cell grid lines in the initial wireframe; these are previews only, not additional colliders. Actual blocks and collision remain unchanged. In a multiplayer client, selection previews are based on the latest replicated selection state and may briefly lag a fast hotbar key press. Verify the outlines against server placement on vertical faces, chunk seams and partial shapes.
+The red target outline and shape-specific green placement outline use the same ray-to-block targeting and placement-planning methods as the authoritative server. Same-material slabs can stack into a full block; the preview also changes to the resulting cube. Some partial blocks show internal half-cell grid lines in the initial wireframe; these are previews only, not additional colliders. Actual blocks and collision remain unchanged. In a multiplayer client, selection previews are based on the latest replicated selection state and may briefly lag a fast hotbar key press. Verify the outlines against server placement on vertical faces, chunk seams and partial shapes.
 
 ### Testing checklist
 

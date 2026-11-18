@@ -24,6 +24,7 @@ public class BuildPreview : Script
     private BlockPosition _remove;
     private BlockPosition _place;
     private BlockState _selected;
+    private BlockState _placeState;
 
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -45,7 +46,8 @@ public class BuildPreview : Script
         var look = camera.Transform.Forward;
         Vector3 origin = Transform.Position + Vector3.UnitY * EyeHeight;
         _targeted = _world.TryQueryFromRay(origin, look,
-            Math.Clamp(Reach, 1f, 8f), GameObject, out _remove, out _place);
+            Math.Clamp(Reach, 1f, 8f), GameObject, out _remove,
+            out BlockPosition adjacent, out Vector3 hitNormal);
         if (!_targeted)
             return;
 
@@ -57,10 +59,14 @@ public class BuildPreview : Script
             Input.GetKey(KeyCode.RightControl);
         _selected = BlockState.Create(Math.Clamp(_editor.PlaceType, 1, 6),
             (BlockShape)Math.Clamp(_editor.PlaceShape, 0, 3), facing, upper);
-        _canPlace = _world.CanPlaceAt(_place);
+        bool planned = _world.TryPlanPlacement(_remove, adjacent,
+            hitNormal, _selected, out _place, out ushort replacement);
+        _placeState = planned ? new BlockState(replacement) : _selected;
+        _canPlace = planned && _world.CanPlaceAt(_place, replacement);
 
-        DrawOutline(_remove, new Color(1f, .25f, .18f, 1f));
-        DrawShape(_place, _selected,
+        DrawShape(_remove, new BlockState(_world.BlockAt(_remove)),
+            new Color(1f, .25f, .18f, 1f));
+        DrawShape(_place, _placeState,
             _canPlace ? new Color(.25f, 1f, .35f, 1f) :
                 new Color(1f, .62f, .16f, 1f));
     }
@@ -103,12 +109,16 @@ public class BuildPreview : Script
             4 => "Log", 5 => "Forge", 6 => "Planks",
             _ => "Block"
         };
-        string shapeName = _selected.Shape.ToString();
+        string shapeName = _placeState.Shape.ToString();
+        bool stacking = _selected.Shape == BlockShape.Slab &&
+            _placeState.Shape == BlockShape.Cube;
         GUI.Box(12, 12, 380, 54, new Color(.035f, .045f, .055f, .75f));
         GUI.Label(22, 18,
             $"RMB REMOVE  {_remove.X}, {_remove.Y}, {_remove.Z}");
         GUI.Label(22, 40, _canPlace
-            ? $"LMB PLACE  {blockName} {shapeName}  {_place.X}, {_place.Y}, {_place.Z}"
+            ? stacking
+                ? $"LMB STACK SLAB → FULL  {blockName}  {_place.X}, {_place.Y}, {_place.Z}"
+                : $"LMB PLACE  {blockName} {shapeName}  {_place.X}, {_place.Y}, {_place.Z}"
             : "LMB PLACE  blocked");
     }
 }

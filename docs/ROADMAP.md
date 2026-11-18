@@ -32,7 +32,9 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Display 6 block types with selected slot, block-name, shape and rotation label (immediate-mode prototype HUD; icons later)
 - [x] Bind hotbar selection to network-aware input (1–6, mouse wheel via Custom1..8) and validate chosen state on server
 - [x] Shape selector: cube, slab, stair, half-wall (Q), upper/lower via crouch held while placing
-- [ ] Facing preview/rotation; prevent placing inside player and occupied subcells
+- [x] Same-material slab stacking, shape-aware collision checks, and the same placement planning for client preview and server (runtime check pending)
+- [ ] Verify collision-aware placement beside the player, against rotated stairs and at chunk seams (in-game check pending)
+- [ ] Add clickable facing preview, fine-grained subcell replacement and additional shape states
 - [x] Swap mouse buttons: left-click place / right-click remove (E still places)
 - [x] Integrate approved 3×3 atlas (32px tiles, 2px extruded gutters), texel-center UVs, per-texture point sampling, no mipmaps/compression, full resolution (runtime check pending)
 - [x] Crosshair and red remove / green placement outlines, including half-cell shapes (runtime test pending)
@@ -43,8 +45,10 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 ## M3 — Correctness and performance of partial blocks
 
-- [ ] Ground truth tests for microcell occupancy, slab/stair/half-wall geometry, collision and raycasts
-- [ ] Fix partial-face placement (especially clicking internal slab/stair faces)
+- [x] Pure C# regression tests for all slab/stair/half-wall microcell occupancies and slab-to-cube placement decisions
+- [ ] In-editor physics/collider and raycast regression tests across all orientations
+- [x] Support slab stacking on exposed upper/lower faces without allocating an extra voxel (runtime check pending)
+- [ ] Improve placement on internal faces of stairs and slabs, including precise hit-height rules
 - [ ] Split/merge compatible shapes and occlusion correctly across chunk boundaries
 - [ ] Hybrid mesh: full-cube greedy quads + compact shape templates; no 2× subdivision for all ordinary blocks
 - [ ] Proper per-block repeating texture UVs on merged faces; avoid atlas bleed

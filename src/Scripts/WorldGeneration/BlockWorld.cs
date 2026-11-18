@@ -448,10 +448,17 @@ public class BlockWorld : Script
     /// change the authoritative edit state. Ignore the player's own capsule.
     /// </summary>
     public bool TryQueryFromRay(Vector3 origin, Vector3 direction, float reach,
-        GameObject actingPlayer, out BlockPosition remove, out BlockPosition place)
+        GameObject actingPlayer, out BlockPosition remove, out BlockPosition place) =>
+        TryQueryFromRay(origin, direction, reach, actingPlayer,
+            out remove, out place, out _);
+
+    public bool TryQueryFromRay(Vector3 origin, Vector3 direction, float reach,
+        GameObject actingPlayer, out BlockPosition remove, out BlockPosition place,
+        out Vector3 hitNormal)
     {
         remove = default;
         place = default;
+        hitNormal = default;
         if (!float.IsFinite(reach) || reach <= 0f ||
             !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) ||
             !float.IsFinite(origin.Z) || !float.IsFinite(direction.X) ||
@@ -483,6 +490,7 @@ public class BlockWorld : Script
         place = new BlockPosition(remove.X + (int)MathF.Round(normal.X),
             remove.Y + (int)MathF.Round(normal.Y),
             remove.Z + (int)MathF.Round(normal.Z));
+        hitNormal = normal;
         return remove.Y >= 0 && remove.Y < ChunkGenerator.Size &&
             _edits.Get(remove.X, remove.Y, remove.Z, Seed) != 0;
     }
@@ -490,15 +498,41 @@ public class BlockWorld : Script
     public ushort BlockAt(BlockPosition position) =>
         _edits.Get(position.X, position.Y, position.Z, Seed);
 
-    public bool CanPlaceAt(BlockPosition position)
+    /// <summary>Shared, side-effect-free placement rule for preview and server.</summary>
+    public bool TryPlanPlacement(BlockPosition hit, BlockPosition adjacent,
+        Vector3 hitNormal, BlockState selected,
+        out BlockPosition target, out ushort replacement) =>
+        BlockPlacement.TryPlan(hit, adjacent, hitNormal,
+            new BlockState(BlockAt(hit)), selected, out target, out replacement);
+
+    /// <summary>
+    /// Validate a proposed state change against the voxel contents and nearby
+    /// physics bodies. Check only each newly-filled half-cell, with a small
+    /// gap to avoid false overlaps with terrain in neighboring cells.
+    /// </summary>
+    public bool CanPlaceAt(BlockPosition position, ushort replacement)
     {
-        if (position.Y < 0 || position.Y >= ChunkGenerator.Size ||
-            BlockAt(position) != 0)
+        if (position.Y < 0 || position.Y >= ChunkGenerator.Size)
             return false;
-        Vector3 center = new(position.X + 0.5f,
-            position.Y + 0.5f, position.Z + 0.5f);
-        // Same conservative overlap check on preview and authoritative server.
-        return !Scene.CheckBox(center, new Vector3(0.9f), Quaternion.Identity);
+
+        ushort previous = BlockAt(position);
+        if (!BlockPlacement.CanReplace(previous, replacement))
+            return false;
+
+        for (int y = 0; y < 2; y++)
+            for (int z = 0; z < 2; z++)
+                for (int x = 0; x < 2; x++)
+                {
+                    if (!BlockPlacement.AddsMicro(previous, replacement, x, y, z))
+                        continue;
+
+                    Vector3 center = new(position.X + (x == 0 ? 0.25f : 0.75f),
+                        position.Y + (y == 0 ? 0.25f : 0.75f),
+                        position.Z + (z == 0 ? 0.25f : 0.75f));
+                    if (Scene.CheckBox(center, new Vector3(0.45f), Quaternion.Identity))
+                        return false;
+                }
+        return true;
     }
 
     /// <summary>Server-authoritative edit using the same target as preview.</summary>
@@ -508,18 +542,31 @@ public class BlockWorld : Script
         if (!Scene.IsServer ||
             (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))) ||
             !TryQueryFromRay(origin, direction, reach, actingPlayer,
-                out BlockPosition remove, out BlockPosition place))
+                out BlockPosition remove, out BlockPosition adjacent,
+                out Vector3 hitNormal))
             return false;
 
-        BlockPosition position = breaking ? remove : place;
-        if (breaking ? BlockAt(position) == 0 : !CanPlaceAt(position))
+        BlockPosition target;
+        ushort replacement;
+        if (breaking)
+        {
+            target = remove;
+            replacement = 0;
+            if (BlockAt(target) == 0)
+                return false;
+        }
+        else
+        {
+            if (!TryPlanPlacement(remove, adjacent, hitNormal,
+                    new BlockState(placeState), out target, out replacement) ||
+                !CanPlaceAt(target, replacement))
+                return false;
+        }
+
+        if (!_edits.Set(target, replacement, Seed))
             return false;
 
-        ushort replacement = breaking ? (ushort)0 : placeState;
-        if (!_edits.Set(position, replacement, Seed))
-            return false;
-
-        MarkBlockDirty(position);
+        MarkBlockDirty(target);
         EditState = _edits.Serialize(Seed);
         return true;
     }

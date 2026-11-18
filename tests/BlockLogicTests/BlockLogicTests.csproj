@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Scripts/WorldGeneration/BlockPosition.cs" Link="BlockPosition.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/BlockState.cs" Link="BlockState.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/BlockPlacement.cs" Link="BlockPlacement.cs" />
+  </ItemGroup>
+</Project>
