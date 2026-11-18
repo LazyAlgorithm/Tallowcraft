@@ -103,6 +103,10 @@ public static class ChunkGenerator
     {
         ushort[] blocks = CreateBlocks(key, seed, edits);
         int detail = MeshingDetail(key, blocks, edits);
+        // Mixed chunks use a sparse half-cell path instead of scanning
+        // every 0.5m cell in the entire 16m chunk.
+        if (detail == HalfCellDetail)
+            return HybridChunkMesher.Generate(key, seed, blocks, edits, token);
         int grid = Size * detail;
         var vertices = new List<Vector3>();
         var normals = new List<Vector3>();
