@@ -18,6 +18,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkFace.cs" Link="ChunkFace.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkGenerator.cs" Link="ChunkGenerator.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldGeology.cs" Link="WorldGeology.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WorldBiomes.cs" Link="WorldBiomes.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/HybridChunkMesher.cs" Link="HybridChunkMesher.cs" />
   </ItemGroup>
 </Project>
