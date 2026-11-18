@@ -43,6 +43,11 @@ public class FirstPersonCharacter : Script
             bool shadowOnly = ControlsCamera;
             if (renderer.ShadowOnly != shadowOnly)
                 renderer.ShadowOnly = shadowOnly;
+            // The unseen owner body used to cast large rapidly animated
+            // shadows around the first-person view. Disable them locally only;
+            // other clients still draw this player's body and its shadows.
+            if (renderer.CastShadows == shadowOnly)
+                renderer.CastShadows = !shadowOnly;
         }
     }
 
