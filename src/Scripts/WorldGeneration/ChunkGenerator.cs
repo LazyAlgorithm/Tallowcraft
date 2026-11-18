@@ -86,6 +86,25 @@ public static class ChunkGenerator
         return highest + MathF.Max(standingHeight, 0.1f) * 0.5f + 0.15f;
     }
 
+    /// <summary>
+    /// Unedited upper layers contain no default terrain. Skip scheduling empty
+    /// upper chunks unless a placed block now occupies them. Loaded dirty
+    /// chunks are handled separately so removing their last block clears mesh.
+    /// </summary>
+    public static bool HasPotentialBlocks(ChunkKey key,
+        IReadOnlyDictionary<BlockPosition, ushort> edits)
+    {
+        if (key.Y <= 0)
+            return true;
+        foreach (var edit in edits)
+            if (edit.Value != 0 &&
+                FloorDiv(edit.Key.X, Size) == key.X &&
+                FloorDiv(edit.Key.Y, Size) == key.Y &&
+                FloorDiv(edit.Key.Z, Size) == key.Z)
+                return true;
+        return false;
+    }
+
     public static int Index(int x, int y, int z) => (y * Size + z) * Size + x;
 
     public static int Height(int worldX, int worldZ, int seed)
