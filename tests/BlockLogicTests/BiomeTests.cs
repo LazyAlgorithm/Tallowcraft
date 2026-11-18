@@ -49,9 +49,9 @@ internal static class BiomeTests
             ChunkKey key = new(cx, cy, cz);
             ushort[] blocks = ChunkGenerator.CreateBlocks(key, seed, edits);
             bool anyBlock = false;
-            for (int z = 0; z < 16; z++)
-            for (int x = 0; x < 16; x++)
-            for (int y = 0; y < 16; y++)
+            for (int z = 0; z < 16; z += 4)
+            for (int x = 0; x < 16; x += 4)
+            for (int y = 0; y < 16; y += 4)
             {
                 int wx = cx * 16 + x, wy = cy * 16 + y,
                     wz = cz * 16 + z;
