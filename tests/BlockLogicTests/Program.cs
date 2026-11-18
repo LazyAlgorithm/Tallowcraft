@@ -24,6 +24,7 @@ static class Program
             TestChunkCoordinates();
             VerticalChunkTests.Run(Check);
             GeologyTests.Run(Check);
+            BiomeTests.Run(Check);
             HybridMeshTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
