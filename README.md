@@ -16,9 +16,12 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Ctrl: crouch
 - Left mouse: break the targeted block
 - E (Use): place a block on the targeted face
-- Ability1 / Ability2 (bind in Tallow's network input actions): cycle block type / shape
+- 1–6: select grass, dirt, stone, log, forge, planks
+- Mouse wheel: cycle selected block
+- Q: cycle cube, slab, stair and half-wall shapes
+- F: rotate the next placed block in 90° increments
 - Ctrl while placing: place an upper slab or upside-down stair
-- If Ability1/2 are not bound, edit `PlaceType` (1-6) and `PlaceShape` (0-3) on the Player prefab's BlockEditor
+- On-screen hotbar displays selection, shape, and rotation. Controls are networked with `Input.tinput`.
 
 Blocks can only be edited within 6 metres, and placement is refused when another physics body occupies the destination.
 
@@ -26,6 +29,7 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 
 - **Streaming:** directional visible chunks around the local player's camera, plus physical chunks around **every player on the server**.
 - **Mesh:** 16×16×16 blocks, 0.5-metre occupancy for partial shapes, deterministic terrain, and greedy merging of compatible half-cell faces within each block. Atlas UV seams deliberately prevent merging textured quads across entire blocks; this is an explicit performance tradeoff pending a tiling shader. Neighboring chunk faces consult edits across boundaries.
+- **Building UX:** on-screen local-player hotbar driven by authoritative network `TickInput` (`Custom1..8`, Ability1 and Ability2). The project includes an `Input.tinput` map for number keys and mouse wheel.
 - **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
 - **Textures:** a local deterministic 16px pixel-art texture atlas is generated with Tallow's C# Texture API; no external art dependency. Greedy meshes include UVs; renderers share one atlas.
 - **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well.

@@ -1,0 +1,58 @@
+map Player
+action Move vector
+bind keys W S A D
+bind keys UpArrow DownArrow LeftArrow RightArrow
+bind stick left
+action Look vector
+bind mousedelta
+bind stick right scale 1400
+action Jump button
+bind key Space
+bind pad South
+action Sprint button
+bind key LeftShift
+bind pad LeftStick
+action Crouch button
+bind key LeftControl
+bind pad East
+action Fire button
+bind mouse 0
+bind pad RightTrigger
+action Use button
+bind key E
+bind pad North
+action Reload button
+bind key R
+bind pad West
+action Ability1 button
+bind key Q
+bind pad LeftShoulder
+action Ability2 button
+bind key F
+bind pad RightShoulder
+action Talk button
+bind key V
+bind pad DpadDown
+action Custom1 button
+bind key Alpha1
+action Custom2 button
+bind key Alpha2
+action Custom3 button
+bind key Alpha3
+action Custom4 button
+bind key Alpha4
+action Custom5 button
+bind key Alpha5
+action Custom6 button
+bind key Alpha6
+action Custom7 button
+bind wheel up
+action Custom8 button
+bind wheel down
+map Menu
+action Submit button
+bind key Return
+bind pad South
+action Cancel button
+bind key Escape
+bind pad East

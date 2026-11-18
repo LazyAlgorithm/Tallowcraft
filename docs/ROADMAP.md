@@ -27,9 +27,9 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 ## M2 — Selectable hotbar and building UX
 
-- [ ] Display 6 block types with selected slot and block-name label; optional preview icons
-- [ ] Bind hotbar selection to network-aware input (1–6, wheel or mapped actions) and validate chosen state on server
-- [ ] Explicit shape selector: cube, lower/upper slab, stair, half-wall
+- [x] Display 6 block types with selected slot, block-name, shape and rotation label (immediate-mode prototype HUD; icons later)
+- [x] Bind hotbar selection to network-aware input (1–6, mouse wheel via Custom1..8) and validate chosen state on server
+- [x] Shape selector: cube, slab, stair, half-wall (Q), upper/lower via crouch held while placing
 - [ ] Facing preview/rotation; prevent placing inside player and occupied subcells
 - [ ] Crosshair, outline and reach indicator; lightweight first-person hand/tool later
 - [ ] Host/client: confirm correct type, facing, shape and selection per owner; late join sees same blocks
@@ -83,5 +83,5 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - The current world is only one 16-block vertical layer.
 - The current edit channel is one 20,000-character / 512-edit snapshot, not scalable chunk deltas.
 - Half-cell greedy meshing is temporary; full cubes need a more efficient hybrid path.
-- The existing block selection requires Inspector fields or custom input bindings; it is not yet a full hotbar.
+- The HUD is a text hotbar (no item icons/inventory counts); authoritative selection now uses the project's explicit `Input.tinput` bindings.
 - Rigged character integration and its runtime tests are **not done** until verified.
