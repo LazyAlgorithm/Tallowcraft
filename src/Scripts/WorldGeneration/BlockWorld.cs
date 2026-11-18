@@ -466,8 +466,12 @@ public class BlockWorld : Script
             {
                 if (!ShouldKeep(key, cx, cy, cz) || _jobs.ContainsKey(key))
                     return;
-                if (_loaded.TryGetValue(key, out LiveChunk? live) && !live.Dirty)
-                    return;
+                if (_loaded.TryGetValue(key, out LiveChunk? live))
+                {
+                    if (!live.Dirty) return;
+                }
+                else if (!ChunkGenerator.HasPotentialBlocks(key, _edits.Snapshot))
+                    return; // Avoid transient objects for empty upper layers.
                 if (distance < bestDistance)
                 {
                     bestDistance = distance;
