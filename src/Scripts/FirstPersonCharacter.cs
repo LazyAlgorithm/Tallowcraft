@@ -16,11 +16,16 @@ public class FirstPersonCharacter : Script
     public float StandHeight = 2f;
     public float CrouchHeight = 1.2f;
     public float EyeHeight = 0.7f;
+    // Matches the native skinned-clip crossfade (SkinnedRig.Reload: 0.2 seconds).
+    public float CrouchTransitionSeconds = 0.2f;
     public string CameraName = "Main Camera";
 
     private GameObject? _camera;
     private GameObject? _characterVisual;
     private float _eyeNow;
+    private float _eyeStart;
+    private float _eyeTarget;
+    private float _eyeTransitionTime;
 
     /// <summary>
     /// Tallow attaches the skinned model's visible mesh to a MeshRenderer.
@@ -63,6 +68,9 @@ public class FirstPersonCharacter : Script
     public override void Start()
     {
         _eyeNow = EyeHeight;
+        _eyeStart = EyeHeight;
+        _eyeTarget = EyeHeight;
+        _eyeTransitionTime = CrouchTransitionSeconds;
         if (ControlsCamera)
         {
             Cursor.Locked = true;
@@ -85,8 +93,28 @@ public class FirstPersonCharacter : Script
             controller.SetHeight(input.Crouch ? CrouchHeight : StandHeight, StandHeight);
 
             float target = EyeHeight - (StandHeight - controller.Height);
-            _eyeNow = Mathf.Lerp(_eyeNow - controller.CrouchLift, target,
-                Mathf.Clamp01(deltaTime * 12f));
+            // Physics immediately changes the capsule. Match the camera's
+            // visible transition to the rig's 0.2s pose crossfade instead
+            // of using an exponential lerp that never truly finishes.
+            // CrouchLift compensates the native midair capsule shift.
+            float lift = controller.CrouchLift;
+            _eyeNow -= lift;
+            _eyeStart -= lift;
+            _eyeTarget -= lift;
+            if (System.MathF.Abs(target - _eyeTarget) > 0.0001f)
+            {
+                _eyeStart = _eyeNow;
+                _eyeTarget = target;
+                _eyeTransitionTime = 0f;
+            }
+
+            float duration = System.MathF.Max(0.001f, CrouchTransitionSeconds);
+            _eyeTransitionTime = System.MathF.Min(duration,
+                _eyeTransitionTime + deltaTime);
+            float t = Mathf.Clamp01(_eyeTransitionTime / duration);
+            // Smooth start and finish, including interrupted transitions.
+            t = t * t * (3f - 2f * t);
+            _eyeNow = Mathf.Lerp(_eyeStart, _eyeTarget, t);
         }
 
         Transform.Rotation = RotationMath.EulerDegrees(new Vector3(0f, input.Yaw, 0f));
