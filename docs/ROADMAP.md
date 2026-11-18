@@ -67,7 +67,9 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Add signed (X,Y,Z) 16³ chunk keys, vertical streaming, Y=-32..47 block edits and cross-layer occlusion (Play-mode verification pending)
 - [x] Calculate server-authoritative player spawn clearance from voxel surface, with initial spawn points adjusted (runtime verification pending)
 - [ ] Expand vertical world bounds and stream/simulate deeper caves based on world settings
-- [ ] Biomes, vegetation, ore layers, caves and simple structures
+- [x] Seeded, world-coordinate 3D cave field and coal/iron deposits below ground (C# regression tests committed; Play-mode test pending)
+- [ ] Dedicated coal/iron atlas textures, mining drops and inventory; placeholder approved atlas tiles are used for now
+- [ ] Biomes, vegetation, more detailed ore layers and simple structures
 - [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)
 - [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
 - [ ] Chunk-generation priority, cancellation and far-distance representation
@@ -149,3 +151,19 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 Then open the game in Tallow. Check that the player spawns with feet on terrain (not buried or floating), mine down through Y=0 into a negative-Y chunk, and build above Y=15 into Y=16. At both seams, test stairs/slabs and edited chunk refreshes, then test multiplayer spawn points. The unit tests do not replace in-editor physics, streaming, or host/client verification. A committed code change alone is not a successful engine build.
+
+## M4: first caves and ore pass
+
+`WorldGeology` uses deterministic integer hashing and trilinearly interpolated 3D noise. All sampling uses *world-space block coordinates*, not chunk-local PRNG state, so both peers should generate identical terrain regardless of job order. Caves occur underground (primarily Y=-29 through -5), leaving the surface cover and bottom few layers intact. Coal (type 7) and iron (type 8) appear in remaining underground stone; iron is restricted to deeper layers. They are not yet selectable in the six-slot creative hotbar. The current nine-tile atlas is unchanged: ore types temporarily reuse the dark forge-side and light log-end artwork; dedicated ore textures need approval before being added.
+
+Geology is part of `BaseBlock`, ensuring `CreateBlocks`, `GetBlock`, spawn clearance, edits, server checks and clients all share one source of truth. Edits override geology and are sent through the existing authoritative v2 snapshot format. `GeologyTests` cover repeated deterministic sampling, negative/positive chunk boundaries, ore and cave existence, and edit replication.
+
+Run on Nobara:
+
+```bash
+cd ~/TallowProjects/Tallowcraft
+git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+Then inspect caves underground in Play mode, mine into coal/iron, cross negative X/Z/Y chunk seams, and test host/client. The cave density and generation cost remain provisional until runtime checks. This first geology implementation does not yet add inventory, mining drops, custom ore textures, or larger vertical world limits.
