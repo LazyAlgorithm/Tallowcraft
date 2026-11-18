@@ -443,22 +443,23 @@ public class BlockWorld : Script
     }
 
     /// <summary>
-    /// Server only. Uses Tallow's native Jolt surface normal to select the
-    /// interior voxel (break) or neighboring empty voxel (place).
+    /// The shared block targeting query for both preview and server edits.
+    /// A client may raycast its local generated collision chunks, but it cannot
+    /// change the authoritative edit state. Ignore the player's own capsule.
     /// </summary>
-    public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach, bool breaking, GameObject actingPlayer, ushort placeState)
+    public bool TryQueryFromRay(Vector3 origin, Vector3 direction, float reach,
+        GameObject actingPlayer, out BlockPosition remove, out BlockPosition place)
     {
-        if (!Scene.IsServer || !float.IsFinite(reach) ||
-            reach <= 0 || !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) ||
+        remove = default;
+        place = default;
+        if (!float.IsFinite(reach) || reach <= 0f ||
+            !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) ||
             !float.IsFinite(origin.Z) || !float.IsFinite(direction.X) ||
             !float.IsFinite(direction.Y) || !float.IsFinite(direction.Z) ||
-            direction.LengthSquared() < 0.0001f ||
-            (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))))
+            direction.LengthSquared() < 0.0001f)
             return false;
 
         direction = Vector3.Normalize(direction);
-        // RaycastAll allows skipping the shooter's own capsule while still
-        // honoring other obstacles (another player or a wall) before the voxel.
         PhysicsHit? contact = null;
         foreach (PhysicsHit candidate in Scene.RaycastAll(
             origin, direction, Math.Clamp(reach, 1f, 8f)))
@@ -470,37 +471,49 @@ public class BlockWorld : Script
         }
 
         if (contact is not { } hit || hit.Normal is not Vector3 normal ||
-            hit.HitObject is not { } objectHit ||
-            !_chunkObjects.ContainsKey(objectHit.Id))
+            hit.HitObject is not { } objectHit || !_chunkObjects.ContainsKey(objectHit.Id))
             return false;
 
-        // Always find the hit voxel first. A slab's interior face is not a
-        // neighboring voxel boundary, so placement uses the face direction
-        // rather than simply flooring the point outside its half-cell.
+        // Inside the struck half-cell, then advance a whole block in the
+        // normal's direction. This is also the exact targeting rule used by
+        // server placement, including stairs and lower/upper slabs.
         Vector3 inside = hit.Point - normal * 0.01f;
-        int x = (int)MathF.Floor(inside.X);
-        int y = (int)MathF.Floor(inside.Y);
-        int z = (int)MathF.Floor(inside.Z);
-        var position = breaking
-            ? new BlockPosition(x, y, z)
-            : new BlockPosition(x + (int)MathF.Round(normal.X),
-                y + (int)MathF.Round(normal.Y),
-                z + (int)MathF.Round(normal.Z));
+        remove = new BlockPosition((int)MathF.Floor(inside.X),
+            (int)MathF.Floor(inside.Y), (int)MathF.Floor(inside.Z));
+        place = new BlockPosition(remove.X + (int)MathF.Round(normal.X),
+            remove.Y + (int)MathF.Round(normal.Y),
+            remove.Z + (int)MathF.Round(normal.Z));
+        return remove.Y >= 0 && remove.Y < ChunkGenerator.Size &&
+            _edits.Get(remove.X, remove.Y, remove.Z, Seed) != 0;
+    }
 
-        if (position.Y < 0 || position.Y >= ChunkGenerator.Size)
+    public ushort BlockAt(BlockPosition position) =>
+        _edits.Get(position.X, position.Y, position.Z, Seed);
+
+    public bool CanPlaceAt(BlockPosition position)
+    {
+        if (position.Y < 0 || position.Y >= ChunkGenerator.Size ||
+            BlockAt(position) != 0)
+            return false;
+        Vector3 center = new(position.X + 0.5f,
+            position.Y + 0.5f, position.Z + 0.5f);
+        // Same conservative overlap check on preview and authoritative server.
+        return !Scene.CheckBox(center, new Vector3(0.9f), Quaternion.Identity);
+    }
+
+    /// <summary>Server-authoritative edit using the same target as preview.</summary>
+    public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach,
+        bool breaking, GameObject actingPlayer, ushort placeState)
+    {
+        if (!Scene.IsServer ||
+            (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))) ||
+            !TryQueryFromRay(origin, direction, reach, actingPlayer,
+                out BlockPosition remove, out BlockPosition place))
             return false;
 
-        ushort current = _edits.Get(position.X, position.Y, position.Z, Seed);
-        if (breaking ? current == 0 : current != 0)
+        BlockPosition position = breaking ? remove : place;
+        if (breaking ? BlockAt(position) == 0 : !CanPlaceAt(position))
             return false;
-
-        if (!breaking)
-        {
-            // Do not place a block inside another physics body, including a player.
-            Vector3 center = new(position.X + 0.5f, position.Y + 0.5f, position.Z + 0.5f);
-            if (Scene.CheckBox(center, new Vector3(0.9f), Quaternion.Identity))
-                return false;
-        }
 
         ushort replacement = breaking ? (ushort)0 : placeState;
         if (!_edits.Set(position, replacement, Seed))

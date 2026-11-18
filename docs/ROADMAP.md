@@ -35,7 +35,8 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [ ] Facing preview/rotation; prevent placing inside player and occupied subcells
 - [x] Swap mouse buttons: left-click place / right-click remove (E still places)
 - [x] Commit nine-slot 3×3 pixel-art PNG atlas and map chunk UVs to it
-- [ ] Crosshair, outline and reach indicator; lightweight first-person hand/tool later
+- [x] Crosshair and red remove / green placement outlines, including half-cell shapes (runtime test pending)
+- [ ] Add a more polished transparent ghost mesh and block-face-aware partial shape placement; lightweight first-person hand/tool later
 - [ ] Host/client: confirm correct type, facing, shape and selection per owner; late join sees same blocks
 
 **Exit:** block selection is usable without editing Inspector fields.

@@ -19,6 +19,12 @@ field scriptAsset "bd18bb78c5a84f95adf127898ad94a44"
 field fieldOverrides ""
 field referenceNames ""
 field referenceTargets 0
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "WorldGeneration.BuildPreview"
+field scriptAsset "abfed715c62e44cd9a26d14954362baf"
+field fieldOverrides ""
+field referenceNames ""
+field referenceTargets 0
 component Tallow.CharacterController enabled 1
 field shape Capsule
 field radius 0.5

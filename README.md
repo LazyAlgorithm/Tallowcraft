@@ -23,6 +23,7 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - F: rotate the next placed block in 90° increments
 - Ctrl while placing: place an upper slab or upside-down stair
 - On-screen hotbar displays selection, shape, and rotation. Controls are networked with `Input.tinput`.
+- Red wireframe shows the voxel that right-click will remove; green wireframe previews the chosen block shape/orientation on left-click. Orange indicates blocked placement. Previews are client-local and gameplay edits remain server-authoritative.
 
 Blocks can only be edited within 6 metres, and placement is refused when another physics body occupies the destination.
 
@@ -50,6 +51,10 @@ Supported block types are 0 (air), 1 (grass), 2 (dirt), 3 (stone), 4 (wood), 5 (
 The first-person player's **own** rigged body is rendered as shadow-only on their machine: its own rapidly animated shadows are suppressed locally, so it no longer covers the camera or flickers across the terrain. Remote clients still render the entire animated character and its shadows. Animation playback is deliberately slowed to 0.55–0.65× and velocity changes are smoothed to prevent rapid pose flicker. Ownership and local visibility are checked in `FirstPersonCharacter.LocalUpdate` without disabling the player or its collider. This needs a host/client runtime check, especially when ownership arrives after spawning.
 
 The player model is a **real glTF skinned mesh with 11 named skeleton joints and skin weights**, not a Minecraft-style block character. The asset is authored in this repository. Its Idle/Walk/Run/Jump clips are editable `.tanim` files based on Tallow's sample animation tracks. This is a **first integration pass**: verify skinning, animation ordering, network interpolation, camera/head occlusion, crouch, and feet placement in Play mode. No passing Tallow build has been recorded for this commit. A local-player-specific head visibility mask is still needed if the model occludes the first-person camera.
+
+### Targeting preview
+
+The red target outline and shape-specific green placement outline use the same ray-to-block targeting method as the authoritative server. Some partial blocks show internal half-cell grid lines in the initial wireframe; these are previews only, not additional colliders. Actual blocks and collision remain unchanged. In a multiplayer client, selection previews are based on the latest replicated selection state and may briefly lag a fast hotbar key press. Verify the outlines against server placement on vertical faces, chunk seams and partial shapes.
 
 ### Testing checklist
 

@@ -136,10 +136,22 @@ def verify() -> None:
     check("renderer.Texture = BlockTextureAtlas.Path;" in world_source,
           "Chunk renderer is not using the committed texture atlas")
 
+    world_source = (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text()
+    preview_source = (ROOT / "src/Scripts/WorldGeneration/BuildPreview.cs").read_text()
+    check("TryQueryFromRay(" in world_source
+          and "TryQueryFromRay(" in preview_source,
+          "Preview and gameplay must share the same targeting query")
+    check("DrawShape(" in preview_source
+          and "state.ContainsMicro(" in preview_source
+          and "DebugDraw.Box(" in preview_source,
+          "Partial-block placement preview is missing")
+    check('field scriptType "WorldGeneration.BuildPreview"' in prefab,
+          "Player prefab does not attach BuildPreview")
+
     actions = INPUT.read_text()
-    check("action Fire button\\nbind mouse 1" in actions,
+    check("action Fire button\nbind mouse 1" in actions,
           "Right mouse must remove blocks")
-    check("action Use button\\nbind mouse 0" in actions,
+    check("action Use button\nbind mouse 0" in actions,
           "Left mouse must place blocks")
     for i in range(1, 7):
         check("action Custom" + str(i) + " button" in actions
