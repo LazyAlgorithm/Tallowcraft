@@ -475,23 +475,40 @@ public class BlockWorld : Script
                 }
             }
 
-            // Prioritize camera-near chunks, in the existing directional shape.
-            for (int dz = -radius; dz <= radius; dz++)
-            for (int dx = -radius; dx <= radius; dx++)
+            // Prioritize chunks at the viewer's height, then nearby vertical
+            // layers; keep horizontal directional streaming unchanged.
+            int vertical = Math.Clamp(VerticalRadius, 0, 2);
+            for (int dy = -vertical; dy <= vertical; dy++)
             {
-                ChunkKey key = new(cx + dx, cz + dz);
-                if (ShouldStream(key, cx, cz))
-                    Consider(key, (long)dx * dx + (long)dz * dz);
+                int layer = cy + dy;
+                if (layer < ChunkGenerator.MinChunkY || layer > ChunkGenerator.MaxChunkY)
+                    continue;
+                for (int dz = -radius; dz <= radius; dz++)
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    ChunkKey key = new(cx + dx, layer, cz + dz);
+                    if (ShouldStream(key, cx, cy, cz))
+                        Consider(key, (long)dx * dx + (long)dz * dz +
+                            (long)dy * dy * 4);
+                }
             }
 
-            // Server-only: also cover each remote player's collision neighborhood.
+            // A headless/server world also maintains collision neighborhoods
+            // centered around remote players' true 3D chunk coordinates.
             if (Scene.IsServer)
                 foreach (ChunkKey center in _playerCenters)
+                    for (int dy = -vertical; dy <= vertical; dy++)
                     for (int dz = -nearRadius; dz <= nearRadius; dz++)
                     for (int dx = -nearRadius; dx <= nearRadius; dx++)
-                        if ((long)dx * dx + (long)dz * dz <= (long)nearRadius * nearRadius)
-                            Consider(new ChunkKey(center.X + dx, center.Z + dz),
-                                (long)dx * dx + (long)dz * dz);
+                    {
+                        int layer = center.Y + dy;
+                        if (layer < ChunkGenerator.MinChunkY ||
+                            layer > ChunkGenerator.MaxChunkY ||
+                            (long)dx * dx + (long)dz * dz > (long)nearRadius * nearRadius)
+                            continue;
+                        Consider(new ChunkKey(center.X + dx, layer, center.Z + dz),
+                            (long)dx * dx + (long)dz * dz + (long)dy * dy * 4);
+                    }
 
             if (nearest is not { } next)
                 break;
