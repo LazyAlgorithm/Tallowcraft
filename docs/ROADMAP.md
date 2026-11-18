@@ -53,7 +53,8 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Fast one-metre meshing path for cube-only chunks with half-metre fallback around partial blocks and chunk boundaries (runtime benchmark pending)
 - [ ] Complete hybrid full-cube greedy mesher with tiled atlas UVs and compact shape templates for edited chunks
 - [ ] Proper per-block repeating texture UVs on merged faces; avoid atlas bleed
-- [x] Add repeatable pure C# benchmark for generated chunks/sec, vertices/chunk, triangles/chunk, and managed allocations (run with `dotnet run --project tests/BlockLogicTests -c Release -- --bench`; results pending)\n- [ ] Measure native MeshCollider rebuild cost, GPU draw calls, runtime memory and player-facing frame times in Tallow
+- [x] Add repeatable pure C# benchmark for generated chunks/sec, vertices/chunk, triangles/chunk, and managed allocations (run with `dotnet run --project tests/BlockLogicTests -c Release -- --bench`; results pending)
+- [ ] Measure native MeshCollider rebuild cost, GPU draw calls, runtime memory and player-facing frame times in Tallow
 - [ ] Retain Tallow native ECS and physics integration; avoid GameObject-per-block
 
 **Exit:** performance meets or beats the original cube prototype on ordinary terrain.
@@ -62,7 +63,8 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 - [ ] Vertical chunk stacks and safe Y coordinates outside 0–15
 - [ ] Biomes, vegetation, ore layers, caves and simple structures
-- [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)\n- [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
+- [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)
+- [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
 - [ ] Chunk-generation priority, cancellation and far-distance representation
 - [ ] Verify headless server physics streaming separately from client rendering
 
