@@ -585,35 +585,8 @@ public class BlockWorld : Script
     /// radius and all occupied half-cells (including slabs and stairs).
     /// The returned Y is the center of a standing capsule, not its feet.
     /// </summary>
-    public float SafeSpawnHeight(float x, float z, float standingHeight, float radius = 0.5f)
-    {
-        int minX = (int)MathF.Floor(x - radius);
-        int maxX = (int)MathF.Floor(x + radius);
-        int minZ = (int)MathF.Floor(z - radius);
-        int maxZ = (int)MathF.Floor(z + radius);
-        float highest = ChunkGenerator.MinWorldY;
-        for (int bx = minX; bx <= maxX; bx++)
-        for (int bz = minZ; bz <= maxZ; bz++)
-        for (int y = ChunkGenerator.MinWorldY; y <= ChunkGenerator.MaxWorldY; y++)
-        {
-            BlockState block = new(BlockAt(new BlockPosition(bx, y, bz)));
-            if (block.IsAir)
-                continue;
-            bool upper = false;
-            bool lower = false;
-            for (int sx = 0; sx < 2; sx++)
-            for (int sz = 0; sz < 2; sz++)
-            {
-                upper |= block.ContainsMicro(sx, 1, sz);
-                lower |= block.ContainsMicro(sx, 0, sz);
-            }
-            if (upper)
-                highest = MathF.Max(highest, y + 1f);
-            else if (lower)
-                highest = MathF.Max(highest, y + 0.5f);
-        }
-        return highest + MathF.Max(standingHeight, 0.1f) * 0.5f + 0.15f;
-    }
+    public float SafeSpawnHeight(float x, float z, float standingHeight, float radius = 0.5f) =>
+        ChunkGenerator.SpawnHeight(x, z, Seed, _edits.Snapshot, standingHeight, radius);
 
     /// <summary>Shared, side-effect-free placement rule for preview and server.</summary>
     public bool TryPlanPlacement(BlockPosition hit, BlockPosition adjacent,
