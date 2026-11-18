@@ -80,9 +80,9 @@ public class CharacterAnimation : Script
         // measuring Y movement alone falsely interprets that as a jump.
         // Height also reflects a failed attempt to stand beneath a ceiling.
         var controller = GetCharacterController();
-        bool crouched = controller is { IsValid: true } &&
-            controller.Height > 0f &&
-            controller.Height < StandingHeight - CrouchHeightTolerance;
+        bool crouched = controller is { IsValid: true } activeController &&
+            activeController.Height > 0f &&
+            activeController.Height < StandingHeight - CrouchHeightTolerance;
         bool airborne = controller is { HasCharacter: true } character &&
             !character.IsGrounded &&
             (character.Velocity.Y > 0.75f || character.AirTime > AirGrace);
