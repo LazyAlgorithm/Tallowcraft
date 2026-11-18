@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,41 @@ public class BlockWorld : Script
     public int KeepMargin = 1;
     public int WorkerCount = 2;
     public int UploadsPerFrame = 1;
+
+    // Diagnostic only: synchronous mesh and collider entry-point timings.
+    // Native Jolt cooking deferred to physics frames is NOT measured here.
+    public bool ProfileChunkColliders = true;
+    public int ProfileReportEvery = 32;
+    private readonly int[] _profileCounts = new int[4];
+    private readonly double[] _profileMilliseconds = new double[4];
+    private readonly double[] _profileMaximum = new double[4];
+    private int _profileEvents;
+
+    // 0: mesh upload, 1: MeshCollider add, 2: refresh, 3: remove.
+    private void RecordChunkProfile(int operation, long start)
+    {
+        if (!ProfileChunkColliders || start == 0) return;
+        double elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        _profileCounts[operation]++;
+        _profileMilliseconds[operation] += elapsed;
+        _profileMaximum[operation] = Math.Max(_profileMaximum[operation], elapsed);
+        if (++_profileEvents < Math.Max(1, ProfileReportEvery)) return;
+
+        string[] names = { "SetMesh", "ColliderAdd", "ColliderRefresh", "ColliderRemove" };
+        Console.WriteLine("[Tallowcraft chunk profile] synchronous call timings (deferred Jolt work excluded):");
+        for (int i = 0; i < 4; i++)
+        {
+            int count = _profileCounts[i];
+            if (count > 0)
+                Console.WriteLine($"  {names[i]} count={count} avg_ms={_profileMilliseconds[i] / count:F3} max_ms={_profileMaximum[i]:F3} total_ms={_profileMilliseconds[i]:F3}");
+        }
+        Array.Clear(_profileCounts);
+        Array.Clear(_profileMilliseconds);
+        Array.Clear(_profileMaximum);
+        _profileEvents = 0;
+    }
+
+    private long ProfileStart() => ProfileChunkColliders ? Stopwatch.GetTimestamp() : 0;
 
     // Empty on newly connected clients until the authoritative snapshot arrives.
     // Includes world seed; the two cannot disagree while joining.
@@ -250,11 +286,17 @@ public class BlockWorld : Script
                 if (!live.Object.IsValid)
                     continue;
 
+                long meshStart = ProfileStart();
                 live.Renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
+                RecordChunkProfile(0, meshStart);
                 if (_colliders.Contains(pair.Key) &&
                     live.Object.GetComponent<MeshCollider>() is { } collider &&
                     collider.IsValid)
+                {
+                    long refreshStart = ProfileStart();
                     collider.Refresh();
+                    RecordChunkProfile(2, refreshStart);
+                }
 
                 live.Object.Entity.Set(new ChunkInfo
                 {
@@ -274,12 +316,16 @@ public class BlockWorld : Script
             MeshRenderer renderer = obj.AddComponent<MeshRenderer>();
             renderer.FlatShading = true;
             renderer.Texture = BlockTextureAtlas.Path;
+            long newMeshStart = ProfileStart();
             renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
+            RecordChunkProfile(0, newMeshStart);
 
             bool collision = ShouldHaveCollider(pair.Key, cx, cz);
             if (collision)
             {
+                long colliderStart = ProfileStart();
                 obj.AddComponent<MeshCollider>();
+                RecordChunkProfile(1, colliderStart);
                 _colliders.Add(pair.Key);
             }
 
@@ -314,7 +360,9 @@ public class BlockWorld : Script
             }
             else if (has && !ShouldHaveCollider(key, cx, cz, 1))
             {
+                long removeStart = ProfileStart();
                 obj.RemoveComponent<MeshCollider>();
+                RecordChunkProfile(3, removeStart);
                 _colliders.Remove(key);
             }
         }
