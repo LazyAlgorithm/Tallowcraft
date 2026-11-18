@@ -95,25 +95,25 @@ field port 7777
 field playerPrefab "Prefabs/Player.tprefab"
 field snapshotRelevanceRadius 0
 object 7 parent 0 active 1 name "Spawn Point 1"
-transform 0 9.6 -4 0 0 0 1 1 1 1
+transform 0 5.15 -4 0 0 0 1 1 1 1
 component Tallow.SpawnPoint enabled 1
 field team 0
 field startOnly 0
 field clearRadius 1
 object 8 parent 0 active 1 name "Spawn Point 2"
-transform 4 9.6 -4 0 0 0 1 1 1 1
+transform 4 5.15 -4 0 0 0 1 1 1 1
 component Tallow.SpawnPoint enabled 1
 field team 0
 field startOnly 0
 field clearRadius 1
 object 9 parent 0 active 1 name "Spawn Point 3"
-transform 8 9.6 -4 0 0 0 1 1 1 1
+transform 8 5.15 -4 0 0 0 1 1 1 1
 component Tallow.SpawnPoint enabled 1
 field team 0
 field startOnly 0
 field clearRadius 1
 object 10 parent 0 active 1 name "Spawn Point 4"
-transform 12 9.6 -4 0 0 0 1 1 1 1
+transform 12 7.15 -4 0 0 0 1 1 1 1
 component Tallow.SpawnPoint enabled 1
 field team 0
 field startOnly 0
