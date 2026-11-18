@@ -53,7 +53,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Fast one-metre meshing path for cube-only chunks with half-metre fallback around partial blocks and chunk boundaries (runtime benchmark pending)
 - [ ] Complete hybrid full-cube greedy mesher with tiled atlas UVs and compact shape templates for edited chunks
 - [ ] Proper per-block repeating texture UVs on merged faces; avoid atlas bleed
-- [ ] Benchmark chunks generated/sec, vertices/chunk, MeshCollider rebuild cost, memory and draw calls
+- [x] Add repeatable pure C# benchmark for generated chunks/sec, vertices/chunk, triangles/chunk, and managed allocations (run with `dotnet run --project tests/BlockLogicTests -c Release -- --bench`; results pending)\n- [ ] Measure native MeshCollider rebuild cost, GPU draw calls, runtime memory and player-facing frame times in Tallow
 - [ ] Retain Tallow native ECS and physics integration; avoid GameObject-per-block
 
 **Exit:** performance meets or beats the original cube prototype on ordinary terrain.
@@ -62,7 +62,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 - [ ] Vertical chunk stacks and safe Y coordinates outside 0–15
 - [ ] Biomes, vegetation, ore layers, caves and simple structures
-- [ ] World-space generation across negative coordinates and chunk seams
+- [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)\n- [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
 - [ ] Chunk-generation priority, cancellation and far-distance representation
 - [ ] Verify headless server physics streaming separately from client rendering
 
@@ -95,3 +95,15 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - Unedited cube-only chunks now use full-block meshing; edited chunks containing partial shapes still use half-cell meshing until the hybrid path is complete.
 - The HUD is a text hotbar (no item icons/inventory counts); authoritative selection now uses the project's explicit `Input.tinput` bindings.
 - Rigged character integration and its runtime tests are **not done** until verified.
+
+
+## M3 benchmark procedure
+
+From the Tallowcraft repository root:
+
+```bash
+dotnet run --project tests/BlockLogicTests -c Release
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+The benchmark reports CSV-compatible CPU chunk generation throughput, mesh vertex/triangle counts and managed allocation per chunk for cube-only and edited partial-shape workloads. It warms up the JIT before timing, checks negative-coordinate chunks, and does not claim to measure native MeshCollider reconstruction, GPU rendering or full-game frame rates. Run on the same hardware and .NET runtime when comparing commits. Tests added for negative X chunk seams and partial-block neighbor meshing; engine-level collider/raycast validation remains open.
