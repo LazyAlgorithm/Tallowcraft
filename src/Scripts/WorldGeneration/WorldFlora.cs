@@ -5,8 +5,8 @@ namespace WorldGeneration;
 /// <summary>
 /// Seeded oak-like voxel trees. Anchor candidates live on an 8x8 world grid
 /// (one jittered root per cell), so tree shapes never depend on chunk job order.
-/// Adjacent anchor centers are at least five blocks apart, preventing overlap
-/// between radius-two canopies. Trunks reuse type 4; opaque leaves use type 9.
+/// Canopies may overlap across horizontal chunk boundaries; trunks always take
+/// precedence over leaves. Trunks reuse type 4; opaque leaves use type 9.
 /// </summary>
 public static class WorldFlora
 {
@@ -39,8 +39,8 @@ public static class WorldFlora
     {
         tree = default;
         uint hash = Hash(cellX, cellZ, seed);
-        int x = cellX * CellSize + 2 + (int)((hash >> 10) & 3);
-        int z = cellZ * CellSize + 2 + (int)((hash >> 12) & 3);
+        int x = cellX * CellSize + (int)((hash >> 10) & 7);
+        int z = cellZ * CellSize + (int)((hash >> 13) & 7);
 
         // Preserve the already-tested initial spawn and its approach.
         if ((long)x * x + (long)z * z < (long)SpawnClearRadius * SpawnClearRadius)
@@ -114,10 +114,11 @@ public static class WorldFlora
     {
         if (y < 2 || y > ChunkGenerator.MaxWorldY ||
             (long)x * x + (long)z * z <
-                (long)(SpawnClearRadius - CanopyRadius) *
-                (SpawnClearRadius - CanopyRadius))
+                (long)(SpawnClearRadius - 3) *
+                (SpawnClearRadius - 3))
             return 0;
 
+        ushort result = 0;
         for (int cz = ChunkGenerator.FloorDiv(z - CanopyRadius, CellSize);
              cz <= ChunkGenerator.FloorDiv(z + CanopyRadius, CellSize); cz++)
         for (int cx = ChunkGenerator.FloorDiv(x - CanopyRadius, CellSize);
@@ -125,10 +126,12 @@ public static class WorldFlora
             if (TryTreeInCell(cx, cz, seed, out Tree tree))
             {
                 ushort type = ShapeAt(tree, x, y, z);
-                if (type != 0)
-                    return type;
+                if (type == Log)
+                    return Log;
+                if (type == Leaves)
+                    result = Leaves;
             }
-        return 0;
+        return result;
     }
 
     private static void ForNearbyTrees(ChunkKey key, int seed,
