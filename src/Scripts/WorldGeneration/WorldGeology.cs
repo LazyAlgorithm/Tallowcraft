@@ -38,7 +38,7 @@ public static class WorldGeology
         int ix = (int)MathF.Floor(x), iy = (int)MathF.Floor(y),
             iz = (int)MathF.Floor(z);
         float tx = Smooth(x - ix), ty = Smooth(y - iy), tz = Smooth(z - iz);
-        float low = 0f, high = 0f;
+        float low = 0f;
         for (int dz = 0; dz < 2; dz++)
         for (int dy = 0; dy < 2; dy++)
         for (int dx = 0; dx < 2; dx++)
@@ -66,7 +66,7 @@ public static class WorldGeology
     /// <summary>Compact local ore pockets in remaining stone; depth-limited.</summary>
     public static ushort OreAt(int x, int y, int z, int seed)
     {
-        if (y > 0 || y < ChunkGenerator.MinWorldY + 2)
+        if (y > -3 || y < ChunkGenerator.MinWorldY + 2)
             return 3;
 
         // Use separate salted noise channels; iron is rarer and deeper.
