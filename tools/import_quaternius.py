@@ -65,10 +65,10 @@ def main():
         raise RuntimeError("Rig does not match library (matching joints: " + str(len(common)) + ")")
     clips = [a.get("name", "") for a in library["animations"]]
     mapping = {
-        "Idle": choose(clips, "idle", ("Idle", "Idle_Normal", "Idle_Standing")),
-        "Walk": choose(clips, "walk", ("Walk", "Walking", "Walk_Forward")),
-        "Run": choose(clips, "run", ("Run", "Running", "Sprint", "Jog")),
-        "Jump": choose(clips, "jump", ("Jump", "Jump_Start", "Jump_Up")),
+        "Idle": choose(clips, "idle", ("Idle_Loop", "Idle", "Idle_Normal")),
+        "Walk": choose(clips, "walk", ("Walk_Loop", "Walk", "Walking")),
+        "Run": choose(clips, "sprint", ("Sprint_Loop", "Jog_Fwd_Loop", "Run", "Running", "Sprint")),
+        "Jump": choose(clips, "jump", ("Jump_Loop", "Jump_Start", "Jump")),
     }
     if len(set(mapping.values())) != 4:
         raise RuntimeError("Not four unique movement clips")
