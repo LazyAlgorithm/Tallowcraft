@@ -108,6 +108,15 @@ def verify() -> None:
     check('field model "Models/Adventurer.glb"' in prefab, "Prefab model path mismatch")
     check("component Tallow.SkinnedMeshRenderer enabled 1" in prefab,
           "No skinned mesh renderer in player prefab")
+    check("component Tallow.MeshRenderer enabled 1" in prefab
+          and "field shadowOnly 0" in prefab,
+          "Player visual needs its own local shadow-only renderer")
+    character = (ROOT / "src/Scripts/FirstPersonCharacter.cs").read_text()
+    check("UpdateLocalModelVisibility()" in character
+          and "public override void LocalUpdate" in character
+          and "renderer.ShadowOnly = shadowOnly" in character
+          and "bool shadowOnly = ControlsCamera" in character,
+          "Owner-only first-person model hiding is missing")
     check("component Tallow.Animator enabled 1" in prefab,
           "Player is missing an Animator")
     check("component Tallow.CharacterController enabled 1" in prefab,

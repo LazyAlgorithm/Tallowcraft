@@ -46,6 +46,8 @@ Supported block types are 0 (air), 1 (grass), 2 (dirt), 3 (stone), 4 (wood), 5 (
 
 ### Rigged-character caveats
 
+The first-person player's **own** rigged body is rendered as shadow-only on their machine: it keeps casting a shadow, but no longer covers the camera. Remote clients still render the entire animated character. Ownership and local visibility are checked in `FirstPersonCharacter.LocalUpdate` without disabling the player or its collider. This needs a host/client runtime check, especially when ownership arrives after spawning.
+
 The player model is a **real glTF skinned mesh with 11 named skeleton joints and skin weights**, not a Minecraft-style block character. The asset is authored in this repository. Its Idle/Walk/Run/Jump clips are editable `.tanim` files based on Tallow's sample animation tracks. This is a **first integration pass**: verify skinning, animation ordering, network interpolation, camera/head occlusion, crouch, and feet placement in Play mode. No passing Tallow build has been recorded for this commit. A local-player-specific head visibility mask is still needed if the model occludes the first-person camera.
 
 ### Testing checklist

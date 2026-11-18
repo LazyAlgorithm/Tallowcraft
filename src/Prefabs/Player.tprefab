@@ -41,6 +41,8 @@ field swimSpeed 0.6
 
 object 2 parent 1 active 1 name "Character Visual"
 transform 0 -1 0 0 0 0 1 1 1 1
+component Tallow.MeshRenderer enabled 1
+field shadowOnly 0
 component Tallow.SkinnedMeshRenderer enabled 1
 field model "Models/Adventurer.glb"
 field clip ""

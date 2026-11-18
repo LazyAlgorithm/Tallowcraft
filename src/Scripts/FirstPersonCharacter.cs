@@ -19,7 +19,38 @@ public class FirstPersonCharacter : Script
     public string CameraName = "Main Camera";
 
     private GameObject? _camera;
+    private GameObject? _characterVisual;
     private float _eyeNow;
+
+    /// <summary>
+    /// Tallow attaches the skinned model's visible mesh to a MeshRenderer.
+    /// ShadowOnly is local renderer presentation, not a NetworkIdentity change.
+    /// Keep the owner's body out of the first-person view while still casting
+    /// its shadow; other clients continue drawing this player's whole model.
+    /// </summary>
+    private void UpdateLocalModelVisibility()
+    {
+        if (_characterVisual is not { IsValid: true })
+        {
+            if (GameObject.GetComponentInChildren<SkinnedMeshRenderer>() is
+                { IsValid: true } skinned)
+                _characterVisual = skinned.GameObject;
+        }
+
+        if (_characterVisual is { IsValid: true } visual &&
+            visual.GetComponent<MeshRenderer>() is { IsValid: true } renderer)
+        {
+            bool shadowOnly = ControlsCamera;
+            if (renderer.ShadowOnly != shadowOnly)
+                renderer.ShadowOnly = shadowOnly;
+        }
+    }
+
+    // Run on every peer, including non-authoritative remote player copies.
+    // Ownership can arrive after Start and a skinned renderer can attach later;
+    // neither of those transitions should leave the camera blocked.
+    public override void LocalUpdate(float deltaTime) =>
+        UpdateLocalModelVisibility();
 
     private bool ControlsCamera =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -32,6 +63,7 @@ public class FirstPersonCharacter : Script
             Cursor.Locked = true;
             _camera = Scene.Find(CameraName);
         }
+        UpdateLocalModelVisibility();
     }
 
     public override void Update(TickInput input, float deltaTime)
