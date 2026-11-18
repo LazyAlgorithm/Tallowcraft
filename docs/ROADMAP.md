@@ -50,7 +50,8 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Support slab stacking on exposed upper/lower faces without allocating an extra voxel (runtime check pending)
 - [ ] Improve placement on internal faces of stairs and slabs, including precise hit-height rules
 - [ ] Split/merge compatible shapes and occlusion correctly across chunk boundaries
-- [ ] Hybrid mesh: full-cube greedy quads + compact shape templates; no 2× subdivision for all ordinary blocks
+- [x] Fast one-metre meshing path for cube-only chunks with half-metre fallback around partial blocks and chunk boundaries (runtime benchmark pending)
+- [ ] Complete hybrid full-cube greedy mesher with tiled atlas UVs and compact shape templates for edited chunks
 - [ ] Proper per-block repeating texture UVs on merged faces; avoid atlas bleed
 - [ ] Benchmark chunks generated/sec, vertices/chunk, MeshCollider rebuild cost, memory and draw calls
 - [ ] Retain Tallow native ECS and physics integration; avoid GameObject-per-block
@@ -91,6 +92,6 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 - The current world is only one 16-block vertical layer.
 - The current edit channel is one 20,000-character / 512-edit snapshot, not scalable chunk deltas.
-- Half-cell greedy meshing is temporary; full cubes need a more efficient hybrid path.
+- Unedited cube-only chunks now use full-block meshing; edited chunks containing partial shapes still use half-cell meshing until the hybrid path is complete.
 - The HUD is a text hotbar (no item icons/inventory counts); authoritative selection now uses the project's explicit `Input.tinput` bindings.
 - Rigged character integration and its runtime tests are **not done** until verified.

@@ -20,6 +20,7 @@ static class Program
             TestStacking();
             TestReplacements();
             TestFacing();
+            TestMeshing();
             Console.WriteLine($"PASS: {_assertions} block-state and placement assertions");
             return 0;
         }
@@ -129,5 +130,43 @@ static class Program
         Check(BlockState.FacingTowardPlayer(-Vector3.UnitZ) == 0, "Back-facing rotation");
         Check(BlockState.FacingTowardPlayer(Vector3.UnitX) == 3, "Right-facing rotation");
         Check(BlockState.FacingTowardPlayer(-Vector3.UnitX) == 1, "Left-facing rotation");
+    }
+
+    private static void TestMeshing()
+    {
+        const int seed = 42;
+        ChunkKey home = new(0, 0);
+        var edits = new Dictionary<BlockPosition, ushort>();
+        ushort[] blocks = ChunkGenerator.CreateBlocks(home, seed, edits);
+        Check(ChunkGenerator.MeshingDetail(home, blocks, edits) == 1,
+            "Unedited cube terrain should use full-block fast path");
+        ChunkMesh whole = ChunkGenerator.GenerateMesh(home, seed, edits,
+            System.Threading.CancellationToken.None);
+        Check(whole.Vertices.Length > 0 && whole.Vertices.Length == whole.Uvs.Length,
+            "Cube terrain mesh must contain UVs");
+        Check(whole.Triangles.Length > 0 && whole.Triangles.Length % 3 == 0,
+            "Cube terrain needs triangle indices");
+
+        edits[new BlockPosition(7, 12, 7)] = BlockState.Create(6, BlockShape.Stair).Packed;
+        blocks = ChunkGenerator.CreateBlocks(home, seed, edits);
+        Check(ChunkGenerator.MeshingDetail(home, blocks, edits) == 2,
+            "Partial shape in the chunk must use half-block meshing");
+        ChunkMesh detailed = ChunkGenerator.GenerateMesh(home, seed, edits,
+            System.Threading.CancellationToken.None);
+        Check(detailed.Vertices.Length > 0 && detailed.Triangles.Length % 3 == 0,
+            "Partial terrain mesh must be valid");
+
+        edits.Clear();
+        edits[new BlockPosition(16, 9, 7)] =
+            BlockState.Create(6, BlockShape.Slab).Packed;
+        blocks = ChunkGenerator.CreateBlocks(home, seed, edits);
+        Check(ChunkGenerator.MeshingDetail(home, blocks, edits) == 2,
+            "Adjacent chunk's partial block requires detailed edge occlusion");
+
+        edits.Clear();
+        edits[new BlockPosition(33, 9, 7)] =
+            BlockState.Create(6, BlockShape.Slab).Packed;
+        Check(ChunkGenerator.MeshingDetail(home, blocks, edits) == 1,
+            "Far-away partial blocks must not slow nearby cube chunks");
     }
 }

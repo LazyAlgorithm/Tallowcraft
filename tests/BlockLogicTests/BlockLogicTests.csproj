@@ -7,8 +7,14 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Using Include="System.Numerics" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockPosition.cs" Link="BlockPosition.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockState.cs" Link="BlockState.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockPlacement.cs" Link="BlockPlacement.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/BlockTextureAtlas.cs" Link="BlockTextureAtlas.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/ChunkKey.cs" Link="ChunkKey.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/ChunkMesh.cs" Link="ChunkMesh.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/ChunkFace.cs" Link="ChunkFace.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/ChunkGenerator.cs" Link="ChunkGenerator.cs" />
   </ItemGroup>
 </Project>
