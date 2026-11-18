@@ -23,6 +23,7 @@ static class Program
             TestMeshing();
             TestChunkCoordinates();
             VerticalChunkTests.Run(Check);
+            GeologyTests.Run(Check);
             HybridMeshTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
