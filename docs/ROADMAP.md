@@ -64,7 +64,9 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 ## M4 — Bigger world and navigation
 
-- [ ] Vertical chunk stacks and safe Y coordinates outside 0–15
+- [x] Add signed (X,Y,Z) 16³ chunk keys, vertical streaming, Y=-32..47 block edits and cross-layer occlusion (Play-mode verification pending)
+- [x] Calculate server-authoritative player spawn clearance from voxel surface, with initial spawn points adjusted (runtime verification pending)
+- [ ] Expand vertical world bounds and stream/simulate deeper caves based on world settings
 - [ ] Biomes, vegetation, ore layers, caves and simple structures
 - [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)
 - [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
@@ -95,7 +97,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 ### Known prototype limitations
 
-- The current world is only one 16-block vertical layer.
+- The world uses signed 16-block vertical layers (currently Y=-32..47); terrain below Y=0 is initially stone, and positive layers start as air until edited.
 - The current edit channel is one 20,000-character / 512-edit snapshot, not scalable chunk deltas.
 - Unedited cube-only chunks now use full-block meshing; edited chunks containing partial shapes still use half-cell meshing until the hybrid path is complete.
 - The HUD is a text hotbar (no item icons/inventory counts); authoritative selection now uses the project's explicit `Input.tinput` bindings.
@@ -131,3 +133,19 @@ Benchmarks now include four cases: `cube` (no partial edits), `mixed-shapes` (th
 For live profiling, build/open Tallowcraft in Tallow, select the object with `WorldGeneration.BlockWorld`, and leave `ProfileChunkColliders` enabled (default: true). This prints `[Tallowcraft chunk profile]` once per 32 instrumented operations by default (`ProfileReportEvery` is configurable). Each report includes count, average, max, and total synchronous milliseconds for `SetMesh`, `ColliderAdd`, `ColliderRefresh`, and `ColliderRemove`. Walk away from the spawn to stream chunks, and place/remove blocks near loaded chunks to trigger collider refreshes. Log output from this running-engine test, not the standalone `dotnet run` test, is needed to assess the collider path.
 
 **Interpretation:** The profiler measures time spent synchronously inside managed-to-native API calls, including any immediate native work. If Jolt builds/updates a collision shape later during the physics step, that deferred time is **not** counted. Neither render-thread GPU work nor full-frame costs are measured here. To claim full physics/rebuild cost, use Tallow's native profiler or instrument the engine physics step separately. These project-side diagnostics do not modify the engine.
+
+## M4 vertical chunk and player spawn validation
+
+The first vertical-stack implementation uses signed `ChunkKey(X,Y,Z)` with 16×16×16 blocks per chunk, and currently permits world block heights from Y=-32 through Y=47 (chunk layers -2 through +2). Vertical streaming defaults to one layer above/below the player's current layer, while nearby server-side remote-player colliders are considered separately. Upper empty chunks without edits are not scheduled; editing them creates the chunk. Chunks at Y=-1 initially contain stone, and Y=1/2 initially contain air. The original heightmap still produces the familiar surface at around Y=1..15; caves, ores, improved heightmaps, and persistence are follow-ups.
+
+The authoritative first-person player aligns its Jolt capsule center above the highest occupied block within the spawn capsule footprint, using `ChunkGenerator.SpawnHeight` and current block edits. The four scene SpawnPoint positions have also been adjusted to initial surface heights; the calculation is still performed at runtime so changes to the seed or edits can affect spawn placement. The character's controller and animation remain otherwise unchanged.
+
+Test on Nobara:
+
+```bash
+cd ~/TallowProjects/Tallowcraft
+git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+Then open the game in Tallow. Check that the player spawns with feet on terrain (not buried or floating), mine down through Y=0 into a negative-Y chunk, and build above Y=15 into Y=16. At both seams, test stairs/slabs and edited chunk refreshes, then test multiplayer spawn points. The unit tests do not replace in-editor physics, streaming, or host/client verification. A committed code change alone is not a successful engine build.
