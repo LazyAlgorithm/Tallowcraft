@@ -83,6 +83,8 @@ internal static class MeshBenchmarks
 
     private static ChunkMesh Generate(int index, int density, int seed)
     {
+        // Natural cave, biome and forest cases intentionally use no edits.
+        // Only density=2/3 generate artificial partial-block stress volumes.
         // Include negative chunks to exercise world-coordinate floor division.
         var key = density switch
         {
@@ -106,7 +108,7 @@ internal static class MeshBenchmarks
             edits[new BlockPosition(x + 12, 14, z + 12)] =
                 BlockState.Create(3, BlockShape.HalfWall, index % 4).Packed;
         }
-        else if (density >= 2)
+        else if (density is 2 or 3)
         {
             // 8-high edited volume. Density 2 changes about a quarter of
             // 2,048 voxels; density 3 changes all 2,048 into partial shapes.
