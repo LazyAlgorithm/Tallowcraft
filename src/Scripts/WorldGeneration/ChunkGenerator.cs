@@ -104,6 +104,8 @@ public static class ChunkGenerator
                 if (Height(key.X * Size + x, key.Z * Size + z, seed) >
                     key.Y * Size)
                     return true;
+        if (WorldFlora.HasBlocksInChunk(key, seed))
+            return true;
         foreach (var edit in edits)
             if (edit.Value != 0 &&
                 FloorDiv(edit.Key.X, Size) == key.X &&
@@ -134,7 +136,8 @@ public static class ChunkGenerator
             return WorldGeology.IsCave(worldX, y, worldZ, seed)
                 ? (ushort)0 : WorldGeology.OreAt(worldX, y, worldZ, seed);
         int height = Height(worldX, worldZ, seed);
-        if (y >= height) return 0;
+        if (y >= height)
+            return WorldFlora.BlockAt(worldX, y, worldZ, seed);
         WorldBiomes.Biome biome = WorldBiomes.At(worldX, worldZ, seed);
         if (y == height - 1)
             return biome == WorldBiomes.Biome.Highlands ? (ushort)3
@@ -182,6 +185,10 @@ public static class ChunkGenerator
                     blocks[Index(x, y, z)] = type;
                 }
             }
+
+        // Decorate each chunk from world-space anchors before edits overwrite
+        // blocks. Neighboring mesh halo queries use the identical BaseBlock.
+        WorldFlora.DecorateChunk(key, seed, blocks);
 
         // Copy-on-write edit dictionaries are immutable for worker lifetimes.
         foreach (var pair in edits)
