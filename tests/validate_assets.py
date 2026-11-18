@@ -118,6 +118,11 @@ def verify() -> None:
           and "renderer.ShadowOnly = shadowOnly" in character
           and "bool shadowOnly = ControlsCamera" in character,
           "Owner-only first-person model hiding is missing")
+    check("if (!renderer.CastShadows)" in character
+          and "renderer.CastShadows = true;" in character,
+          "Player body shadows must stay enabled even in shadow-only mode")
+    check("renderer.CastShadows = !shadowOnly" not in character,
+          "Owner-only shadow suppression must not return")
     check("component Tallow.Animator enabled 1" in prefab,
           "Player is missing an Animator")
     check("component Tallow.CharacterController enabled 1" in prefab,

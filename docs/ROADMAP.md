@@ -20,7 +20,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Add rigged model to the player prefab as a visual child at estimated feet offset (needs Play-mode alignment check)
 - [x] Set up Tallow Animator with Idle/Walk/Run/Jump clips and per-client movement-driven visual script (runtime test pending)
 - [ ] Confirm actual remote-client model/pose and camera behavior in two-instance Play-mode testing
-- [x] Apply owner-only `MeshRenderer.ShadowOnly` and disable that owner's animated body shadow locally; remote players retain their full model and shadows (runtime test pending)
+- [x] Apply owner-only `MeshRenderer.ShadowOnly`, while restoring shadow casting for local and remote player models (runtime test pending)
 - [ ] Verify head/body occlusion, crouching and local ownership transfer in Play mode
 - [x] Reduce idle/walk/run/jump playback speed and smooth velocity-driven clip changes to avoid jitter (runtime check pending)
 - [ ] Host + client test, walking/sprinting/jumping/crouching; verify no extra collider
