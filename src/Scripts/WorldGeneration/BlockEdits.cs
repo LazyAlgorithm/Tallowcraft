@@ -25,7 +25,8 @@ public sealed class BlockEdits
 
     public bool Set(BlockPosition position, ushort value, int seed)
     {
-        if (position.Y < 0 || position.Y >= ChunkGenerator.Size ||
+        if (!ChunkGenerator.InWorld(position.Y) ||
+            Math.Abs((long)position.Y) > MaxWorldCoordinate ||
             Math.Abs((long)position.X) > MaxWorldCoordinate ||
             Math.Abs((long)position.Z) > MaxWorldCoordinate ||
             !BlockState.IsValid(value))
@@ -99,7 +100,8 @@ public sealed class BlockEdits
                 if (packed > 1) return false;
                 packed = packed == 0 ? (ushort)0 : (ushort)3;
             }
-            if (y < 0 || y >= ChunkGenerator.Size ||
+            if (!ChunkGenerator.InWorld(y) ||
+                Math.Abs((long)y) > MaxWorldCoordinate ||
                 Math.Abs((long)x) > MaxWorldCoordinate ||
                 Math.Abs((long)z) > MaxWorldCoordinate ||
                 !BlockState.IsValid(packed))
