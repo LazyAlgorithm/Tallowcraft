@@ -49,6 +49,43 @@ public static class ChunkGenerator
         return 1;
     }
 
+    /// <summary>
+    /// Capsule center high enough above all occupied terrain inside its X/Z
+    /// footprint. Supports edited upper/lower slabs and stair halves. This is
+    /// deterministic and does not depend on collision meshes being streamed.
+    /// </summary>
+    public static float SpawnHeight(float x, float z, int seed,
+        IReadOnlyDictionary<BlockPosition, ushort> edits,
+        float standingHeight = 2f, float radius = 0.5f)
+    {
+        int minX = (int)MathF.Floor(x - radius);
+        int maxX = (int)MathF.Floor(x + radius);
+        int minZ = (int)MathF.Floor(z - radius);
+        int maxZ = (int)MathF.Floor(z + radius);
+        float highest = MinWorldY;
+        for (int bx = minX; bx <= maxX; bx++)
+        for (int bz = minZ; bz <= maxZ; bz++)
+        for (int y = MinWorldY; y <= MaxWorldY; y++)
+        {
+            BlockState block = new(GetBlock(bx, y, bz, seed, edits));
+            if (block.IsAir)
+                continue;
+            bool upper = false;
+            bool lower = false;
+            for (int sx = 0; sx < 2; sx++)
+            for (int sz = 0; sz < 2; sz++)
+            {
+                upper |= block.ContainsMicro(sx, 1, sz);
+                lower |= block.ContainsMicro(sx, 0, sz);
+            }
+            if (upper)
+                highest = MathF.Max(highest, y + 1f);
+            else if (lower)
+                highest = MathF.Max(highest, y + 0.5f);
+        }
+        return highest + MathF.Max(standingHeight, 0.1f) * 0.5f + 0.15f;
+    }
+
     public static int Index(int x, int y, int z) => (y * Size + z) * Size + x;
 
     public static int Height(int worldX, int worldZ, int seed)
