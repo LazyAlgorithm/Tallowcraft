@@ -52,6 +52,11 @@ public static class WorldGeology
         return low;
     }
 
+    // Shared climate sampling uses the same deterministic hash/noise code
+    // as geology, but with separate salts and no dependency on chunk order.
+    public static float ClimateNoise(float worldX, float worldZ,
+        int seed, uint salt) => Noise(worldX, 0f, worldZ, seed, salt);
+
     /// <summary>Low-frequency connected cave fields beneath solid cover.</summary>
     public static bool IsCave(int x, int y, int z, int seed)
     {
