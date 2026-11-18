@@ -16,29 +16,32 @@ internal static class MeshBenchmarks
 
         const int seed = 42;
         const int iterations = 32;
-        var cases = new (string Name, bool Partial)[]
+        var cases = new (string Name, int Density, int Iterations)[]
         {
-            ("cube", false),
-            ("mixed-shapes", true)
+            ("cube", 0, iterations),
+            ("mixed-shapes", 1, iterations),
+            ("dense-partials", 2, 8),
+            ("all-partials", 3, 4)
         };
 
         foreach (var test in cases)
         {
             // Warm the runtime/JIT and all code paths before timing.
             for (int i = 0; i < 4; i++)
-                Generate(i, test.Partial, seed);
+                Generate(i, test.Density, seed);
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
 
+            int count = test.Iterations;
             long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
             var watch = Stopwatch.StartNew();
             long vertices = 0;
             long triangles = 0;
-            for (int i = 0; i < iterations; i++)
+            for (int i = 0; i < count; i++)
             {
-                ChunkMesh mesh = Generate(i, test.Partial, seed);
+                ChunkMesh mesh = Generate(i, test.Density, seed);
                 vertices += mesh.Vertices.Length;
                 triangles += mesh.Triangles.Length / 3;
             }
@@ -46,18 +49,18 @@ internal static class MeshBenchmarks
             long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
             double seconds = Math.Max(watch.Elapsed.TotalSeconds, 1e-9);
             Console.WriteLine(
-                $"{test.Name},{iterations},{watch.Elapsed.TotalMilliseconds / iterations:F3}," +
-                $"{iterations / seconds:F1},{vertices / iterations},{triangles / iterations}," +
-                $"{allocated / iterations}");
+                $"{test.Name},{count},{watch.Elapsed.TotalMilliseconds / count:F3}," +
+                $"{count / seconds:F1},{vertices / count},{triangles / count}," +
+                $"{allocated / count}");
         }
     }
 
-    private static ChunkMesh Generate(int index, bool partial, int seed)
+    private static ChunkMesh Generate(int index, int density, int seed)
     {
         // Include negative chunks to exercise world-coordinate floor division.
         var key = new ChunkKey((index % 8) - 4, (index / 8) - 2);
         var edits = new Dictionary<BlockPosition, ushort>();
-        if (partial)
+        if (density == 1)
         {
             int x = key.X * ChunkGenerator.Size;
             int z = key.Z * ChunkGenerator.Size;
@@ -69,6 +72,25 @@ internal static class MeshBenchmarks
                 BlockState.Create(2, BlockShape.Slab, 0, true).Packed;
             edits[new BlockPosition(x + 12, 14, z + 12)] =
                 BlockState.Create(3, BlockShape.HalfWall, index % 4).Packed;
+        }
+        else if (density >= 2)
+        {
+            // 8-high edited volume. Density 2 changes about a quarter of
+            // 2,048 voxels; density 3 changes all 2,048 into partial shapes.
+            int x0 = key.X * ChunkGenerator.Size;
+            int z0 = key.Z * ChunkGenerator.Size;
+            for (int y = 8; y < 16; y++)
+            for (int z = 0; z < 16; z++)
+            for (int x = 0; x < 16; x++)
+            {
+                if (density == 2 && ((x * 7 + z * 11 + y * 3 + index) & 3) != 0)
+                    continue;
+                var shape = (BlockShape)(1 + (x + z + y + index) % 3);
+                bool upper = ((x + y) & 1) != 0;
+                edits[new BlockPosition(x0 + x, y, z0 + z)] =
+                    BlockState.Create(1 + ((x + z) % 6), shape,
+                        (x + z + index) % 4, upper).Packed;
+            }
         }
         return ChunkGenerator.GenerateMesh(key, seed, edits, CancellationToken.None);
     }
