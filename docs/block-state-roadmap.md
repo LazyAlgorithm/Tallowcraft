@@ -1,45 +1,34 @@
-# Block shapes, orientation, and texturing — next world milestone
+# Block-state roadmap and implementation status
 
-The initial multiplayer editing prototype only supports `0 = air` and `1 = solid cube`.
-Do not widen its wire format casually: the next milestone needs a versioned block-state
-representation, compatible serialization, updated meshing, and server validation.
+## Implemented in the prototype
 
-## Block state
+- Compact versioned `ushort` block state: 8-bit type, 2-bit facing,
+  2-bit shape (cube/slab/stair/half-wall), 1-bit upper flag.
+- Procedural grass-top, grass-side, dirt, stone, log, forge-front and plank textures
+  on one client-local texture atlas. Texture UVs use full blocks, never stretch
+  across merges. This is placeholder procedural art, not an imported art pack.
+- Half-cell occupancy meshing for slabs, stairs and half-thickness full-height
+  walls; the exact same mesh drives physics through MeshCollider.Refresh().
+- Server-authoritative selection of placement target and orientation from
+  network TickInput; sparse snapshots are version 2 and carry complete block
+  states for late joiners. Version-1 snapshots can be read for migration.
+- Copy-on-write edit dictionaries and stale chunk-job invalidation remain in use.
 
-- Persistent **BlockType ID** selected from a registry, not a mesh or prefab per voxel.
-- **Orientation** (four horizontal facings; optionally vertical/24-way for specialized blocks).
-- **Shape / variant** (full cube, upper/lower slab, stair facing and upside-down flag, half-wall,
-  fence/connection mask, door top/bottom and hinge, etc.).
-- Optional interaction data (forge inventory and burning state) as separate sparse block-entity records,
-  **not** repeated per-voxel in all chunks.
+## Follow-up required
 
-Model `BlockState` as a compact immutable value, e.g. `ushort TypeId`, `byte Facing`,
-`byte Variant`. Its exact serialization must be versioned before introducing it.
-
-## Geometry and collision
-
-- Greedy mesh only adjacent faces with *identical* material, texture tile, orientation and visibility.
-  Full faces can be merged; stairs, slabs, walls and other partial faces use cached shape templates.
-- Use a material/texture atlas with top/side/bottom tiles and orientation-aware UVs; atlas repeats
-  require UV design that does not stretch a tile over greedy quads.
-- Generated collision matches each shape: full cubes use simple merged collision,
-  slabs use half-height boxes, stairs can use two or more box hulls, fences/walls use narrow shapes.
-  Consider separate render and collision meshes, and make sure Tallow's runtime collider-refresh
-  handles changes to each one.
-- Face occlusion must account for *partial* neighboring faces, not treat every non-air block as an
-  opaque full cube. Mesh generation consults neighboring chunk states for seam correctness.
-
-## Placement and networking
-
-- Client sends ordinary networked `TickInput`; **server raycasts and chooses** the target cell,
-  block type, facing, and shape variant. Validate reach, interaction permissions, collisions,
-  multi-block adjacency and placement rules server-side.
-- Looking direction / selected face determines initial facing (forge front points to the player,
-  stair facing follows placement yaw, slab upper/lower uses surface placement height).
-- Replicate a **versioned per-chunk block-state delta** (type + orientation + variant) and
-  authoritative snapshots for late joiners; never sync the generated mesh or collider data.
-- Keep edits persistent across chunk unload/reload and server restarts, and serialize multi-block
-  state transitions atomically (doors, beds, etc.).
-- Add host/client/late-join, rotation and shape-collision regression tests on Windows/Linux.
-
-This is a **design requirement**, not implemented in the first editing PR.
+- Test on actual Tallow C# editor/host/client builds (no build verification yet).
+- Add user-facing block selection/hotbar; Ability1 and Ability2 need network
+  input bindings, or the PlaceType/PlaceShape Inspector fields can be used.
+- Add atlas sampling shader using world-space tiled UVs, so greedy merging can
+  cross block boundaries without texture stretching. Current meshing caps
+  textured merges at one block, a geometry/performance compromise.
+- Add thin fences, connected walls, doors, transparent/cutout vegetation, water,
+  and proper block-entity state for machines such as forges.
+- Add collision-aware placement occupancy tests for arbitrary partial shapes
+  (current full-voxel overlap box is deliberately conservative).
+- Persist edits across server restarts; move bounded full-world snapshots
+  (512 edits / 20,000 characters) to per-chunk snapshots and deltas.
+- Expand beyond one vertical 16-block chunk and optimize physics separately
+  from render chunks; test dedicated headless performance.
+- Add automated regression tests for all eight half-cells, rotations,
+  tile selection, negative-coordinate chunks, chunk seams and packet parsing.

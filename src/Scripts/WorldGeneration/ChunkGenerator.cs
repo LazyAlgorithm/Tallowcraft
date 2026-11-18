@@ -5,10 +5,12 @@ using System.Threading;
 
 namespace WorldGeneration;
 
-/// <summary>Deterministic terrain and greedy meshing, independent of Tallow's scene thread.</summary>
+/// <summary>Deterministic block terrain; half-cell greedy surfaces for slabs, stairs and walls.</summary>
 public static class ChunkGenerator
 {
     public const int Size = 16;
+    private const int Detail = 2;
+    private const int Grid = Size * Detail;
 
     public static int Index(int x, int y, int z) => (y * Size + z) * Size + x;
 
@@ -20,37 +22,38 @@ public static class ChunkGenerator
         return Math.Clamp((int)MathF.Round(height), 1, Size - 1);
     }
 
-    public static byte BaseBlock(int worldX, int y, int worldZ, int seed)
+    public static ushort BaseBlock(int worldX, int y, int worldZ, int seed)
     {
-        if (y < 0 || y >= Size)
-            return 0;
-        return y < Height(worldX, worldZ, seed) ? (byte)1 : (byte)0;
+        if (y < 0 || y >= Size) return 0;
+        int height = Height(worldX, worldZ, seed);
+        return y >= height ? (ushort)0
+            : y == height - 1 ? (ushort)1
+            : y >= height - 4 ? (ushort)2 : (ushort)3;
     }
 
-    public static byte GetBlock(int worldX, int y, int worldZ, int seed,
-        IReadOnlyDictionary<BlockPosition, byte> edits)
+    public static ushort GetBlock(int worldX, int y, int worldZ, int seed,
+        IReadOnlyDictionary<BlockPosition, ushort> edits)
     {
-        if (y < 0 || y >= Size)
-            return 0;
-        return edits.TryGetValue(new BlockPosition(worldX, y, worldZ), out byte value)
+        if (y < 0 || y >= Size) return 0;
+        return edits.TryGetValue(new BlockPosition(worldX, y, worldZ), out ushort value)
             ? value : BaseBlock(worldX, y, worldZ, seed);
     }
 
-    public static byte[] CreateBlocks(ChunkKey key, int seed,
-        IReadOnlyDictionary<BlockPosition, byte> edits)
+    public static ushort[] CreateBlocks(ChunkKey key, int seed,
+        IReadOnlyDictionary<BlockPosition, ushort> edits)
     {
-        byte[] blocks = new byte[Size * Size * Size];
+        var blocks = new ushort[Size * Size * Size];
         for (int z = 0; z < Size; z++)
-        for (int x = 0; x < Size; x++)
-        {
-            int worldX = key.X * Size + x;
-            int worldZ = key.Z * Size + z;
-            int height = Height(worldX, worldZ, seed);
-            for (int y = 0; y < height; y++)
-                blocks[Index(x, y, z)] = 1;
-        }
+            for (int x = 0; x < Size; x++)
+            {
+                int worldX = key.X * Size + x;
+                int worldZ = key.Z * Size + z;
+                int height = Height(worldX, worldZ, seed);
+                for (int y = 0; y < height; y++)
+                    blocks[Index(x, y, z)] = BaseBlock(worldX, y, worldZ, seed);
+            }
 
-        // The worker reads a copy-on-write snapshot. No other thread changes it.
+        // Copy-on-write edit dictionaries are immutable for worker lifetimes.
         foreach (var pair in edits)
         {
             BlockPosition p = pair.Key;
@@ -66,96 +69,115 @@ public static class ChunkGenerator
         value >= 0 ? value / divisor : (value + 1) / divisor - 1;
 
     public static ChunkMesh GenerateMesh(ChunkKey key, int seed,
-        IReadOnlyDictionary<BlockPosition, byte> edits, CancellationToken token)
+        IReadOnlyDictionary<BlockPosition, ushort> edits, CancellationToken token)
     {
-        byte[] blocks = CreateBlocks(key, seed, edits);
-
+        ushort[] blocks = CreateBlocks(key, seed, edits);
         var vertices = new List<Vector3>();
         var normals = new List<Vector3>();
+        var uvs = new List<Vector2>();
         var triangles = new List<int>();
-        bool[] mask = new bool[Size * Size];
+        var mask = new int[Grid * Grid];
 
-        bool IsSolid(int x, int y, int z)
+        ushort StateAt(int x, int y, int z)
         {
-            if (y < 0)
-                return true; // No underside for the world's bottom layer.
-            if (y >= Size)
-                return false;
-            if ((uint)x < Size && (uint)z < Size)
-                return blocks[Index(x, y, z)] != 0;
-
-            // At chunk boundaries consult edits in neighboring chunks too.
-            return GetBlock(key.X * Size + x, y, key.Z * Size + z, seed, edits) != 0;
+            if (y < 0 || y >= Grid) return 0;
+            int blockX = FloorDiv(x, Detail);
+            int blockZ = FloorDiv(z, Detail);
+            int blockY = y / Detail;
+            if ((uint)blockX < Size && (uint)blockZ < Size)
+                return blocks[Index(blockX, blockY, blockZ)];
+            return GetBlock(key.X * Size + blockX, blockY,
+                key.Z * Size + blockZ, seed, edits);
         }
 
-        foreach (ChunkFace face in ChunkFace.All)
+        bool Occupied(int x, int y, int z)
         {
+            if (y < 0) return true; // Keep the world's bottom closed.
+            if (y >= Grid) return false;
+            var state = new BlockState(StateAt(x, y, z));
+            if (state.IsAir) return false;
+            int innerX = x - FloorDiv(x, Detail) * Detail;
+            int innerZ = z - FloorDiv(z, Detail) * Detail;
+            return state.ContainsMicro(innerX, y % Detail, innerZ);
+        }
+
+        for (int faceId = 0; faceId < ChunkFace.All.Length; faceId++)
+        {
+            ChunkFace face = ChunkFace.All[faceId];
             Vector3 stepU = face.B - face.A;
             Vector3 stepV = face.D - face.A;
             Vector3 axis = Vector3.Abs(face.Normal);
 
-            for (int slice = 0; slice < Size; slice++)
+            for (int slice = 0; slice < Grid; slice++)
             {
                 token.ThrowIfCancellationRequested();
-
-                for (int v = 0; v < Size; v++)
-                for (int u = 0; u < Size; u++)
-                {
-                    Vector3 cell = axis * slice + stepU * u + stepV * v;
-                    int x = (int)cell.X, y = (int)cell.Y, z = (int)cell.Z;
-                    mask[v * Size + u] =
-                        IsSolid(x, y, z) &&
-                        !IsSolid(x + face.DX, y + face.DY, z + face.DZ);
-                }
-
-                for (int v = 0; v < Size; v++)
-                for (int u = 0; u < Size;)
-                {
-                    int index = v * Size + u;
-                    if (!mask[index]) { u++; continue; }
-
-                    int width = 1;
-                    while (u + width < Size && mask[v * Size + u + width])
-                        width++;
-
-                    int height = 1;
-                    while (v + height < Size)
+                for (int v = 0; v < Grid; v++)
+                    for (int u = 0; u < Grid; u++)
                     {
-                        bool canExtend = true;
-                        for (int k = 0; k < width; k++)
-                        {
-                            if (!mask[(v + height) * Size + u + k])
-                            {
-                                canExtend = false;
-                                break;
-                            }
-                        }
-                        if (!canExtend) break;
-                        height++;
+                        Vector3 cell = axis * slice + stepU * u + stepV * v;
+                        int x = (int)cell.X, y = (int)cell.Y, z = (int)cell.Z;
+                        mask[v * Grid + u] =
+                            Occupied(x, y, z) &&
+                            !Occupied(x + face.DX, y + face.DY, z + face.DZ)
+                            ? BlockTextureAtlas.TileFor(new BlockState(StateAt(x, y, z)), faceId) + 1
+                            : 0;
                     }
 
-                    Vector3 cellOrigin = axis * slice + stepU * u + stepV * v;
-                    Vector3 a = cellOrigin + face.A;
-                    Vector3 b = a + stepU * width;
-                    Vector3 c = b + stepV * height;
-                    Vector3 d = a + stepV * height;
+                for (int v = 0; v < Grid; v++)
+                    for (int u = 0; u < Grid;)
+                    {
+                        int kind = mask[v * Grid + u];
+                        if (kind == 0) { u++; continue; }
 
-                    int start = vertices.Count;
-                    vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
-                    normals.Add(face.Normal); normals.Add(face.Normal);
-                    normals.Add(face.Normal); normals.Add(face.Normal);
-                    triangles.Add(start); triangles.Add(start + 1); triangles.Add(start + 2);
-                    triangles.Add(start); triangles.Add(start + 2); triangles.Add(start + 3);
+                        // Keep atlas UVs within a single one-metre block. Crossing
+                        // atlas islands for merged quads would stretch or bleed tiles.
+                        int maxWidth = Math.Min(Grid - u, Detail - (u % Detail));
+                        int maxHeight = Math.Min(Grid - v, Detail - (v % Detail));
+                        int width = 1;
+                        while (width < maxWidth && mask[v * Grid + u + width] == kind)
+                            width++;
 
-                    for (int yy = 0; yy < height; yy++)
-                    for (int xx = 0; xx < width; xx++)
-                        mask[(v + yy) * Size + u + xx] = false;
-                    u += width;
-                }
+                        int height = 1;
+                        while (height < maxHeight)
+                        {
+                            bool good = true;
+                            for (int k = 0; k < width; k++)
+                                if (mask[(v + height) * Grid + u + k] != kind)
+                                { good = false; break; }
+                            if (!good) break;
+                            height++;
+                        }
+
+                        Vector3 cellOrigin = axis * slice + stepU * u + stepV * v;
+                        Vector3 a = (cellOrigin + face.A) / Detail;
+                        Vector3 b = a + stepU * (width / (float)Detail);
+                        Vector3 c = b + stepV * (height / (float)Detail);
+                        Vector3 d = a + stepV * (height / (float)Detail);
+                        int start = vertices.Count;
+                        vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
+                        for (int i = 0; i < 4; i++) normals.Add(face.Normal);
+
+                        int tile = kind - 1;
+                        float u0 = (u % Detail) / (float)Detail;
+                        float u1 = (u % Detail + width) / (float)Detail;
+                        float v0 = (v % Detail) / (float)Detail;
+                        float v1 = (v % Detail + height) / (float)Detail;
+                        uvs.Add(BlockTextureAtlas.UV(tile, u0, v0));
+                        uvs.Add(BlockTextureAtlas.UV(tile, u1, v0));
+                        uvs.Add(BlockTextureAtlas.UV(tile, u1, v1));
+                        uvs.Add(BlockTextureAtlas.UV(tile, u0, v1));
+                        triangles.Add(start); triangles.Add(start + 1); triangles.Add(start + 2);
+                        triangles.Add(start); triangles.Add(start + 2); triangles.Add(start + 3);
+
+                        for (int yy = 0; yy < height; yy++)
+                            for (int xx = 0; xx < width; xx++)
+                                mask[(v + yy) * Grid + u + xx] = 0;
+                        u += width;
+                    }
             }
         }
 
-        return new ChunkMesh(
-            vertices.ToArray(), triangles.ToArray(), normals.ToArray(), blocks);
+        return new ChunkMesh(vertices.ToArray(), triangles.ToArray(),
+            normals.ToArray(), uvs.ToArray(), blocks);
     }
 }

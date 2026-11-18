@@ -31,6 +31,7 @@ public class BlockWorld : Script
     [Sync] public string EditState = "";
 
     private readonly BlockEdits _edits = new();
+    private BlockTextureAtlas? _atlas;
     private readonly Dictionary<ChunkKey, LiveChunk> _loaded = new();
     private readonly Dictionary<ChunkKey, ChunkJob> _jobs = new();
     private readonly Dictionary<ChunkKey, int> _versions = new();
@@ -47,6 +48,7 @@ public class BlockWorld : Script
 
     public override void Start()
     {
+        _atlas = new BlockTextureAtlas();
         if (Scene.IsServer)
         {
             _publishedSeed = Seed;
@@ -79,6 +81,7 @@ public class BlockWorld : Script
                 return;
         }
 
+        _atlas ??= new BlockTextureAtlas();
         GameObject anchor = Viewer();
         GameObject view = ViewCamera.IsValid ? ViewCamera : Scene.Find("Main Camera") ?? anchor;
         Vector3 position = anchor.IsValid ? anchor.Transform.Position : Vector3.Zero;
@@ -250,7 +253,7 @@ public class BlockWorld : Script
                 if (!live.Object.IsValid)
                     continue;
 
-                live.Renderer.SetMesh(data.Vertices, data.Triangles, data.Normals);
+                live.Renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
                 if (_colliders.Contains(pair.Key) &&
                     live.Object.GetComponent<MeshCollider>() is { } collider &&
                     collider.IsValid)
@@ -273,7 +276,8 @@ public class BlockWorld : Script
 
             MeshRenderer renderer = obj.AddComponent<MeshRenderer>();
             renderer.FlatShading = true;
-            renderer.SetMesh(data.Vertices, data.Triangles, data.Normals);
+            renderer.Texture = _atlas?.Name ?? "";
+            renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
 
             bool collision = ShouldHaveCollider(pair.Key, cx, cz);
             if (collision)
@@ -445,13 +449,14 @@ public class BlockWorld : Script
     /// Server only. Uses Tallow's native Jolt surface normal to select the
     /// interior voxel (break) or neighboring empty voxel (place).
     /// </summary>
-    public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach, bool breaking, GameObject actingPlayer)
+    public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach, bool breaking, GameObject actingPlayer, ushort placeState)
     {
         if (!Scene.IsServer || !float.IsFinite(reach) ||
             reach <= 0 || !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) ||
             !float.IsFinite(origin.Z) || !float.IsFinite(direction.X) ||
             !float.IsFinite(direction.Y) || !float.IsFinite(direction.Z) ||
-            direction.LengthSquared() < 0.0001f)
+            direction.LengthSquared() < 0.0001f ||
+            (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))))
             return false;
 
         direction = Vector3.Normalize(direction);
@@ -472,17 +477,23 @@ public class BlockWorld : Script
             !_chunkObjects.ContainsKey(objectHit.Id))
             return false;
 
-        // The contact point lies exactly on a face: offset before Floor().
-        Vector3 sample = hit.Point + normal * (breaking ? -0.01f : 0.01f);
-        var position = new BlockPosition(
-            (int)MathF.Floor(sample.X),
-            (int)MathF.Floor(sample.Y),
-            (int)MathF.Floor(sample.Z));
+        // Always find the hit voxel first. A slab's interior face is not a
+        // neighboring voxel boundary, so placement uses the face direction
+        // rather than simply flooring the point outside its half-cell.
+        Vector3 inside = hit.Point - normal * 0.01f;
+        int x = (int)MathF.Floor(inside.X);
+        int y = (int)MathF.Floor(inside.Y);
+        int z = (int)MathF.Floor(inside.Z);
+        var position = breaking
+            ? new BlockPosition(x, y, z)
+            : new BlockPosition(x + (int)MathF.Round(normal.X),
+                y + (int)MathF.Round(normal.Y),
+                z + (int)MathF.Round(normal.Z));
 
         if (position.Y < 0 || position.Y >= ChunkGenerator.Size)
             return false;
 
-        byte current = _edits.Get(position.X, position.Y, position.Z, Seed);
+        ushort current = _edits.Get(position.X, position.Y, position.Z, Seed);
         if (breaking ? current == 0 : current != 0)
             return false;
 
@@ -494,7 +505,7 @@ public class BlockWorld : Script
                 return false;
         }
 
-        byte replacement = breaking ? (byte)0 : (byte)1;
+        ushort replacement = breaking ? (ushort)0 : placeState;
         if (!_edits.Set(position, replacement, Seed))
             return false;
 
@@ -506,6 +517,8 @@ public class BlockWorld : Script
     public override void OnDestroy()
     {
         _stop.Cancel();
+        _atlas?.Dispose();
+        _atlas = null;
         foreach (LiveChunk chunk in _loaded.Values)
         {
             if (!chunk.Object.IsValid)

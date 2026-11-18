@@ -16,23 +16,28 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Ctrl: crouch
 - Left mouse: break the targeted block
 - E (Use): place a block on the targeted face
+- Ability1 / Ability2 (bind in Tallow's network input actions): cycle block type / shape
+- Ctrl while placing: place an upper slab or upside-down stair
+- If Ability1/2 are not bound, edit `PlaceType` (1-6) and `PlaceShape` (0-3) on the Player prefab's BlockEditor
 
 Blocks can only be edited within 6 metres, and placement is refused when another physics body occupies the destination.
 
 ## Architecture
 
 - **Streaming:** directional visible chunks around the local player's camera, plus physical chunks around **every player on the server**.
-- **Mesh:** 16×16×16 chunks with greedy face merging and deterministic terrain generation. Neighboring chunk faces consult edits across boundaries.
+- **Mesh:** 16×16×16 blocks, 0.5-metre occupancy for partial shapes, deterministic terrain, and greedy merging of compatible half-cell faces within each block. Atlas UV seams deliberately prevent merging textured quads across entire blocks; this is an explicit performance tradeoff pending a tiling shader. Neighboring chunk faces consult edits across boundaries.
+- **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
+- **Textures:** a local deterministic 16px pixel-art texture atlas is generated with Tallow's C# Texture API; no external art dependency. Greedy meshes include UVs; renderers share one atlas.
 - **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well.
 - **Network authority:** only server-side player TickInput can edit blocks. The player is a networked prefab; procedural chunk GameObjects remain transient and local to each machine.
-- **Sync and joining:** the shared BlockWorld has a NetworkIdentity with Relevance=Everyone; its [Sync] EditState carries the world seed and the server's sparse edit snapshot. Clients wait for this snapshot before generating and reject invalid payloads. Worker jobs use immutable edit snapshots; stale completed jobs are discarded.
+- **Sync and joining:** the shared BlockWorld has a NetworkIdentity with Relevance=Everyone; its [Sync] EditState carries the world seed and the server's sparse, version-2 block-state snapshot. Clients wait for this snapshot before generating and reject invalid payloads. Worker jobs use immutable edit snapshots; stale completed jobs are discarded.
 - **WorldGeneration:** a separate C# assembly definition with one primary type per source file.
 
 ## Prototype limitations
 
 **Edits survive chunk unload/reload and late joining, but are not yet saved to disk or across server restarts.** The edit snapshot is deliberately limited to **512 differing blocks** (20,000-character upper bound). It sends the entire current edit state whenever a block changes; use reliable per-chunk snapshots and deltas before scaling to large or persistent multiplayer worlds.
 
-Only block values 0 (air) and 1 (solid) are supported, the vertical world currently spans Y=0..15, and chunk collision/rendering on a dedicated server has not yet been separated into headless-only physics chunks. Moving/removing a block requires its chunk collider to have been generated first.
+Supported block types are 0 (air), 1 (grass), 2 (dirt), 3 (stone), 4 (wood), 5 (forge), and 6 (planks). The vertical world currently spans Y=0..15, and chunk collision/rendering on a dedicated server has not yet been separated into headless-only physics chunks. Half-cell meshing is more expensive than the previous full-cube greedy mesher; profiling is required before increasing render radius. Moving/removing a block requires its chunk collider to have been generated first.
 
 ### Testing checklist
 
@@ -43,6 +48,8 @@ Only block values 0 (air) and 1 (solid) are supported, the vertical world curren
 5. Join late after the host has edited blocks; verify the late join receives the modified world.
 6. Stand far apart with two players; verify server collision remains around both.
 7. Turn rapidly while jobs are active; verify stale meshes never overwrite newer edits.
-8. Stress editing and monitor network bandwidth. A complete multiplayer/restart/CI soak is still needed.
+8. Place each type, rotate a forge and each stair/half-wall direction, place lower and upper slabs, and ensure collision matches the visible geometry.
+9. Edit partial shapes at chunk seams and verify no ghost faces or collision gaps.
+10. Stress editing and monitor network bandwidth. A complete multiplayer/restart/CI soak is still needed.
 
 The repo contains gameplay sources and a Tallow scene, not the engine itself.

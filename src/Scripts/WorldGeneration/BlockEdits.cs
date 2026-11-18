@@ -6,44 +6,38 @@ using System.Text;
 namespace WorldGeneration;
 
 /// <summary>
-/// Sparse, copy-on-write voxel overrides. The server owns this dictionary;
-/// meshing workers only read published snapshots, which are never mutated.
-/// The bounded text snapshot is synchronized by BlockWorld's NetworkIdentity.
+/// Server-owned sparse, copy-on-write block states, synchronized as a bounded,
+/// versioned snapshot. Shapes/facings are sent as one packed ushort per edit.
 /// </summary>
 public sealed class BlockEdits
 {
-    // Prototype transport bound. Replace with chunk snapshots/deltas for large worlds.
     public const int MaxChanges = 512;
     public const int MaxEncodedLength = 20000;
     public const int MaxWorldCoordinate = 1_000_000;
 
-    private Dictionary<BlockPosition, byte> _changes = new();
-
-    public IReadOnlyDictionary<BlockPosition, byte> Snapshot => _changes;
+    private Dictionary<BlockPosition, ushort> _changes = new();
+    public IReadOnlyDictionary<BlockPosition, ushort> Snapshot => _changes;
     public int Count => _changes.Count;
 
-    public byte Get(int x, int y, int z, int seed)
-    {
-        if (_changes.TryGetValue(new BlockPosition(x, y, z), out byte value))
-            return value;
-        return ChunkGenerator.BaseBlock(x, y, z, seed);
-    }
+    public ushort Get(int x, int y, int z, int seed) =>
+        _changes.TryGetValue(new BlockPosition(x, y, z), out ushort value)
+            ? value : ChunkGenerator.BaseBlock(x, y, z, seed);
 
-    public bool Set(BlockPosition position, byte value, int seed)
+    public bool Set(BlockPosition position, ushort value, int seed)
     {
         if (position.Y < 0 || position.Y >= ChunkGenerator.Size ||
             Math.Abs((long)position.X) > MaxWorldCoordinate ||
-            Math.Abs((long)position.Z) > MaxWorldCoordinate || value > 1)
+            Math.Abs((long)position.Z) > MaxWorldCoordinate ||
+            !BlockState.IsValid(value))
             return false;
 
-        byte original = ChunkGenerator.BaseBlock(position.X, position.Y, position.Z, seed);
+        ushort original = ChunkGenerator.BaseBlock(position.X, position.Y, position.Z, seed);
         if (Get(position.X, position.Y, position.Z, seed) == value)
             return false;
-
         if (value != original && !_changes.ContainsKey(position) && _changes.Count >= MaxChanges)
             return false;
 
-        var next = new Dictionary<BlockPosition, byte>(_changes);
+        var next = new Dictionary<BlockPosition, ushort>(_changes);
         if (value == original)
             next.Remove(position);
         else
@@ -52,13 +46,10 @@ public sealed class BlockEdits
         return true;
     }
 
-    // One string carries the seed and all overrides atomically, for late joiners.
-    // Culture-independent and deterministically ordered for stable network state.
     public string Serialize(int seed)
     {
-        var builder = new StringBuilder("1|");
+        var builder = new StringBuilder("2|");
         builder.Append(seed.ToString(CultureInfo.InvariantCulture)).Append('|');
-
         var positions = new List<BlockPosition>(_changes.Keys);
         positions.Sort((a, b) =>
         {
@@ -67,33 +58,31 @@ public sealed class BlockEdits
             int z = a.Z.CompareTo(b.Z);
             return z != 0 ? z : a.Y.CompareTo(b.Y);
         });
-
         foreach (BlockPosition p in positions)
         {
             builder.Append(p.X.ToString(CultureInfo.InvariantCulture)).Append(',')
-                   .Append(p.Y.ToString(CultureInfo.InvariantCulture)).Append(',')
-                   .Append(p.Z.ToString(CultureInfo.InvariantCulture)).Append(',')
-                   .Append(_changes[p]).Append(';');
+                .Append(p.Y.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(p.Z.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(_changes[p].ToString(CultureInfo.InvariantCulture)).Append(';');
         }
-
         return builder.ToString();
     }
 
-    /// <summary>Accept an entire validated server snapshot, without partial application.</summary>
     public bool TryLoad(string encoded, out int seed, out List<BlockPosition> changed)
     {
         seed = 0;
         changed = new List<BlockPosition>();
-
         if (string.IsNullOrEmpty(encoded) || encoded.Length > MaxEncodedLength)
             return false;
 
         string[] header = encoded.Split('|', 3);
-        if (header.Length != 3 || header[0] != "1" ||
-            !int.TryParse(header[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSeed))
+        if (header.Length != 3 || (header[0] != "2" && header[0] != "1") ||
+            !int.TryParse(header[1], NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out int parsedSeed))
             return false;
 
-        var next = new Dictionary<BlockPosition, byte>();
+        bool legacy = header[0] == "1";
+        var next = new Dictionary<BlockPosition, ushort>();
         foreach (string row in header[2].Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             string[] values = row.Split(',');
@@ -101,24 +90,28 @@ public sealed class BlockEdits
                 !int.TryParse(values[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int x) ||
                 !int.TryParse(values[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int y) ||
                 !int.TryParse(values[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int z) ||
-                !byte.TryParse(values[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte block))
+                !ushort.TryParse(values[3], NumberStyles.Integer, CultureInfo.InvariantCulture,
+                    out ushort packed))
                 return false;
 
+            if (legacy)
+            {
+                if (packed > 1) return false;
+                packed = packed == 0 ? (ushort)0 : (ushort)3;
+            }
             if (y < 0 || y >= ChunkGenerator.Size ||
                 Math.Abs((long)x) > MaxWorldCoordinate ||
-                Math.Abs((long)z) > MaxWorldCoordinate || block > 1)
+                Math.Abs((long)z) > MaxWorldCoordinate ||
+                !BlockState.IsValid(packed))
                 return false;
-
-            if (!next.TryAdd(new BlockPosition(x, y, z), block) ||
+            if (!next.TryAdd(new BlockPosition(x, y, z), packed) ||
                 next.Count > MaxChanges)
                 return false;
         }
 
-        // Include removed overrides as well as added/changed ones.
         foreach (var pair in _changes)
-            if (!next.TryGetValue(pair.Key, out byte value) || value != pair.Value)
+            if (!next.TryGetValue(pair.Key, out ushort value) || value != pair.Value)
                 changed.Add(pair.Key);
-
         foreach (var pair in next)
             if (!_changes.ContainsKey(pair.Key))
                 changed.Add(pair.Key);

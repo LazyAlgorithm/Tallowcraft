@@ -7,10 +7,10 @@ public sealed class LiveChunk
 {
     public GameObject Object;
     public MeshRenderer Renderer;
-    public byte[]? Blocks;
+    public ushort[]? Blocks;
     public bool Dirty;
 
-    public LiveChunk(GameObject obj, MeshRenderer renderer, byte[]? blocks)
+    public LiveChunk(GameObject obj, MeshRenderer renderer, ushort[]? blocks)
     {
         Object = obj;
         Renderer = renderer;
