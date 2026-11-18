@@ -133,7 +133,7 @@ public static class ChunkGenerator
             int blockX = FloorDiv(x, detail);
             int blockZ = FloorDiv(z, detail);
             int blockY = y / detail;
-            if ((uint)blockX < Size && (uint)blockZ < Size)
+            if ((uint)blockX < Size && (uint)blockY < Size && (uint)blockZ < Size)
                 return blocks[Index(blockX, blockY, blockZ)];
             return GetBlock(key.X * Size + blockX, worldY,
                 key.Z * Size + blockZ, seed, edits);
