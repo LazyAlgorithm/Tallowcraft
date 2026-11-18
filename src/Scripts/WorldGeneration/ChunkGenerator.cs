@@ -160,12 +160,26 @@ public static class ChunkGenerator
             {
                 int worldX = key.X * Size + x;
                 int worldZ = key.Z * Size + z;
-                int height = Height(worldX, worldZ, seed);
+                int height = key.Y >= 0 ? Height(worldX, worldZ, seed) : 0;
+                WorldBiomes.Biome biome = key.Y >= 0
+                    ? WorldBiomes.At(worldX, worldZ, seed)
+                    : default;
                 for (int y = 0; y < Size; y++)
                 {
                     int worldY = key.Y * Size + y;
-                    if (worldY < height)
-                        blocks[Index(x, y, z)] = BaseBlock(worldX, worldY, worldZ, seed);
+                    if (worldY < 0)
+                    {
+                        blocks[Index(x, y, z)] = BaseBlock(
+                            worldX, worldY, worldZ, seed);
+                        continue;
+                    }
+                    if (worldY >= height) continue;
+                    ushort type = worldY == height - 1
+                        ? biome == WorldBiomes.Biome.Highlands ? (ushort)3
+                            : biome == WorldBiomes.Biome.Drylands ? (ushort)2 : (ushort)1
+                        : worldY >= height - 4 && biome != WorldBiomes.Biome.Highlands
+                            ? (ushort)2 : (ushort)3;
+                    blocks[Index(x, y, z)] = type;
                 }
             }
 
