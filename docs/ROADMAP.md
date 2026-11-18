@@ -46,12 +46,14 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 ## M3 — Correctness and performance of partial blocks
 
 - [x] Pure C# regression tests for all slab/stair/half-wall microcell occupancies and slab-to-cube placement decisions
+- [x] Add pure C# reference-surface tests for slab/stair/half-wall orientations, upper/lower variants and positive/negative chunk seams (execution pending)
 - [ ] In-editor physics/collider and raycast regression tests across all orientations
 - [x] Support slab stacking on exposed upper/lower faces without allocating an extra voxel (runtime check pending)
 - [ ] Improve placement on internal faces of stairs and slabs, including precise hit-height rules
 - [ ] Split/merge compatible shapes and occlusion correctly across chunk boundaries
 - [x] Fast one-metre meshing path for cube-only chunks with half-metre fallback around partial blocks and chunk boundaries (runtime benchmark pending)
-- [ ] Complete hybrid full-cube greedy mesher with tiled atlas UVs and compact shape templates for edited chunks
+- [x] Implement hybrid per-block face meshing: cube faces stay whole, partial blocks use local half-cell faces, with atlas UVs and identical render/collider mesh (runtime benchmarking pending)
+- [ ] Extend hybrid path with shared material batching and cross-block greedy merging after world-tiled atlas UV support
 - [ ] Proper per-block repeating texture UVs on merged faces; avoid atlas bleed
 - [x] Add repeatable pure C# benchmark for generated chunks/sec, vertices/chunk, triangles/chunk, and managed allocations (run with `dotnet run --project tests/BlockLogicTests -c Release -- --bench`; results pending)
 - [ ] Measure native MeshCollider rebuild cost, GPU draw calls, runtime memory and player-facing frame times in Tallow
@@ -109,3 +111,7 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 The benchmark reports CSV-compatible CPU chunk generation throughput, mesh vertex/triangle counts and managed allocation per chunk for cube-only and edited partial-shape workloads. It warms up the JIT before timing, checks negative-coordinate chunks, and does not claim to measure native MeshCollider reconstruction, GPU rendering or full-game frame rates. Run on the same hardware and .NET runtime when comparing commits. Tests added for negative X chunk seams and partial-block neighbor meshing; engine-level collider/raycast validation remains open.
+
+## Hybrid mesher validation
+
+The mixed-shape benchmark now exercises `HybridChunkMesher` instead of the chunk-wide half-cell sweep. `HybridMeshTests` compares the visible triangle surface area and winding against independently enumerated half-cell occupancy for rotated slabs, stairs, walls and seam cases. These tests have been committed but have **not** been executed in this environment. Run the two benchmark/test commands above on Nobara and compare mixed-shape throughput to the prior 297.6 chunks/sec (3.360 ms/chunk). The untouched cube-only baseline was 2,385.4 chunks/sec (0.419 ms/chunk). Inspect in-game collision and face visibility before treating this as production-verified.
