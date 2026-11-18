@@ -55,6 +55,8 @@ public static class BlockTextureAtlas
                 _ => 3
             }) ? 7 : 6,
             6 => 8,
+            7 => 6, // Coal ore: dark forge tile until dedicated ore atlas is approved.
+            8 => 5, // Iron ore: bright log-end tile until dedicated ore atlas is approved.
             _ => 3
         };
 }
