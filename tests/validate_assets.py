@@ -6,6 +6,7 @@ It tests asset structure, not actual rendering, animation quality or networking.
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import struct
 
@@ -130,8 +131,28 @@ def verify() -> None:
     atlas_bytes = atlas_path.read_bytes()
     check(atlas_bytes[:8] == bytes.fromhex("89504e470d0a1a0a"),
           "Atlas must be a PNG file")
-    check(struct.unpack_from(">II", atlas_bytes, 16) == (54, 54),
-          "Atlas size changed without updating BlockTextureAtlas.cs")
+    check(struct.unpack_from(">II", atlas_bytes, 16) == (108, 108),
+          "Expected nine 32x32 tiles with 2px gutters (108x108)")
+    check(atlas_bytes[24:26] == bytes([8, 3]),
+          "Expected an 8-bit indexed, lossless pixel-art PNG")
+    check(hashlib.sha256(atlas_bytes).hexdigest() ==
+          "fc9568eaeeac6b932fcb5894e4b1147098b5e32e59457945bb18f100f6e5bc0d",
+          "Selected block atlas was changed unexpectedly")
+    atlas_source = (ROOT / "src/Scripts/WorldGeneration/BlockTextureAtlas.cs").read_text()
+    check("public const int TileSize = 32;" in atlas_source
+          and "public const int Gutter = 2;" in atlas_source
+          and "0.5f + u * (TileSize - 1)" in atlas_source,
+          "Atlas UV grid does not match the PNG")
+    atlas_settings = (ROOT / "src/Textures/block_atlas.png.import").read_text()
+    for key, expected in {
+        "filter": "nearest", "wrap": "clamp", "mipmaps": "0",
+        "compression": "0", "fullResolution": "1"
+    }.items():
+        check(f"{key} = {expected}" in atlas_settings,
+              f"Atlas needs {key} = {expected} in its .png.import")
+    project_settings = (ROOT / "project.tallow").read_text()
+    check("Textures/block_atlas.png" in project_settings,
+          "Project must exclude the atlas from GPU compression in packaged builds")
     world_source = (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text()
     check("renderer.Texture = BlockTextureAtlas.Path;" in world_source,
           "Chunk renderer is not using the committed texture atlas")

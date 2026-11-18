@@ -34,7 +34,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Shape selector: cube, slab, stair, half-wall (Q), upper/lower via crouch held while placing
 - [ ] Facing preview/rotation; prevent placing inside player and occupied subcells
 - [x] Swap mouse buttons: left-click place / right-click remove (E still places)
-- [x] Commit nine-slot 3×3 pixel-art PNG atlas and map chunk UVs to it
+- [x] Integrate approved 3×3 atlas (32px tiles, 2px extruded gutters), texel-center UVs, per-texture point sampling, no mipmaps/compression, full resolution (runtime check pending)
 - [x] Crosshair and red remove / green placement outlines, including half-cell shapes (runtime test pending)
 - [ ] Add a more polished transparent ghost mesh and block-face-aware partial shape placement; lightweight first-person hand/tool later
 - [ ] Host/client: confirm correct type, facing, shape and selection per owner; late join sees same blocks

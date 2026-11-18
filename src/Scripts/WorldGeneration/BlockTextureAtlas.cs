@@ -3,15 +3,16 @@ using System.Numerics;
 namespace WorldGeneration;
 
 /// <summary>
-/// Nine authored 16×16 pixel-art textures packed into a 3×3 PNG
-/// with one-pixel duplicate-color gutters to avoid atlas edge bleed.
+/// Nine approved 32×32 pixel-art tiles packed in a 108×108 PNG
+/// with 2px extruded gutters. Texture import settings in the adjacent
+/// .png.import file disable filtering, mipmaps, and GPU compression.
 /// The PNG is a committed asset, not created on every game startup.
 /// </summary>
 public static class BlockTextureAtlas
 {
     public const string Path = "Textures/block_atlas.png";
-    public const int TileSize = 16;
-    public const int Gutter = 1;
+    public const int TileSize = 32;
+    public const int Gutter = 2;
     public const int Columns = 3;
     public const int Rows = 3;
     private const int Stride = TileSize + 2 * Gutter;
@@ -23,8 +24,8 @@ public static class BlockTextureAtlas
         int col = tile % Columns;
         int row = tile / Columns;
         return new Vector2(
-            (col * Stride + Gutter + u * TileSize) / Width,
-            (row * Stride + Gutter + v * TileSize) / Height);
+            (col * Stride + Gutter + 0.5f + u * (TileSize - 1)) / Width,
+            (row * Stride + Gutter + 0.5f + v * (TileSize - 1)) / Height);
     }
 
     // Vertical faces use local mesh directions for correct triangle winding,
