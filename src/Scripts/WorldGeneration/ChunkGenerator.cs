@@ -118,6 +118,10 @@ public static class ChunkGenerator
     public static ushort BaseBlock(int worldX, int y, int worldZ, int seed)
     {
         if (!InWorld(y)) return 0;
+        // Keep the existing surface dirt bands, but underground layers are
+        // solid stone even where a low heightmap would otherwise extend the
+        // shallow dirt band below Y=0.
+        if (y < 0) return 3;
         int height = Height(worldX, worldZ, seed);
         return y >= height ? (ushort)0
             : y == height - 1 ? (ushort)1
