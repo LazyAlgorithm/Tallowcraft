@@ -1,0 +1,11 @@
+build/
+Builds/
+recovery/
+.cache/
+.tallow-csharp/
+.tallow-language/
+*.slnx
+Packages/Downloads/
+Packages/Exports/
+BeefSpace.toml
+BeefProj.toml

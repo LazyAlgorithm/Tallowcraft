@@ -1,0 +1,5 @@
+name = Tallowcraft
+startScene = Scenes/Main.tscene
+engine = /home/zerker24/GitWorktrees/tallow-csharp
+fullscreen = 1
+csharpRuntime = native
