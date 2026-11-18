@@ -21,6 +21,9 @@ static class Program
             TestReplacements();
             TestFacing();
             TestMeshing();
+            TestChunkCoordinates();
+            if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
+                MeshBenchmarks.Run();
             Console.WriteLine($"PASS: {_assertions} block-state and placement assertions");
             return 0;
         }
@@ -130,6 +133,48 @@ static class Program
         Check(BlockState.FacingTowardPlayer(-Vector3.UnitZ) == 0, "Back-facing rotation");
         Check(BlockState.FacingTowardPlayer(Vector3.UnitX) == 3, "Right-facing rotation");
         Check(BlockState.FacingTowardPlayer(-Vector3.UnitX) == 1, "Left-facing rotation");
+    }
+
+    private static void TestChunkCoordinates()
+    {
+        // Floor division must map the -1/-16/-17 seams to the correct chunks.
+        Check(ChunkGenerator.FloorDiv(-1, 16) == -1, "Negative -1 chunk seam");
+        Check(ChunkGenerator.FloorDiv(-16, 16) == -1, "Negative -16 chunk seam");
+        Check(ChunkGenerator.FloorDiv(-17, 16) == -2, "Negative -17 chunk seam");
+        Check(ChunkGenerator.FloorDiv(0, 16) == 0, "Zero chunk boundary");
+        Check(ChunkGenerator.FloorDiv(15, 16) == 0, "Positive chunk edge");
+        Check(ChunkGenerator.FloorDiv(16, 16) == 1, "Positive next chunk");
+
+        const int seed = 42;
+        var edits = new Dictionary<BlockPosition, ushort>();
+        // The same edited block must appear only in its owning chunk, even
+        // across negative coordinate boundaries.
+        var negative = new ChunkKey(-1, -1);
+        var neighbor = new ChunkKey(0, -1);
+        var target = new BlockPosition(-1, 12, -16);
+        ushort state = BlockState.Create(4).Packed;
+        edits[target] = state;
+        ushort[] left = ChunkGenerator.CreateBlocks(negative, seed, edits);
+        ushort[] right = ChunkGenerator.CreateBlocks(neighbor, seed, edits);
+        Check(left[ChunkGenerator.Index(15, 12, 0)] == state,
+            "Edit at x=-1 must be in chunk x=-1");
+        Check(right[ChunkGenerator.Index(0, 12, 0)] != state,
+            "Edit at x=-1 must not leak into chunk x=0");
+
+        // Neighboring partial edits require detailed border occlusion in
+        // either direction, including negative X/Z coordinates.
+        edits.Clear();
+        edits[new BlockPosition(-1, 12, -16)] =
+            BlockState.Create(6, BlockShape.Slab).Packed;
+        right = ChunkGenerator.CreateBlocks(neighbor, seed, edits);
+        Check(ChunkGenerator.MeshingDetail(neighbor, right, edits) == 2,
+            "Negative-X neighboring slab must trigger detailed edge meshing");
+        edits.Clear();
+        edits[new BlockPosition(0, 12, -16)] =
+            BlockState.Create(6, BlockShape.Stair).Packed;
+        left = ChunkGenerator.CreateBlocks(negative, seed, edits);
+        Check(ChunkGenerator.MeshingDetail(negative, left, edits) == 2,
+            "Positive-X neighboring stair must trigger detailed edge meshing");
     }
 
     private static void TestMeshing()
