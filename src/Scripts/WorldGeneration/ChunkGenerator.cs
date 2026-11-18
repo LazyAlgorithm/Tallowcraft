@@ -121,7 +121,9 @@ public static class ChunkGenerator
         // Keep the existing surface dirt bands, but underground layers are
         // solid stone even where a low heightmap would otherwise extend the
         // shallow dirt band below Y=0.
-        if (y < 0) return 3;
+        if (y < 0)
+            return WorldGeology.IsCave(worldX, y, worldZ, seed)
+                ? (ushort)0 : WorldGeology.OreAt(worldX, y, worldZ, seed);
         int height = Height(worldX, worldZ, seed);
         return y >= height ? (ushort)0
             : y == height - 1 ? (ushort)1
