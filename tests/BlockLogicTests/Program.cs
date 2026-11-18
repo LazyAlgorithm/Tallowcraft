@@ -22,6 +22,7 @@ static class Program
             TestFacing();
             TestMeshing();
             TestChunkCoordinates();
+            HybridMeshTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
             Console.WriteLine($"PASS: {_assertions} block-state and placement assertions");
