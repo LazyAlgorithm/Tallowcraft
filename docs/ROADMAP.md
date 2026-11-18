@@ -56,7 +56,8 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [ ] Extend hybrid path with shared material batching and cross-block greedy merging after world-tiled atlas UV support
 - [ ] Proper per-block repeating texture UVs on merged faces; avoid atlas bleed
 - [x] Add repeatable pure C# benchmark for generated chunks/sec, vertices/chunk, triangles/chunk, and managed allocations (run with `dotnet run --project tests/BlockLogicTests -c Release -- --bench`; results pending)
-- [ ] Measure native MeshCollider rebuild cost, GPU draw calls, runtime memory and player-facing frame times in Tallow
+- [x] Add optional BlockWorld synchronous profiling for SetMesh, collider add/refresh/remove (live runtime data pending; does not measure deferred Jolt cooking)
+- [ ] Measure deferred Jolt physics cooking, GPU draw calls, runtime memory and player-facing frame times in Tallow
 - [ ] Retain Tallow native ECS and physics integration; avoid GameObject-per-block
 
 **Exit:** performance meets or beats the original cube prototype on ordinary terrain.
@@ -115,3 +116,18 @@ The benchmark reports CSV-compatible CPU chunk generation throughput, mesh verte
 ## Hybrid mesher validation
 
 The mixed-shape benchmark now exercises `HybridChunkMesher` instead of the chunk-wide half-cell sweep. `HybridMeshTests` compares the visible triangle surface area and winding against independently enumerated half-cell occupancy for rotated slabs, stairs, walls and seam cases. These tests have been committed but have **not** been executed in this environment. Run the two benchmark/test commands above on Nobara and compare mixed-shape throughput to the prior 297.6 chunks/sec (3.360 ms/chunk). The untouched cube-only baseline was 2,385.4 chunks/sec (0.419 ms/chunk). Inspect in-game collision and face visibility before treating this as production-verified.
+
+## M3 stress benchmark and collider profiling (Nobara)
+
+Run from the Tallowcraft repository root:
+
+```bash
+git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+Benchmarks now include four cases: `cube` (no partial edits), `mixed-shapes` (three sparse edits), `dense-partials` (roughly 512 partial blocks spread over an eight-block-high volume), and `all-partials` (2,048 partial blocks). The last two use fewer samples (8 and 4 chunks respectively) to keep runs manageable. Compare cube and mixed-shapes against the prior Nobara measurements of 0.372 ms/chunk and 0.135 ms/chunk. All results are *CPU mesh generation only*, with no MeshCollider or graphics timing.
+
+For live profiling, build/open Tallowcraft in Tallow, select the object with `WorldGeneration.BlockWorld`, and leave `ProfileChunkColliders` enabled (default: true). This prints `[Tallowcraft chunk profile]` once per 32 instrumented operations by default (`ProfileReportEvery` is configurable). Each report includes count, average, max, and total synchronous milliseconds for `SetMesh`, `ColliderAdd`, `ColliderRefresh`, and `ColliderRemove`. Walk away from the spawn to stream chunks, and place/remove blocks near loaded chunks to trigger collider refreshes. Log output from this running-engine test, not the standalone `dotnet run` test, is needed to assess the collider path.
+
+**Interpretation:** The profiler measures time spent synchronously inside managed-to-native API calls, including any immediate native work. If Jolt builds/updates a collision shape later during the physics step, that deferred time is **not** counted. Neither render-thread GPU work nor full-frame costs are measured here. To claim full physics/rebuild cost, use Tallow's native profiler or instrument the engine physics step separately. These project-side diagnostics do not modify the engine.
