@@ -87,12 +87,12 @@ public class CharacterAnimation : Script
             !character.IsGrounded &&
             (character.Velocity.Y > 0.75f || character.AirTime > AirGrace);
 
-        // Midair crouch must follow the actual capsule height. The library
-        // has no dedicated air-crouch clip, so use the tucked crouch idle pose
-        // rather than playing walking footsteps while suspended.
-        // Releasing crouch midair immediately returns to the jump loop.
-        string clip = crouched && airborne ? QuaterniusClips.CrouchIdle
-            : crouched ? (walking ? QuaterniusClips.CrouchForward : QuaterniusClips.CrouchIdle)
+        // Use exactly the same crouch animation selection and native
+        // crossfade on the ground and in midair. The controller's actual
+        // capsule height determines crouching, even during a jump.
+        // When uncrouching in the air, transition back to the jump loop.
+        string clip = crouched
+            ? (walking ? QuaterniusClips.CrouchForward : QuaterniusClips.CrouchIdle)
             : airborne ? QuaterniusClips.Jump
             : running ? QuaterniusClips.Run
             : walking ? QuaterniusClips.Walk : QuaterniusClips.Idle;
