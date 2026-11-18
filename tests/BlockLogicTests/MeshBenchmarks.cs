@@ -23,7 +23,9 @@ internal static class MeshBenchmarks
             ("dense-partials", 2, 8),
             ("all-partials", 3, 4),
             ("underground-caves", 4, 8),
-            ("biome-upper-layer", 5, 8)
+            ("biome-upper-layer", 5, 8),
+            ("woodland-trees", 6, 8),
+            ("forest-upper-layer", 7, 8)
         };
 
         foreach (var test in cases)
@@ -57,6 +59,28 @@ internal static class MeshBenchmarks
         }
     }
 
+    private static readonly Dictionary<int, List<ChunkKey>> ForestCache = new();
+
+    private static ChunkKey ForestKey(int index, int seed, int layer)
+    {
+        if (!ForestCache.TryGetValue(layer, out List<ChunkKey>? keys))
+        {
+            keys = new List<ChunkKey>();
+            for (int cz = -24; cz <= 24 && keys.Count < 12; cz++)
+            for (int cx = -24; cx <= 24 && keys.Count < 12; cx++)
+            {
+                var key = new ChunkKey(cx, layer, cz);
+                if (WorldFlora.HasBlocksInChunk(key, seed))
+                    keys.Add(key);
+            }
+            ForestCache.Add(layer, keys);
+        }
+        if (keys.Count == 0)
+            throw new InvalidOperationException(
+                $"No forest chunks discovered at vertical layer {layer}.");
+        return keys[index % keys.Count];
+    }
+
     private static ChunkMesh Generate(int index, int density, int seed)
     {
         // Include negative chunks to exercise world-coordinate floor division.
@@ -64,6 +88,8 @@ internal static class MeshBenchmarks
         {
             4 => new ChunkKey((index % 8) - 4, -1, (index / 8) - 2),
             5 => new ChunkKey((index % 8) + 12, 1, (index / 8) + 12),
+            6 => ForestKey(index, seed, 0),
+            7 => ForestKey(index, seed, 1),
             _ => new ChunkKey((index % 8) - 4, (index / 8) - 2)
         };
         var edits = new Dictionary<BlockPosition, ushort>();
