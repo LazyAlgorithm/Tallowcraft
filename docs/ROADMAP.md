@@ -15,11 +15,11 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 **Goal:** replace the *visible* capsule with a conventionally modeled, skinned humanoid, **not** a block-character.
 
-- [ ] Import a redistributable, genuinely rigged (bones/skin weights) glTF/GLB model; preserve attribution/license
-- [ ] Keep the Jolt `CharacterController` capsule **invisible** as the collision proxy
-- [ ] Instantiate the model as a visual child of the player, at sensible scale/feet offset
-- [ ] Map Idle/Walk/Run/Jump on Tallow's `Animator` or imported model clips
-- [ ] Remote clients see model pose/movement; owning first-person camera is never taken over
+- [x] Add original rounded low-poly glTF model with 11 named joints and skinned vertex weights, with license/provenance
+- [x] Keep the Jolt `CharacterController` capsule **invisible** as the collision proxy
+- [x] Add rigged model to the player prefab as a visual child at estimated feet offset (needs Play-mode alignment check)
+- [x] Set up Tallow Animator with Idle/Walk/Run/Jump clips and per-client movement-driven visual script (runtime test pending)
+- [ ] Confirm actual remote-client model/pose and camera behavior in two-instance Play-mode testing
 - [ ] Prevent the local camera from seeing/clipping into its own head; verify crouching
 - [ ] Host + client test, walking/sprinting/jumping/crouching; verify no extra collider
 

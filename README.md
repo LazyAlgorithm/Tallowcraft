@@ -29,6 +29,7 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 
 - **Streaming:** directional visible chunks around the local player's camera, plus physical chunks around **every player on the server**.
 - **Mesh:** 16×16×16 blocks, 0.5-metre occupancy for partial shapes, deterministic terrain, and greedy merging of compatible half-cell faces within each block. Atlas UV seams deliberately prevent merging textured quads across entire blocks; this is an explicit performance tradeoff pending a tiling shader. Neighboring chunk faces consult edits across boundaries.
+- **Character:** the network-spawned player has an invisible Jolt capsule controller, an original smooth low-poly **skinned glTF humanoid** in `Models/Adventurer.gltf`, an Animator on its visual child, and local pose selection (Idle/Walk/Run/Jump). The same animated presentation is calculated on each client from its locally observed player movement. See `src/Models/ASSET_LICENSE.md`.
 - **Building UX:** on-screen local-player hotbar driven by authoritative network `TickInput` (`Custom1..8`, Ability1 and Ability2). The project includes an `Input.tinput` map for number keys and mouse wheel.
 - **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
 - **Textures:** a local deterministic 16px pixel-art texture atlas is generated with Tallow's C# Texture API; no external art dependency. Greedy meshes include UVs; renderers share one atlas.
@@ -43,9 +44,13 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 
 Supported block types are 0 (air), 1 (grass), 2 (dirt), 3 (stone), 4 (wood), 5 (forge), and 6 (planks). The vertical world currently spans Y=0..15, and chunk collision/rendering on a dedicated server has not yet been separated into headless-only physics chunks. Half-cell meshing is more expensive than the previous full-cube greedy mesher; profiling is required before increasing render radius. Moving/removing a block requires its chunk collider to have been generated first.
 
+### Rigged-character caveats
+
+The player model is a **real glTF skinned mesh with 11 named skeleton joints and skin weights**, not a Minecraft-style block character. The asset is authored in this repository. Its Idle/Walk/Run/Jump clips are editable `.tanim` files based on Tallow's sample animation tracks. This is a **first integration pass**: verify skinning, animation ordering, network interpolation, camera/head occlusion, crouch, and feet placement in Play mode. No passing Tallow build has been recorded for this commit. A local-player-specific head visibility mask is still needed if the model occludes the first-person camera.
+
 ### Testing checklist
 
-1. Host locally: walk, jump, break/replace top and side faces.
+1. Host locally: check the capsule is invisible and the skinned character appears to clients; walk, jump, sprint, crouch and verify the camera is unobstructed; then break/replace top and side faces.
 2. Edit a block at a chunk seam (X/Z multiple of 16); verify both chunks update without cracks.
 3. Walk away and return; verify the edit remains.
 4. Connect a second client; verify the terrain matches the host and both players see edits.

@@ -13,33 +13,12 @@ field scriptAsset "9b48eac0d33d4bcda4cd5131e8a2fb99"
 field fieldOverrides ""
 field referenceNames ""
 field referenceTargets 0
-component Tallow.MeshRenderer enabled 1
-field mesh "builtin:capsule"
-field color 0.92156863 0.54901963 0.23529412 1
-field metallic 0
-field roughness 0.85
-field emissive 0 0 0 1
-field emissiveIntensity 0
-field emissiveFromColor 0
-field flatShading 1
-field unlit 0
-field castShadows 1
-field backFaceCulling 1
-field lightmap ""
-field lightmapDirection ""
-field lightmapShadowmask ""
-field lightmapScaleOffset 1 1 0 0
-field lightmapDecode 1 0 0 0
-field windSway 0
-field shadowOnly 0
-field bakedLighting 0
-field screenReflections 0
-field inReflectionProbes 1
-field planarReflection 0
-field texture ""
-field material ""
-field useModelMaterials 1
-field occluder 0
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "Tallowcraft.CharacterAnimation"
+field scriptAsset "bd18bb78c5a84f95adf127898ad94a44"
+field fieldOverrides ""
+field referenceNames ""
+field referenceTargets 0
 component Tallow.CharacterController enabled 1
 field shape Capsule
 field radius 0.5
@@ -59,3 +38,22 @@ field separationSpeed 8
 field canSwim 1
 field swimDepth 1.2
 field swimSpeed 0.6
+
+object 2 parent 1 active 1 name "Character Visual"
+transform 0 -1 0 0 0 0 1 1 1 1
+component Tallow.SkinnedMeshRenderer enabled 1
+field model "Models/Adventurer.gltf"
+field clip ""
+field clipLibrary ""
+field speed 1
+field loop 1
+field exposeBones 1
+field gpuSkinning 1
+field materials ""
+field hiddenParts ""
+field shadowOnlyParts ""
+field partColors ""
+component Tallow.Animator enabled 1
+field clips "Animations/idle.tanim;Animations/walk.tanim;Animations/run.tanim;Animations/jump.tanim"
+field defaultClip "Idle"
+field speed 1
