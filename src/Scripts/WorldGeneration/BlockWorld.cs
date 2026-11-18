@@ -355,7 +355,9 @@ public class BlockWorld : Script
             bool has = _colliders.Contains(key);
             if (!has && ShouldHaveCollider(key, cx, cz))
             {
+                long colliderStart = ProfileStart();
                 obj.AddComponent<MeshCollider>();
+                RecordChunkProfile(1, colliderStart);
                 _colliders.Add(key);
             }
             else if (has && !ShouldHaveCollider(key, cx, cz, 1))
