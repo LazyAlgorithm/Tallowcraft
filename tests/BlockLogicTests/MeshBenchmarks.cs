@@ -21,7 +21,9 @@ internal static class MeshBenchmarks
             ("cube", 0, iterations),
             ("mixed-shapes", 1, iterations),
             ("dense-partials", 2, 8),
-            ("all-partials", 3, 4)
+            ("all-partials", 3, 4),
+            ("underground-caves", 4, 8),
+            ("biome-upper-layer", 5, 8)
         };
 
         foreach (var test in cases)
@@ -58,7 +60,12 @@ internal static class MeshBenchmarks
     private static ChunkMesh Generate(int index, int density, int seed)
     {
         // Include negative chunks to exercise world-coordinate floor division.
-        var key = new ChunkKey((index % 8) - 4, (index / 8) - 2);
+        var key = density switch
+        {
+            4 => new ChunkKey((index % 8) - 4, -1, (index / 8) - 2),
+            5 => new ChunkKey((index % 8) + 12, 1, (index / 8) + 12),
+            _ => new ChunkKey((index % 8) - 4, (index / 8) - 2)
+        };
         var edits = new Dictionary<BlockPosition, ushort>();
         if (density == 1)
         {
