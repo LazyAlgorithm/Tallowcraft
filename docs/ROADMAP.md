@@ -69,7 +69,9 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [ ] Expand vertical world bounds and stream/simulate deeper caves based on world settings
 - [x] Seeded, world-coordinate 3D cave field and coal/iron deposits below ground (C# regression tests committed; Play-mode test pending)
 - [ ] Dedicated coal/iron atlas textures, mining drops and inventory; placeholder approved atlas tiles are used for now
-- [ ] Biomes, vegetation, more detailed ore layers and simple structures
+- [x] Seeded Meadow/Woodland/Drylands/Highlands climate classification and smoothly varied surface heights (automated regression tests pending execution)
+- [x] Discover naturally elevated chunks above Y=15 using the authoritative world seed, with central spawn terrain preserved
+- [ ] Biome vegetation, biome-specific dedicated textures, additional ore tiers and structures
 - [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)
 - [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
 - [ ] Chunk-generation priority, cancellation and far-distance representation
@@ -167,3 +169,19 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 Then inspect caves underground in Play mode, mine into coal/iron, cross negative X/Z/Y chunk seams, and test host/client. The cave density and generation cost remain provisional until runtime checks. This first geology implementation does not yet add inventory, mining drops, custom ore textures, or larger vertical world limits.
+
+## M4: biome climate and taller terrain
+
+`WorldBiomes` deterministically derives temperature, moisture, and relief from world-space noise and the synchronized seed. Four first-pass categories (Meadow, Woodland, Drylands and Highlands) share the existing approved nine-tile pixel atlas: Meadow/Woodland use grass, drylands use dirt, and highlands use stone. The original world surface appearance and heights are retained within roughly 40 blocks of the origin, with terrain heights smoothly transitioning between 40 and 120 blocks away. Outside that transition, highland ridges can rise into Y=16..34 and cross vertical 16-block chunk boundaries.
+
+`ChunkGenerator.HasPotentialBlocks` now checks actual heights in upper vertical chunks using the authoritative seed, preventing tall terrain from being incorrectly skipped. The generator caches height and biome per X/Z column when constructing positive-Y chunk data. The world height remains Y=-32..47; the existing underground caves, coal, iron, ore rules, and snapshot format are unchanged. No biome-dependent foliage or new art has been added.
+
+Tests: `BiomeTests` validates original spawn heights, terrain bounds, deterministic sampled heights, multiple biome regions, upper-chunk buffering, and safe spawn clearance. The CPU benchmark now includes `underground-caves` and `biome-upper-layer` rows in addition to the previous cube, mixed, dense-partial and all-partial workloads. These are pure-C# tests; the updated game has not been compiled or Play-tested in this environment.
+
+```bash
+cd ~/TallowProjects/Tallowcraft
+git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+When validating in Play mode, travel beyond the original spawn zone (at least 120 blocks), inspect cliff/terrain chunk seams, confirm the elevated layer generates collision, and check performance while approaching the new highlands. Watch the existing `[Tallowcraft chunk profile]` timings to spot increased collider costs. Future tuning should profile repeated elevated-chunk discovery checks rather than assuming the new noise is free.
