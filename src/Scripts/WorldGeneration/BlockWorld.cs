@@ -26,6 +26,7 @@ public class BlockWorld : Script
     public int KeepMargin = 1;
     public int WorkerCount = 2;
     public int UploadsPerFrame = 1;
+    public int VerticalRadius = 1;
 
     // Diagnostic only: synchronous mesh and collider entry-point timings.
     // Native Jolt cooking deferred to physics frames is NOT measured here.
@@ -124,15 +125,17 @@ public class BlockWorld : Script
         if (flat.LengthSquared() > 0.0001f)
             _lastForward = Vector2.Normalize(flat);
 
+        int cy = Math.Clamp(ChunkGenerator.FloorDiv((int)MathF.Floor(position.Y), ChunkGenerator.Size),
+            ChunkGenerator.MinChunkY, ChunkGenerator.MaxChunkY);
         int cx = ChunkGenerator.FloorDiv((int)MathF.Floor(position.X), ChunkGenerator.Size);
         int cz = ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z), ChunkGenerator.Size);
 
-        GatherCollisionCenters(cx, cz);
-        UnloadDistant(cx, cz);
-        UploadFinished(cx, cz);
-        UpdateColliders(cx, cz);
-        MaintainBlockCache(cx, cz);
-        StartNearestJobs(cx, cz);
+        GatherCollisionCenters(cx, cy, cz);
+        UnloadDistant(cx, cy, cz);
+        UploadFinished(cx, cy, cz);
+        UpdateColliders(cx, cy, cz);
+        MaintainBlockCache(cx, cy, cz);
+        StartNearestJobs(cx, cy, cz);
     }
 
     private GameObject Viewer()
@@ -147,7 +150,7 @@ public class BlockWorld : Script
             Scene.Find("Main Camera") ?? GameObject;
     }
 
-    private void GatherCollisionCenters(int cx, int cz)
+    private void GatherCollisionCenters(int cx, int cy, int cz)
     {
         _playerCenters.Clear();
 
@@ -159,7 +162,7 @@ public class BlockWorld : Script
         }
 
         if (_playerCenters.Count == 0 || !Scene.IsServer)
-            _playerCenters.Add(new ChunkKey(cx, cz));
+            _playerCenters.Add(new ChunkKey(cx, cy, cz));
     }
 
     private void AddPlayerCenter(GameObject? player)
@@ -170,20 +173,26 @@ public class BlockWorld : Script
         Vector3 position = p.Transform.Position;
         _playerCenters.Add(new ChunkKey(
             ChunkGenerator.FloorDiv((int)MathF.Floor(position.X), ChunkGenerator.Size),
+            Math.Clamp(ChunkGenerator.FloorDiv((int)MathF.Floor(position.Y), ChunkGenerator.Size),
+                ChunkGenerator.MinChunkY, ChunkGenerator.MaxChunkY),
             ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z), ChunkGenerator.Size)));
     }
 
-    private static bool Near(ChunkKey key, int cx, int cz, int radius)
+    private static bool Near(ChunkKey key, int cx, int cy, int cz, int radius)
     {
         long dx = (long)key.X - cx, dz = (long)key.Z - cz;
-        return dx * dx + dz * dz <= (long)radius * radius;
+        return Math.Abs((long)key.Y - cy) <= Math.Clamp(radius, 0, 2) &&
+            dx * dx + dz * dz <= (long)radius * radius;
     }
 
     private int CollisionRadius() =>
         Math.Clamp(EditableRadius, 0, Math.Clamp(RenderRadius, 1, 16));
 
-    private bool ShouldStream(ChunkKey key, int cx, int cz, int extra = 0)
+    private bool ShouldStream(ChunkKey key, int cx, int cy, int cz, int extra = 0)
     {
+        if (key.Y < ChunkGenerator.MinChunkY || key.Y > ChunkGenerator.MaxChunkY ||
+            Math.Abs((long)key.Y - cy) > Math.Clamp(VerticalRadius, 0, 2) + extra)
+            return false;
         int forwardRange = Math.Clamp(RenderRadius, 1, 16);
         int sideRange = Math.Clamp(SideRadius, 1, forwardRange);
         int backRange = Math.Clamp(BehindRadius, 0, sideRange);
@@ -202,38 +211,38 @@ public class BlockWorld : Script
         return distance <= MathF.Max(allowed, nearRange) + extra;
     }
 
-    private bool ShouldKeep(ChunkKey key, int cx, int cz, int margin = 0)
+    private bool ShouldKeep(ChunkKey key, int cx, int cy, int cz, int margin = 0)
     {
-        if (ShouldStream(key, cx, cz, margin))
+        if (ShouldStream(key, cx, cy, cz, margin))
             return true;
 
         // Dedicated/host server must simulate collision around every client,
         // even when that player is far outside the host's viewing direction.
         if (Scene.IsServer)
             foreach (ChunkKey center in _playerCenters)
-                if (Near(key, center.X, center.Z, CollisionRadius() + margin))
+                if (Near(key, center.X, center.Y, center.Z, CollisionRadius() + margin))
                     return true;
 
         return false;
     }
 
-    private bool ShouldHaveCollider(ChunkKey key, int cx, int cz, int margin = 0)
+    private bool ShouldHaveCollider(ChunkKey key, int cx, int cy, int cz, int margin = 0)
     {
-        if (Near(key, cx, cz, CollisionRadius() + margin))
+        if (Near(key, cx, cy, cz, CollisionRadius() + margin))
             return true;
         if (Scene.IsServer)
             foreach (ChunkKey center in _playerCenters)
-                if (Near(key, center.X, center.Z, CollisionRadius() + margin))
+                if (Near(key, center.X, center.Y, center.Z, CollisionRadius() + margin))
                     return true;
         return false;
     }
 
-    private void UnloadDistant(int cx, int cz)
+    private void UnloadDistant(int cx, int cy, int cz)
     {
         _scratch.Clear();
         foreach (var pair in _loaded)
         {
-            if (ShouldKeep(pair.Key, cx, cz, Math.Clamp(KeepMargin, 0, 3)))
+            if (ShouldKeep(pair.Key, cx, cy, cz, Math.Clamp(KeepMargin, 0, 3)))
                 continue;
 
             if (pair.Value.Object.IsValid)
@@ -251,7 +260,7 @@ public class BlockWorld : Script
             _loaded.Remove(key);
     }
 
-    private void UploadFinished(int cx, int cz)
+    private void UploadFinished(int cx, int cy, int cz)
     {
         int processed = 0;
         _scratch.Clear();
@@ -276,7 +285,7 @@ public class BlockWorld : Script
 
             if (!job.Task.IsCompletedSuccessfully ||
                 job.Version != VersionFor(pair.Key) ||
-                !ShouldKeep(pair.Key, cx, cz))
+                !ShouldKeep(pair.Key, cx, cy, cz))
                 continue;
 
             ChunkMesh data = job.Task.Result;
@@ -300,18 +309,19 @@ public class BlockWorld : Script
 
                 live.Object.Entity.Set(new ChunkInfo
                 {
-                    X = pair.Key.X, Z = pair.Key.Z,
+                    X = pair.Key.X, Y = pair.Key.Y, Z = pair.Key.Z,
                     FaceCount = data.Triangles.Length / 6
                 });
-                live.Blocks = ShouldHaveCollider(pair.Key, cx, cz) ? data.Blocks : null;
+                live.Blocks = ShouldHaveCollider(pair.Key, cx, cy, cz) ? data.Blocks : null;
                 live.Dirty = false;
                 continue;
             }
 
-            GameObject obj = Scene.CreateGameObject($"Chunk {pair.Key.X}, {pair.Key.Z}");
+            GameObject obj = Scene.CreateGameObject($"Chunk {pair.Key.X}, {pair.Key.Y}, {pair.Key.Z}");
             obj.Transient = true;
             obj.Transform.Position = new Vector3(
-                pair.Key.X * ChunkGenerator.Size, 0, pair.Key.Z * ChunkGenerator.Size);
+                pair.Key.X * ChunkGenerator.Size, pair.Key.Y * ChunkGenerator.Size,
+                pair.Key.Z * ChunkGenerator.Size);
 
             MeshRenderer renderer = obj.AddComponent<MeshRenderer>();
             renderer.FlatShading = true;
@@ -320,7 +330,7 @@ public class BlockWorld : Script
             renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
             RecordChunkProfile(0, newMeshStart);
 
-            bool collision = ShouldHaveCollider(pair.Key, cx, cz);
+            bool collision = ShouldHaveCollider(pair.Key, cx, cy, cz);
             if (collision)
             {
                 long colliderStart = ProfileStart();
@@ -331,7 +341,7 @@ public class BlockWorld : Script
 
             obj.Entity.Set(new ChunkInfo
             {
-                X = pair.Key.X, Z = pair.Key.Z,
+                X = pair.Key.X, Y = pair.Key.Y, Z = pair.Key.Z,
                 FaceCount = data.Triangles.Length / 6
             });
             _chunkObjects[obj.Id] = pair.Key;
@@ -343,7 +353,7 @@ public class BlockWorld : Script
             _jobs.Remove(key);
     }
 
-    private void UpdateColliders(int cx, int cz)
+    private void UpdateColliders(int cx, int cy, int cz)
     {
         foreach (var pair in _loaded)
         {
@@ -353,14 +363,14 @@ public class BlockWorld : Script
                 continue;
 
             bool has = _colliders.Contains(key);
-            if (!has && ShouldHaveCollider(key, cx, cz))
+            if (!has && ShouldHaveCollider(key, cx, cy, cz))
             {
                 long colliderStart = ProfileStart();
                 obj.AddComponent<MeshCollider>();
                 RecordChunkProfile(1, colliderStart);
                 _colliders.Add(key);
             }
-            else if (has && !ShouldHaveCollider(key, cx, cz, 1))
+            else if (has && !ShouldHaveCollider(key, cx, cy, cz, 1))
             {
                 long removeStart = ProfileStart();
                 obj.RemoveComponent<MeshCollider>();
@@ -370,12 +380,12 @@ public class BlockWorld : Script
         }
     }
 
-    private void MaintainBlockCache(int cx, int cz)
+    private void MaintainBlockCache(int cx, int cy, int cz)
     {
         var snapshot = _edits.Snapshot;
         foreach (var pair in _loaded)
         {
-            if (ShouldHaveCollider(pair.Key, cx, cz))
+            if (ShouldHaveCollider(pair.Key, cx, cy, cz))
                 pair.Value.Blocks ??=
                     ChunkGenerator.CreateBlocks(pair.Key, Seed, snapshot);
             else
@@ -405,15 +415,19 @@ public class BlockWorld : Script
     {
         int size = ChunkGenerator.Size;
         int x = ChunkGenerator.FloorDiv(position.X, size);
+        int y = ChunkGenerator.FloorDiv(position.Y, size);
         int z = ChunkGenerator.FloorDiv(position.Z, size);
         int localX = position.X - x * size;
+        int localY = position.Y - y * size;
         int localZ = position.Z - z * size;
 
-        MarkDirty(new ChunkKey(x, z));
-        if (localX == 0) MarkDirty(new ChunkKey(x - 1, z));
-        if (localX == size - 1) MarkDirty(new ChunkKey(x + 1, z));
-        if (localZ == 0) MarkDirty(new ChunkKey(x, z - 1));
-        if (localZ == size - 1) MarkDirty(new ChunkKey(x, z + 1));
+        MarkDirty(new ChunkKey(x, y, z));
+        if (localX == 0) MarkDirty(new ChunkKey(x - 1, y, z));
+        if (localX == size - 1) MarkDirty(new ChunkKey(x + 1, y, z));
+        if (localY == 0) MarkDirty(new ChunkKey(x, y - 1, z));
+        if (localY == size - 1) MarkDirty(new ChunkKey(x, y + 1, z));
+        if (localZ == 0) MarkDirty(new ChunkKey(x, y, z - 1));
+        if (localZ == size - 1) MarkDirty(new ChunkKey(x, y, z + 1));
     }
 
     private void ApplyIncomingSnapshot()
@@ -437,7 +451,7 @@ public class BlockWorld : Script
         _appliedSnapshot = EditState;
     }
 
-    private void StartNearestJobs(int cx, int cz)
+    private void StartNearestJobs(int cx, int cy, int cz)
     {
         int radius = Math.Clamp(RenderRadius, 1, 16);
         int workers = Math.Clamp(WorkerCount, 1, 4);
@@ -450,7 +464,7 @@ public class BlockWorld : Script
 
             void Consider(ChunkKey key, long distance)
             {
-                if (!ShouldKeep(key, cx, cz) || _jobs.ContainsKey(key))
+                if (!ShouldKeep(key, cx, cy, cz) || _jobs.ContainsKey(key))
                     return;
                 if (_loaded.TryGetValue(key, out LiveChunk? live) && !live.Dirty)
                     return;
@@ -541,7 +555,7 @@ public class BlockWorld : Script
             remove.Y + (int)MathF.Round(normal.Y),
             remove.Z + (int)MathF.Round(normal.Z));
         hitNormal = normal;
-        return remove.Y >= 0 && remove.Y < ChunkGenerator.Size &&
+        return ChunkGenerator.InWorld(remove.Y) &&
             _edits.Get(remove.X, remove.Y, remove.Z, Seed) != 0;
     }
 
@@ -562,7 +576,7 @@ public class BlockWorld : Script
     /// </summary>
     public bool CanPlaceAt(BlockPosition position, ushort replacement)
     {
-        if (position.Y < 0 || position.Y >= ChunkGenerator.Size)
+        if (!ChunkGenerator.InWorld(position.Y))
             return false;
 
         ushort previous = BlockAt(position);
