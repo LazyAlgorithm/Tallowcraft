@@ -91,7 +91,7 @@ public static class ChunkGenerator
     /// upper chunks unless a placed block now occupies them. Loaded dirty
     /// chunks are handled separately so removing their last block clears mesh.
     /// </summary>
-    public static bool HasPotentialBlocks(ChunkKey key,
+    public static bool HasPotentialBlocks(ChunkKey key, int seed,
         IReadOnlyDictionary<BlockPosition, ushort> edits)
     {
         if (key.Y <= 0)
@@ -101,7 +101,7 @@ public static class ChunkGenerator
         if (key.Y * Size <= 34)
             for (int z = 0; z < Size; z++)
             for (int x = 0; x < Size; x++)
-                if (Height(key.X * Size + x, key.Z * Size + z, 42) >
+                if (Height(key.X * Size + x, key.Z * Size + z, seed) >
                     key.Y * Size)
                     return true;
         foreach (var edit in edits)
