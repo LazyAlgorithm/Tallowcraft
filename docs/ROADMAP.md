@@ -71,7 +71,9 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [ ] Dedicated coal/iron atlas textures, mining drops and inventory; placeholder approved atlas tiles are used for now
 - [x] Seeded Meadow/Woodland/Drylands/Highlands climate classification and smoothly varied surface heights (automated regression tests pending execution)
 - [x] Discover naturally elevated chunks above Y=15 using the authoritative world seed, with central spawn terrain preserved
-- [ ] Biome vegetation, biome-specific dedicated textures, additional ore tiers and structures
+- [x] Deterministic seeded oak-like trees with chunk-independent trunks and leaf canopies (Play-mode verification pending)
+- [x] 4x4 pixel atlas preserving original nine tiles with new coal, iron and leafy foliage tiles; nearest filtering, no mipmaps/compression
+- [ ] Additional vegetation species, biome-specific textures, inventory drops, and natural structures
 - [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)
 - [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
 - [ ] Chunk-generation priority, cancellation and far-distance representation
@@ -185,3 +187,21 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 When validating in Play mode, travel beyond the original spawn zone (at least 120 blocks), inspect cliff/terrain chunk seams, confirm the elevated layer generates collision, and check performance while approaching the new highlands. Watch the existing `[Tallowcraft chunk profile]` timings to spot increased collider costs. Future tuning should profile repeated elevated-chunk discovery checks rather than assuming the new noise is free.
+
+## M4: tree and atlas pass
+
+The approved original nine 32×32 atlas tiles were preserved and reorganized into the first nine slots of a 4×4 (144×144) RGB PNG, keeping the existing 2px extruded gutters. Added 32×32 coal ore (slot 9), iron ore (slot 10) and opaque leaves (slot 11) using pixel-art designs. The original texture import file remains `filter = nearest`, `wrap = clamp`, `mipmaps = 0`, `compression = 0`, `fullResolution = 1`. The texture atlas remapping is strictly by tile index; no Tallow Engine modifications.
+
+`WorldFlora.cs` now generates one jittered tree root per 8×8 world-space cell. Woodland has a higher seeded density, meadows have lower density, and drylands/highlands have no trees. The first 60 blocks around the origin do not contain tree roots, preserving existing spawn points. Trees reuse block type 4 logs, add type 9 opaque leaves, and create a 4–6 block trunk with a layered radius-two canopy. Trees can cross X/Z/Y chunk seams and may overlap, with trunk priority over foliage.
+
+`ChunkGenerator.CreateBlocks` overlays deterministic tree decorations after solid terrain and before player edits. `BaseBlock` uses the same world-space decoration logic for neighbor meshing and authoritative state queries. `HasPotentialBlocks` now considers natural trees in elevated chunks so canopies at Y=16 or Y=32 are streamed. The old cave, ore and biome noise rules remain unchanged, and the existing edit snapshot format serializes block types through 9.
+
+`FloraTests` checks atlas tile mappings and UVs, tree determinism, biome restrictions, spawn protection, X/Z/Y seam consistency, upper chunk streaming and late-join edit replication. `MeshBenchmarks` adds `woodland-trees` and `forest-upper-layer` CPU benchmark cases in addition to the existing six. Regression test and in-editor gameplay validation still required after pulling.
+
+```bash
+cd ~/TallowProjects/Tallowcraft
+git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+After tests, launch Play mode, head more than 60 blocks from origin into woodland/meadow biomes, check trunk/leaf texture sharpness, seam-free chunk streaming and ability to mine tree blocks, and monitor the existing `[Tallowcraft chunk profile]` logs. This pass intentionally uses opaque collidable leaves; transparent cutouts and leaf decay are future work.
