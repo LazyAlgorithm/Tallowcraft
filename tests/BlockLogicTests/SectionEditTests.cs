@@ -40,8 +40,9 @@ internal static class SectionEditTests
         IReadOnlyDictionary<BlockPosition, ushort> section = edits.InSection(testKey);
         byte[] bytes = EditSectionCodec.Encode(section);
         string hash = EditSectionCodec.Hash(bytes);
+        Dictionary<BlockPosition, ushort> decoded = new();
         check(EditSectionCodec.Pages(bytes.Length) == 4 &&
-            EditSectionCodec.TryDecode(testKey, seed, bytes, out var decoded) &&
+            EditSectionCodec.TryDecode(testKey, seed, bytes, out decoded) &&
             decoded.Count == 256 &&
             decoded[new BlockPosition(0,32,0)] == stair,
             "Section state has a 4-byte packed format and decodes correctly");
@@ -80,9 +81,10 @@ internal static class SectionEditTests
         {
             WorldEditSave.Save(folder, worldId, seed,
                 edits.Snapshot, edits.Revisions);
+            BlockEdits restored = new();
             check(WorldEditSave.HasSave(folder) &&
                 WorldEditSave.TryLoad(folder, out string restoredId,
-                    out int restoredSeed, out BlockEdits restored) &&
+                    out int restoredSeed, out restored) &&
                 restoredId == worldId && restoredSeed == seed &&
                 restored.Count == edits.Count &&
                 restored.Get(negative.X,negative.Y,negative.Z,seed) == stair &&
