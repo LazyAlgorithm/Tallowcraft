@@ -118,9 +118,13 @@ public static class WorldDecorations
         int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
         // Candidate origins are inset 8m from cell borders. Callers of
         // NearRuin use radii <= 5m, so only the containing cell is needed.
-        return TryRuinCell(cellX, cellZ, seed, out Ruin ruin) &&
-            Math.Abs(x - ruin.X) <= radius &&
-            Math.Abs(z - ruin.Z) <= radius;
+        uint hash = Hash(cellX, cellZ, seed, 0x51A47B3u);
+        if ((hash & 1023u) >= 370u) return false;
+        int rootX = cellX * RuinCell + 8 + (int)((hash >> 10) % 40u);
+        int rootZ = cellZ * RuinCell + 8 + (int)((hash >> 18) % 40u);
+        return Math.Abs(x - rootX) <= radius &&
+            Math.Abs(z - rootZ) <= radius &&
+            TryRuinCell(cellX, cellZ, seed, out _);
     }
 
     private static ushort RuinShape(Ruin ruin, int x, int y, int z, int seed)
@@ -171,6 +175,14 @@ public static class WorldDecorations
             return 0;
         int cellX = ChunkGenerator.FloorDiv(x, RuinCell);
         int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
+        uint hash = Hash(cellX, cellZ, seed, 0x51A47B3u);
+        if ((hash & 1023u) >= 370u)
+            return 0;
+        int rootX = cellX * RuinCell + 8 + (int)((hash >> 10) % 40u);
+        int rootZ = cellZ * RuinCell + 8 + (int)((hash >> 18) % 40u);
+        if (Math.Abs(x - rootX) > RuinRadius ||
+            Math.Abs(z - rootZ) > RuinRadius)
+            return 0;
         return TryRuinCell(cellX, cellZ, seed, out Ruin ruin)
             ? RuinShape(ruin, x, y, z, seed) : (ushort)0;
     }
@@ -183,8 +195,41 @@ public static class WorldDecorations
             return 0;
         int cellX = ChunkGenerator.FloorDiv(x, BushCell);
         int cellZ = ChunkGenerator.FloorDiv(z, BushCell);
+        uint hash = Hash(cellX, cellZ, seed, 0xB057E55u);
+        if ((hash & 1023u) >= 210u)
+            return 0;
+        int rootX = cellX * BushCell + 1 + (int)((hash >> 10) & 3u);
+        int rootZ = cellZ * BushCell + 1 + (int)((hash >> 14) & 3u);
+        if (Math.Abs(x - rootX) > 1 || Math.Abs(z - rootZ) > 1)
+            return 0;
         return TryBushCell(cellX, cellZ, seed, out Bush bush)
             ? BushShape(bush, x, y, z) : (ushort)0;
+    }
+
+    /// <summary>Locate a deterministic ruin in a world-space feature cell.</summary>
+    public static bool TryRuinCellRoot(int cellX, int cellZ, int seed,
+        out BlockPosition root)
+    {
+        if (TryRuinCell(cellX, cellZ, seed, out Ruin ruin))
+        {
+            root = new BlockPosition(ruin.X, ruin.GroundY, ruin.Z);
+            return true;
+        }
+        root = default;
+        return false;
+    }
+
+    /// <summary>Locate a deterministic shrub in a world-space feature cell.</summary>
+    public static bool TryBushCellRoot(int cellX, int cellZ, int seed,
+        out BlockPosition root)
+    {
+        if (TryBushCell(cellX, cellZ, seed, out Bush bush))
+        {
+            root = new BlockPosition(bush.X, bush.GroundY, bush.Z);
+            return true;
+        }
+        root = default;
+        return false;
     }
 
     public static bool TryRuinAt(int x, int z, int seed, out int groundY)
