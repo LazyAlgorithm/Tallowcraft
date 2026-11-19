@@ -79,7 +79,8 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [ ] Flowers, thin grass sprites, extra biome textures and inventory drops
 - [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)
 - [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
-- [ ] Chunk-generation priority, cancellation and far-distance representation
+- [x] Prioritize chunk generation by distance and vertical proximity, cancel obsolete worker jobs, and skip sealed underground sections for surface viewers (runtime validation pending)
+- [ ] Exact camera-frustum and occlusion culling, far-distance terrain representation and vertical column metadata cache
 - [ ] Verify headless server physics streaming separately from client rendering
 
 ## M5 — Persistence and scalable multiplayer
@@ -229,3 +230,20 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 The decoration test's passing message reports a `nearestRuin=x,y,z` location (for seed 42) to make in-game checking easier. Verify structure materials, doorway clearance, vegetation, pine shape, chunk seams, and collider timing in Tallow Play mode.
+
+## Streaming performance pass — near chunks first
+
+The primary performance issue was an Inspector override in `src/Scenes/Main.tscene`: `RenderRadius = 40` (the code clamped it to 16), making chunk enumeration and background generation unnecessarily broad. The scene now sets `RenderRadius = 6`, `WorkerCount = 4` and `UploadsPerFrame = 3`. Defaults in `BlockWorld` are `RenderRadius = 6`, `WorkerCount = 3`, `UploadsPerFrame = 3`, `SideRadius = 4`, `BehindRadius = 2`, `EditableRadius = 2`, `VerticalRadius = 1`. All remain editable in the Inspector.
+
+`StartNearestJobs` now builds/sorts a cheap distance-priority candidate list before checking expensive `HasPotentialBlocks` (which evaluates heightmaps, tree roots, ruins and other features). It avoids rescanning the entire candidate set per worker, deduplicates local/remote areas, and prioritizes current-height nearby chunks over vertical and distant scenery. Per-job linked tokens allow canceling work that is stale or no longer in the stream range. This does not change voxel dimensions: chunks remain 16×16×16, akin to Minecraft's vertically stacked sections.
+
+When the viewer is on the surface (world Y >= 5), the streamer omits negative-Y sections under unbroken Y=0. It restores those sections if the player descends close to Y=0 or an edit opens a shaft at Y=0; the same rules protect remote players' collider neighborhoods. This is **not** a complete view-frustum/occlusion system; visible higher-altitude chunks still use horizontal directional/distance streaming, and generation of some occluded positive-Y sections remains possible. Exact frustum and column occlusion are later optimizations. The world seed, deterministic terrain content and chunk/edit replication formats were not changed.
+
+The existing `[Tallowcraft chunk profile]` measures synchronous `SetMesh` and collider calls; an additional `[Tallowcraft stream profile]` prints average and maximum queue-to-upload latency every 64 successful uploads. This latency includes generation, queue waiting and frame scheduling; it is not a pure CPU mesh-generation timer. New `ChunkSchedulingTests` cover near-first priority, vertical ordering and sealed/exposed underground behavior, and need to run on Nobara.
+
+```bash
+cd ~/TallowProjects/Tallowcraft && git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+In Play mode, compare how quickly ground appears beneath the player, check walking and turning around the edge of the 6-chunk radius, dig from the surface through Y=0 into caves, and verify that the underground loads when exposed. For multiplayer, check both host and client moving independently and editing shafts. Send stream-profile logs to quantify residual queue-to-upload delays. Native Jolt cooking and GPU transfer remain outside these numbers.
