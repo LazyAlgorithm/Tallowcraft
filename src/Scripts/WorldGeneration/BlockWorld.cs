@@ -97,6 +97,8 @@ public class BlockWorld : Script
     private readonly BlockEdits _edits = new();
     private readonly Dictionary<ChunkKey, LiveChunk> _loaded = new();
     private readonly Dictionary<ChunkKey, ChunkJob> _jobs = new();
+    // Successful zero-surface jobs do not need a GameObject or GPU buffers.
+    private readonly Dictionary<ChunkKey, int> _emptyChunks = new();
     private readonly Dictionary<ChunkKey, int> _versions = new();
     private readonly Dictionary<ulong, ChunkKey> _chunkObjects = new();
     private readonly HashSet<ChunkKey> _colliders = new();
@@ -114,6 +116,14 @@ public class BlockWorld : Script
     private readonly CancellationTokenSource _stop = new();
 
     private Vector2 _lastForward = Vector2.UnitY; // 2D Y represents world Z.
+    private Vector2 _lastStreamForward;
+    private ChunkKey _lastStreamCenter;
+    private readonly List<ChunkKey> _previousPlayerCenters = new();
+    private readonly List<bool> _previousPlayerBelowSurface = new();
+    private bool _streamStateKnown;
+    private bool _streamExhausted;
+    private bool _lastViewerBelowSurface;
+    private int _lastStreamSettings;
     private string _appliedSnapshot = "";
     private string _rejectedSnapshot = "";
     private int _publishedSeed;
@@ -168,12 +178,65 @@ public class BlockWorld : Script
         int cz = ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z), ChunkGenerator.Size);
 
         GatherCollisionCenters(cx, cy, cz);
-        CancelObsoleteJobs(cx, cy, cz);
-        UnloadDistant(cx, cy, cz);
+        bool streamChanged = StreamStateChanged(cx, cy, cz);
+        if (streamChanged)
+        {
+            // These scans are proportional to the live chunk count. They
+            // belong to stream boundary changes, not every rendered frame.
+            CancelObsoleteJobs(cx, cy, cz);
+            UnloadDistant(cx, cy, cz);
+        }
         UploadFinished(cx, cy, cz);
-        UpdateColliders(cx, cy, cz);
-        MaintainBlockCache(cx, cy, cz);
-        StartNearestJobs(cx, cy, cz);
+        if (streamChanged)
+        {
+            UpdateColliders(cx, cy, cz);
+            MaintainBlockCache(cx, cy, cz);
+        }
+        if (!_streamExhausted)
+            StartNearestJobs(cx, cy, cz);
+    }
+
+    private bool StreamStateChanged(int cx, int cy, int cz)
+    {
+        int settings = HashCode.Combine(RenderRadius, SideRadius, BehindRadius,
+            EditableRadius, KeepMargin, VerticalRadius, ShadowRadius,
+            LimitChunkShadows);
+        ChunkKey center = new(cx, cy, cz);
+        bool belowSurface = _viewerWorldY < 5f;
+        // Only rescan the directional mesh footprint when orientation changes
+        // enough to add/remove a chunk. Small per-frame camera motion shouldn't
+        // run thousands of live-chunk distance tests.
+        bool changed = !_streamStateKnown || _lastStreamCenter != center ||
+            Vector2.Dot(_lastStreamForward, _lastForward) < 0.997f ||
+            belowSurface != _lastViewerBelowSurface ||
+            _lastStreamSettings != settings ||
+            _previousPlayerCenters.Count != _playerCenters.Count;
+
+        if (!changed)
+            for (int i = 0; i < _playerCenters.Count; i++)
+                if (_previousPlayerCenters[i] != _playerCenters[i] ||
+                    _previousPlayerBelowSurface[i] != (_playerHeights[i] < 5f))
+                {
+                    changed = true;
+                    break;
+                }
+
+        if (!changed) return false;
+
+        _streamStateKnown = true;
+        _lastStreamCenter = center;
+        _lastStreamForward = _lastForward;
+        _lastViewerBelowSurface = belowSurface;
+        _lastStreamSettings = settings;
+        _previousPlayerCenters.Clear();
+        _previousPlayerBelowSurface.Clear();
+        for (int i = 0; i < _playerCenters.Count; i++)
+        {
+            _previousPlayerCenters.Add(_playerCenters[i]);
+            _previousPlayerBelowSurface.Add(_playerHeights[i] < 5f);
+        }
+        _streamExhausted = false;
+        return true;
     }
 
     private GameObject Viewer()
@@ -352,6 +415,16 @@ public class BlockWorld : Script
 
         foreach (ChunkKey key in _scratch)
             _loaded.Remove(key);
+
+        // Empty sections use metadata only; retain it while nearby so
+        // returning to them doesn't repeat a zero-triangle generation job.
+        _scratch.Clear();
+        foreach (var pair in _emptyChunks)
+            if (!ShouldKeep(pair.Key, cx, cy, cz,
+                Math.Clamp(KeepMargin, 0, 3)))
+                _scratch.Add(pair.Key);
+        foreach (ChunkKey key in _scratch)
+            _emptyChunks.Remove(key);
     }
 
     private void UploadFinished(int cx, int cy, int cz)
@@ -385,6 +458,28 @@ public class BlockWorld : Script
 
             ChunkMesh data = job.Task.Result;
             RecordStreamLatency(job);
+
+            if (data.Triangles.Length == 0)
+            {
+                // No exposed faces means no visible mesh and no useful mesh
+                // collider. Remember the empty generation to avoid repeating
+                // it while this section stays in the stream footprint.
+                _emptyChunks[pair.Key] = job.Version;
+                if (_loaded.TryGetValue(pair.Key, out LiveChunk? old))
+                {
+                    if (old.Object.IsValid)
+                    {
+                        old.Renderer.ClearMesh();
+                        old.Object.Destroy();
+                    }
+                    _chunkObjects.Remove(old.Object.Id);
+                    _colliders.Remove(pair.Key);
+                    _shadowCasters.Remove(pair.Key);
+                    _loaded.Remove(pair.Key);
+                }
+                continue;
+            }
+            _emptyChunks.Remove(pair.Key);
 
             if (_loaded.TryGetValue(pair.Key, out LiveChunk? live))
             {
@@ -508,6 +603,10 @@ public class BlockWorld : Script
 
     private void MarkDirty(ChunkKey key)
     {
+        _streamExhausted = false;
+        _emptyChunks.Remove(key);
+        if (_jobs.TryGetValue(key, out ChunkJob? running))
+            running.Cancellation.Cancel();
         _versions[key] = VersionFor(key) + 1;
         if (_loaded.TryGetValue(key, out LiveChunk? chunk))
             chunk.Dirty = true;
@@ -582,6 +681,9 @@ public class BlockWorld : Script
                 return;
             if (_loaded.TryGetValue(key, out LiveChunk? live) && !live.Dirty)
                 return;
+            if (_emptyChunks.TryGetValue(key, out int emptyVersion) &&
+                emptyVersion == VersionFor(key))
+                return;
             if (!_candidateKeys.Add(key))
                 return;
             _candidates.Add((key,
@@ -627,6 +729,8 @@ public class BlockWorld : Script
                         continue;
                     if (!_jobs.ContainsKey(key) &&
                         (!_loaded.TryGetValue(key, out LiveChunk? live) || live.Dirty) &&
+                        (!_emptyChunks.TryGetValue(key, out int emptyVersion) ||
+                            emptyVersion != VersionFor(key)) &&
                         _candidateKeys.Add(key))
                         _candidates.Add((key, ChunkScheduling.Priority(
                             key, center.X, center.Y, center.Z, nearRadius)));
@@ -645,6 +749,7 @@ public class BlockWorld : Script
 
         var snapshot = _edits.Snapshot;
         int seed = Seed;
+        bool queued = false;
         foreach (var candidate in _candidates)
         {
             if (_jobs.Count >= workers) break;
@@ -669,7 +774,14 @@ public class BlockWorld : Script
             Task<ChunkMesh> task = Task.Run(
                 () => ChunkGenerator.GenerateMesh(key, seed, snapshot, token), token);
             _jobs.Add(key, new ChunkJob(task, version, cancellation, enqueuedAt));
+            queued = true;
         }
+
+        // If there are no new chunks to schedule and no jobs are running,
+        // stop doing a large radius² candidate scan every frame until the
+        // player turns/moves, a block is edited, or settings change.
+        if (!queued && _jobs.Count == 0)
+            _streamExhausted = true;
     }
 
     /// <summary>
@@ -826,6 +938,7 @@ public class BlockWorld : Script
         }
 
         _loaded.Clear();
+        _emptyChunks.Clear();
         _jobs.Clear();
         _colliders.Clear();
         _shadowCasters.Clear();
