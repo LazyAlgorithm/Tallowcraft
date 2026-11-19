@@ -74,3 +74,30 @@ This code lives entirely in the game repository, not in Tallow's engine.
   Beef/Jolt/WebGL networking.
 - Save generation writes are atomic at the pointer level, not a substitute
   for backups. Keep external backups for important user worlds.
+
+
+## Saved players (prototype identity)
+
+- The host uses `GamePaths.PlayerData/tallowcraft/player-id-host.txt`.
+  Each remote client uses `player-id-client.txt`. These random identifiers
+  survive process restarts. Set `TALLOWCRAFT_PROFILE_SLOT` to an alphanumeric
+  slot name (e.g. `client2`) to run two client instances from one machine.
+- The client sends its token in an owner-checked server RPC, without publishing
+  it in `[Sync]`. The server loads
+  `worlds/default/players/<world GUID>/<token>.profile`, validates the
+  checksum and all nine counts, tool durability, equipment and selected
+  block state, and then enables the player's gameplay.
+- Reconnecting with the same token loads the previously saved profile.
+  An active-claim guard rejects two simultaneous players with the same token.
+  A different saved world ID receives a separate inventory.
+- Changes are autosaved every 30 seconds (when dirty), and saved again when
+  the player object is destroyed. The previous `.profile.bak` is retained.
+  A damaged newest file falls back to the validated backup; if neither file
+  is usable, no fresh starter inventory is granted and gameplay stays locked.
+- The bearer token is **not account authentication**. It is unguessable when
+  generated but may be copied or intercepted on an unencrypted connection.
+  Public servers require a stable authenticated account identity supplied by
+  a verified login/transport, plus real authorization. Local host/client
+  testing and trusted invite-only sessions are the intended initial targets.
+- World and profile saves are separate transactions; simultaneous world
+  edits and item costs are not yet crash-atomic as a unit.

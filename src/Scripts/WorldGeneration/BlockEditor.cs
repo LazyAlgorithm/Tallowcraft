@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Numerics;
 using Tallow;
 
@@ -22,6 +23,8 @@ public class BlockEditor : Script
     [Sync] public string InventoryState = "";
     [Sync] public string ToolState = "";
     [Sync] public bool InventoryOpen = false;
+    [Sync] public bool ProfileReady = false;
+    [Sync] public bool ProfileError = false;
     // Quantized to ten-percent steps to avoid flooding player snapshots.
     [Sync] public int MiningPercent = 0;
     [Sync] public int MiningType = 0;
@@ -51,6 +54,13 @@ public class BlockEditor : Script
     private bool _cursorInitialized;
     private bool _cursorMenuOpen;
     private readonly InventoryMenuState _menu = new();
+    private string _profileToken = "";
+    private string _profileWorldId = "";
+    private string _profileDirectory = "";
+    private float _identityRetryClock;
+    private float _profileSaveClock;
+    private bool _profileDirty;
+    private bool _localIdentityFailed;
 
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -66,12 +76,165 @@ public class BlockEditor : Script
         _inventory.FillStarter();
         InventoryState = _inventory.Serialize();
         ToolState = _tools.Serialize();
+        ProfileReady = false;
+        ProfileError = false;
+    }
+
+    private static string LocalIdentity(string role)
+    {
+        string? slot = Environment.GetEnvironmentVariable(
+            "TALLOWCRAFT_PROFILE_SLOT");
+        return PlayerIdentity.GetOrCreate(GamePaths.PlayerData,
+            string.IsNullOrEmpty(slot) ? role : slot);
+    }
+
+    private bool TryBindProfile(string token)
+    {
+        if (!Scene.IsServer || ProfileReady || ProfileError ||
+            !PlayerIdentity.Valid(token))
+            return false;
+
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world == null || _world.WorldIdentity.Length == 0)
+            return false;
+        string worldId = _world.WorldIdentity;
+        if (!PlayerProfileClaims.TryClaim(worldId, token))
+            return false; // Another live player already owns this profile.
+
+        string folder = _world.PlayerProfilesFolder;
+        try
+        {
+            ProfileLoadResult status = PlayerProfileStore.Load(folder, worldId,
+                token, out BlockInventory savedInventory, out PlayerTools savedTools,
+                out int type, out int shape, out int facing);
+            if (status == ProfileLoadResult.Corrupt)
+            {
+                ProfileError = true;
+                Console.WriteLine("Tallowcraft player save is damaged. " +
+                    "No valid profile backup found; inventory will not be reset.");
+                PlayerProfileClaims.Release(worldId, token);
+                return false;
+            }
+            if (!_inventory.TryLoad(savedInventory.Serialize()) ||
+                !_tools.TryLoad(savedTools.Serialize()))
+                throw new InvalidDataException("Invalid restored player profile.");
+
+            PlaceType = type;
+            PlaceShape = shape;
+            FacingOffset = facing;
+            InventoryState = _inventory.Serialize();
+            ToolState = _tools.Serialize();
+            _profileToken = token;
+            _profileWorldId = worldId;
+            _profileDirectory = folder;
+            _profileSaveClock = 0f;
+            // Persist starter supplies before enabling their use. If this
+            // first write fails, do not grant an unsaved new inventory that
+            // could be granted again on the next reconnect.
+            if (status == ProfileLoadResult.New)
+                PlayerProfileStore.Save(folder, worldId, token,
+                    _inventory, _tools, PlaceType, PlaceShape, FacingOffset);
+            _profileDirty = false;
+            ProfileReady = true;
+            if (status == ProfileLoadResult.Recovered)
+                Console.WriteLine("Tallowcraft recovered a previous player inventory.");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            PlayerProfileClaims.Release(worldId, token);
+            ProfileError = true;
+            Console.WriteLine($"Tallowcraft profile load failed: {exception}");
+            return false;
+        }
+    }
+
+    private void SaveProfile()
+    {
+        if (!Scene.IsServer || !ProfileReady || !_profileDirty)
+            return;
+        try
+        {
+            PlayerProfileStore.Save(_profileDirectory, _profileWorldId,
+                _profileToken, _inventory, _tools, PlaceType,
+                PlaceShape, FacingOffset);
+            _profileDirty = false;
+            _profileSaveClock = 0f;
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine($"Tallowcraft inventory save failed: {exception}");
+        }
+    }
+
+    private void TickProfile(float deltaTime)
+    {
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (ProfileReady && _world != null &&
+            _world.WorldIdentity.Length > 0 &&
+            _profileWorldId != _world.WorldIdentity)
+        {
+            // A seed change starts a different world with its own inventory.
+            SaveProfile();
+            PlayerProfileClaims.Release(_profileWorldId, _profileToken);
+            string token = _profileToken;
+            _profileToken = "";
+            ProfileReady = false;
+            _profileDirty = false;
+            TryBindProfile(token);
+        }
+
+        if (!ProfileReady && !ProfileError &&
+            GameObject.OwnerClientId == 0)
+        {
+            // Host player. Clients request their own profile using an owned RPC.
+            try { TryBindProfile(LocalIdentity("host")); }
+            catch (Exception exception)
+            {
+                ProfileError = true;
+                Console.WriteLine($"Tallowcraft host identity failed: {exception}");
+            }
+        }
+        if (ProfileReady && _profileDirty)
+        {
+            _profileSaveClock += MathF.Max(0f, deltaTime);
+            if (_profileSaveClock >= 30f)
+                SaveProfile();
+        }
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void BindPlayerProfile(string token)
+    {
+        if (!Scene.IsServer || !Scene.IsNetworked ||
+            GameObject.OwnerClientId <= 0 ||
+            RpcSender != GameObject.OwnerClientId ||
+            !PlayerIdentity.Valid(token))
+            return;
+        TryBindProfile(token);
     }
 
     public override void LocalUpdate(float deltaTime)
     {
         if (!IsLocal)
             return;
+
+        if (!Scene.IsServer && Scene.IsNetworked &&
+            !ProfileReady && !ProfileError && !_localIdentityFailed)
+        {
+            _identityRetryClock -= MathF.Max(0f, deltaTime);
+            if (_identityRetryClock <= 0f)
+            {
+                _identityRetryClock = 1f;
+                try { Rpc(nameof(BindPlayerProfile), LocalIdentity("client")); }
+                catch (Exception exception)
+                {
+                    _localIdentityFailed = true;
+                    Console.WriteLine(
+                        $"Tallowcraft local identity unavailable: {exception}");
+                }
+            }
+        }
 
         // LocalControls.Read accumulates yaw/pitch from the Player/Look action
         // even if a script chooses not to rotate its camera. Merely skipping
@@ -114,6 +277,12 @@ public class BlockEditor : Script
 
     public override void OnDestroy()
     {
+        if (Scene.IsServer)
+        {
+            SaveProfile();
+            if (_profileToken.Length != 0)
+                PlayerProfileClaims.Release(_profileWorldId, _profileToken);
+        }
         if (!IsLocal)
             return;
         // A new Play session or reconnect must start with gameplay enabled.
@@ -174,13 +343,15 @@ public class BlockEditor : Script
     [Rpc(RpcTarget.Server)]
     private void CraftRecipe(int recipeId)
     {
-        if (!Scene.IsServer || !InventoryOpen || _craftCooldown > 0f ||
+        if (!Scene.IsServer || !ProfileReady ||
+            !InventoryOpen || _craftCooldown > 0f ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         // No recipe contents or claimed resources are accepted over RPC.
         if (_inventory.TryCraft(recipeId))
         {
             InventoryState = _inventory.Serialize();
+            _profileDirty = true;
             _craftCooldown = 0.12f;
         }
     }
@@ -188,33 +359,41 @@ public class BlockEditor : Script
     [Rpc(RpcTarget.Server)]
     private void EquipTool(int kind)
     {
-        if (!Scene.IsServer || !InventoryOpen ||
+        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         if (_tools.TryEquip((MiningTool)kind))
+        {
             ToolState = _tools.Serialize();
+            _profileDirty = true;
+        }
     }
 
     [Rpc(RpcTarget.Server)]
     private void EquipToolQuick(int kind)
     {
-        if (!Scene.IsServer || InventoryOpen ||
+        if (!Scene.IsServer || !ProfileReady || InventoryOpen ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         if (_tools.TryEquip((MiningTool)kind))
+        {
             ToolState = _tools.Serialize();
+            _profileDirty = true;
+        }
     }
 
     [Rpc(RpcTarget.Server)]
     private void CraftTool(int kind)
     {
-        if (!Scene.IsServer || !InventoryOpen || _craftCooldown > 0f ||
+        if (!Scene.IsServer || !ProfileReady ||
+            !InventoryOpen || _craftCooldown > 0f ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         if (_tools.TryCraft(_inventory, (MiningTool)kind))
         {
             InventoryState = _inventory.Serialize();
             ToolState = _tools.Serialize();
+            _profileDirty = true;
             _craftCooldown = 0.12f;
         }
     }
@@ -250,6 +429,10 @@ public class BlockEditor : Script
         if (!Scene.IsServer)
             return;
 
+        TickProfile(deltaTime);
+        if (!ProfileReady)
+            return;
+
         _cooldown = MathF.Max(0f, _cooldown - deltaTime);
         _craftCooldown = MathF.Max(0f, _craftCooldown - deltaTime);
         _chunkRequestCooldown = MathF.Max(0f, _chunkRequestCooldown - deltaTime);
@@ -262,6 +445,10 @@ public class BlockEditor : Script
             ResetMining();
             return;
         }
+
+        int previousType = PlaceType;
+        int previousShape = PlaceShape;
+        int previousFacing = FacingOffset;
 
         for (int i = 0; i < 6; i++)
             if (input.Pressed((InputButton)((int)InputButton.Custom1 + i)))
@@ -278,6 +465,9 @@ public class BlockEditor : Script
         PlaceType = Math.Clamp(PlaceType, 1, 6);
         PlaceShape = Math.Clamp(PlaceShape, 0, 3);
         FacingOffset &= 3;
+        if (previousType != PlaceType || previousShape != PlaceShape ||
+            previousFacing != FacingOffset)
+            _profileDirty = true;
 
         bool breaking = input.Held(InputButton.Fire);
         bool placing = !breaking && input.Pressed(InputButton.Use);
@@ -342,12 +532,21 @@ public class BlockEditor : Script
             {
                 // Mining adds directly to the same inventory backing the HUD.
                 if (_inventory.TryCollect(new BlockState(previous).Type))
+                {
                     InventoryState = _inventory.Serialize();
+                    _profileDirty = true;
+                }
                 if (_tools.OnBlockMined())
+                {
                     ToolState = _tools.Serialize();
+                    _profileDirty = true;
+                }
             }
             else if (!CreativeMode && _inventory.TrySpend(PlaceType))
+            {
                 InventoryState = _inventory.Serialize();
+                _profileDirty = true;
+            }
 
             _cooldown = MathF.Max(0.05f, EditCooldown);
         }
@@ -441,6 +640,14 @@ public class BlockEditor : Script
     {
         if (!IsLocal)
             return;
+
+        if (!ProfileReady)
+        {
+            GUI.Label(20f, 20f, ProfileError
+                ? "PLAYER SAVE ERROR - check server log and backup files"
+                : "Loading your saved inventory...");
+            return;
+        }
 
         if (IsInventoryVisible)
         {

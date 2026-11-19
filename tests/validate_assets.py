@@ -186,6 +186,17 @@ def verify() -> None:
           and 'InputActions.Pressed("Menu/Inventory")' in menu_script
           and "private void SetInventoryOpen(bool open)" in menu_script,
           "Menu focus must disable look input and use the server-authorized state RPC")
+    check('[Sync] public bool ProfileReady = false' in menu_script
+          and 'private void BindPlayerProfile(string token)' in menu_script
+          and 'PlayerProfileStore.Load(' in menu_script
+          and 'PlayerProfileStore.Save(' in menu_script
+          and 'if (!ProfileReady)' in menu_script
+          and 'GameObject.OwnerClientId <= 0' in menu_script,
+          "Player items must wait for an owner-authorized server profile load")
+    world_source = (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text()
+    check("public string WorldIdentity" in world_source
+          and "public string PlayerProfilesFolder" in world_source,
+          "Player profiles need the server's persistent world identity")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 

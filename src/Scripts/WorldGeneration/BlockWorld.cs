@@ -115,6 +115,12 @@ public class BlockWorld : Script
         _encodedSections = new();
     private string SaveFolder => Path.Combine(
         GamePaths.PlayerData, "tallowcraft", "worlds", "default");
+
+    // Server-only stable identity for player saves. Transient client ids are
+    // never used as inventory filenames: they change when reconnecting.
+    public string WorldIdentity => Scene.IsServer ? _worldId : "";
+    public string PlayerProfilesFolder =>
+        Path.Combine(SaveFolder, "players", _worldId);
     private string CacheFolder => Path.Combine(
         GamePaths.PlayerData, "tallowcraft", "chunk-cache");
     private readonly Dictionary<ChunkKey, LiveChunk> _loaded = new();

@@ -33,6 +33,7 @@ static class Program
             SectionEditTests.Run(Check);
             MiningTests.Run(Check);
             ToolTests.Run(Check);
+            ProfileTests.Run(Check);
             HybridMeshTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
