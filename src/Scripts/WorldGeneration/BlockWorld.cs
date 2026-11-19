@@ -110,6 +110,9 @@ public class BlockWorld : Script
 
     private readonly HashSet<ChunkKey> _clientReady = new();
     private readonly Dictionary<ChunkKey, EditSectionTransfer> _transfers = new();
+    private readonly List<ChunkKey> _transferScratch = new();
+    private readonly Dictionary<ChunkKey, (int Revision, byte[] Bytes, string Hash)>
+        _encodedSections = new();
     private string SaveFolder => Path.Combine(
         GamePaths.PlayerData, "tallowcraft", "worlds", "default");
     private string CacheFolder => Path.Combine(
@@ -292,6 +295,7 @@ public class BlockWorld : Script
                 _publishedSeed = Seed;
                 _worldId = WorldEditSave.NewWorldId();
                 _edits = new BlockEdits();
+                _encodedSections.Clear();
                 _generation++;
                 EditState = WorldMetadata();
                 _exposedBelow.Clear();
@@ -331,6 +335,8 @@ public class BlockWorld : Script
             // belong to stream boundary changes, not every rendered frame.
             CancelObsoleteJobs(cx, cy, cz);
             UnloadDistant(cx, cy, cz);
+            if (!Scene.IsServer)
+                DropDistantTransfers(cx, cy, cz);
         }
         UploadFinished(cx, cy, cz);
         if (_collisionRescan)
@@ -344,6 +350,16 @@ public class BlockWorld : Script
             StartNearestJobs(cx, cy, cz);
         if (!Scene.IsServer)
             RequestWaitingSections(deltaTime);
+    }
+
+    private void DropDistantTransfers(int cx, int cy, int cz)
+    {
+        _transferScratch.Clear();
+        foreach (var item in _transfers)
+            if (!ShouldKeep(item.Key, cx, cy, cz, Math.Clamp(KeepMargin, 0, 3) + 1))
+                _transferScratch.Add(item.Key);
+        foreach (ChunkKey key in _transferScratch)
+            _transfers.Remove(key);
     }
 
     private bool StreamStateChanged(int cx, int cy, int cz)
@@ -865,7 +881,8 @@ public class BlockWorld : Script
         int sent = 0;
         foreach (var pair in _transfers)
         {
-            if (sent >= 2)
+            // One per frame also respects the server's owner-RPC rate limit.
+            if (sent >= 1)
                 break;
             EditSectionTransfer transfer = pair.Value;
             transfer.RetrySeconds -= Math.Max(0f, deltaTime);
@@ -902,8 +919,15 @@ public class BlockWorld : Script
             return;
 
         int revision = _edits.Revision(key);
-        byte[] bytes = EditSectionCodec.Encode(_edits.InSection(key));
-        string hash = EditSectionCodec.Hash(bytes);
+        if (!_encodedSections.TryGetValue(key, out var payload) ||
+            payload.Revision != revision)
+        {
+            byte[] encoded = EditSectionCodec.Encode(_edits.InSection(key));
+            payload = (revision, encoded, EditSectionCodec.Hash(encoded));
+            _encodedSections[key] = payload;
+        }
+        byte[] bytes = payload.Bytes;
+        string hash = payload.Hash;
         if (page == 0 && clientRevision == revision && clientHash == hash)
         {
             Rpc(nameof(ReceiveSectionPage), clientId, key.X, key.Y, key.Z,
@@ -1063,8 +1087,13 @@ public class BlockWorld : Script
 
         var snapshot = _edits.Snapshot;
         int seed = Seed;
+        int searchedThisFrame = 0;
         while (_jobs.Count < workers && _nextCandidate < _candidates.Count)
         {
+            // A newly joining client must not enqueue hundreds of requests or
+            // hit the disk cache for every visible chunk in a single frame.
+            if (!Scene.IsServer && searchedThisFrame++ >= 12)
+                break;
             ChunkKey key = _candidates[_nextCandidate++].Key;
             if (_jobs.ContainsKey(key) ||
                 (_emptyChunks.TryGetValue(key, out int emptyVersion) &&
@@ -1270,6 +1299,7 @@ public class BlockWorld : Script
         UpdateSurfaceOpening(target);
         _generation++;
         ChunkKey section = SectionedEditSnapshot.SectionOf(target);
+        _encodedSections.Remove(section);
         Rpc(nameof(ReceiveSectionDelta), section.X, section.Y, section.Z,
             _edits.Revision(section), (int)EditSectionCodec.Index(target),
             (int)replacement);
