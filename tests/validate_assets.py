@@ -252,7 +252,7 @@ def verify() -> None:
           and "new BlockDamageMesh" in damage_mesh
           and "_damageRenderer.SetMesh(" in preview
           and '_damageRenderer.SetMaterialFloat("damage", stage)' in preview
-          and "Scene.Destroy(overlay)" in preview
+          and "overlay.Destroy()" in preview
           and "_editor.MiningActive" in preview
           and "[Sync] public int MiningX" in editor_script
           and "[Sync] public bool MiningActive" in editor_script,
@@ -291,6 +291,14 @@ def verify() -> None:
           and 'texture "Textures/inventory_icons.png"' in drop_mat
           and "doubleSided 1" in drop_mat and "blend 1" in drop_mat,
           "Pickups need a networked, Jolt-simulated textured prefab")
+    check("Scene.Destroy(" not in preview
+          and "scene.Destroy(" not in drop_script
+          and "Scene.Destroy(" not in drop_script
+          and "overlay.Destroy();" in preview
+          and "item.Destroy();" in drop_script
+          and "GameObject.Destroy();" in drop_script
+          and "_editor is not { } editor" in preview,
+          "Use supported GameObject.Destroy() and guard the nullable editor")
     check('public const int MaxActive = 256' in drop_script
           and 'public const float DespawnAfter = 300f' in drop_script
           and 'private bool TryPickup(GameObject? gameObject)' in drop_script

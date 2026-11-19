@@ -83,7 +83,7 @@ public sealed class WorldDrop : Script
         if (script == null)
         {
             if (scene.IsNetworked) scene.Despawn(item);
-            else scene.Destroy(item);
+            else item.Destroy();
             return false;
         }
 
@@ -157,7 +157,7 @@ public sealed class WorldDrop : Script
         if (Scene.IsNetworked)
             Scene.Despawn(GameObject);
         else
-            Scene.Destroy(GameObject);
+            GameObject.Destroy();
     }
 
     public override void OnDestroy()

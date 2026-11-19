@@ -101,7 +101,7 @@ public class BuildPreview : Script
     public override void OnDestroy()
     {
         if (_damageObject is { IsValid: true } overlay)
-            Scene.Destroy(overlay);
+            overlay.Destroy();
         _damageObject = null;
     }
 
@@ -142,7 +142,7 @@ public class BuildPreview : Script
         // TickInput.Crouch on the server, including for networked clients.
         bool upper = Input.GetKey(KeyCode.LeftControl) ||
             Input.GetKey(KeyCode.RightControl);
-        _selected = BlockState.Create(Math.Clamp(_editor.PlaceType, 1, 6),
+        _selected = BlockState.Create(_editor.PlaceType,
             (BlockShape)Math.Clamp(_editor.PlaceShape, 0, 3), facing, upper);
         bool planned = _world.TryPlanPlacement(_remove, adjacent,
             hitNormal, _selected, out _place, out ushort replacement);
@@ -198,7 +198,7 @@ public class BuildPreview : Script
 
     public override void OnGUI()
     {
-        if (!IsLocal || !_targeted)
+        if (!IsLocal || !_targeted || _editor is not { } editor)
             return;
         string blockName = _selected.Type switch
         {
@@ -216,7 +216,7 @@ public class BuildPreview : Script
             ? stacking
                 ? $"LMB STACK SLAB → FULL  {blockName}  {_place.X}, {_place.Y}, {_place.Z}"
                 : $"LMB PLACE  {blockName} {shapeName}  {_place.X}, {_place.Y}, {_place.Z}"
-            : !_editor.CanPlaceSelected
+            : !editor.CanPlaceSelected
                 ? "LMB PLACE  not enough materials"
                 : "LMB PLACE  blocked");
     }
