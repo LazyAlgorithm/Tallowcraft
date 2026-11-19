@@ -3,7 +3,7 @@ using System;
 namespace WorldGeneration;
 
 /// <summary>
-/// Seeded oak-like voxel trees. Anchor candidates live on an 8x8 world grid
+/// Seeded oak and pine voxel trees. Anchors live on an 8x8 world grid
 /// (one jittered root per cell), so tree shapes never depend on chunk job order.
 /// Canopies may overlap across horizontal chunk boundaries; trunks always take
 /// precedence over leaves. Trunks reuse type 4; opaque leaves use type 9.
@@ -16,7 +16,8 @@ public static class WorldFlora
     private const int CanopyRadius = 2;
     private const int SpawnClearRadius = 60;
 
-    private readonly record struct Tree(int X, int Z, int GroundY, int WoodHeight)
+    private readonly record struct Tree(int X, int Z, int GroundY, int WoodHeight,
+        bool IsPine)
     {
         public int CrownY => GroundY + WoodHeight - 1;
     }
@@ -58,6 +59,7 @@ public static class WorldFlora
         {
             WorldBiomes.Biome.Woodland => 680u,
             WorldBiomes.Biome.Meadow => 120u,
+            WorldBiomes.Biome.Highlands => 240u,
             _ => 0u
         };
         if ((hash & 1023u) >= chance)
@@ -74,14 +76,24 @@ public static class WorldFlora
             Math.Abs(ChunkGenerator.Height(x, z + 1, seed) - ground) > 2)
             return false;
 
-        tree = new Tree(x, z, ground, 4 + (int)((hash >> 16) % 3));
+        bool pine = biome == WorldBiomes.Biome.Highlands ||
+            (biome == WorldBiomes.Biome.Woodland && ((hash >> 24) & 3u) == 0u);
+        tree = new Tree(x, z, ground,
+            pine ? 6 + (int)((hash >> 16) % 3u)
+                : 4 + (int)((hash >> 16) % 3u), pine);
         return true;
     }
 
     public static bool TryTreeAt(int worldX, int worldZ, int seed,
-        out int groundY, out int trunkHeight)
+        out int groundY, out int trunkHeight) =>
+        TryTreeAt(worldX, worldZ, seed,
+            out groundY, out trunkHeight, out _);
+
+    public static bool TryTreeAt(int worldX, int worldZ, int seed,
+        out int groundY, out int trunkHeight, out bool pine)
     {
         groundY = trunkHeight = 0;
+        pine = false;
         int cx = ChunkGenerator.FloorDiv(worldX, CellSize);
         int cz = ChunkGenerator.FloorDiv(worldZ, CellSize);
         if (!TryTreeInCell(cx, cz, seed, out Tree tree) ||
@@ -89,6 +101,7 @@ public static class WorldFlora
             return false;
         groundY = tree.GroundY;
         trunkHeight = tree.WoodHeight;
+        pine = tree.IsPine;
         return true;
     }
 
@@ -100,10 +113,23 @@ public static class WorldFlora
             return Log;
 
         int level = y - tree.CrownY;
-        if (level < -2 || level > 1)
-            return 0;
-        int radius = level >= 0 ? 1 : CanopyRadius;
-        if (dx > radius || dz > radius)
+        int radius;
+        if (tree.IsPine)
+        {
+            // Layered taper gives pine trees an identifiable narrow profile
+            // without adding atlas tiles or relying on transparency.
+            radius = level switch
+            {
+                -5 => 1, -4 => 2, -3 => 1, -2 => 2,
+                -1 => 1, 0 => 1, 1 => 0, _ => -1
+            };
+        }
+        else
+        {
+            radius = level < -2 || level > 1 ? -1
+                : level >= 0 ? 1 : CanopyRadius;
+        }
+        if (radius < 0 || dx > radius || dz > radius)
             return 0;
         if (radius == 2 && dx == 2 && dz == 2)
             return 0;
@@ -202,7 +228,8 @@ public static class WorldFlora
 
         ForNearbyTrees(key, seed, tree =>
         {
-            for (int y = tree.CrownY - 2; y <= tree.CrownY + 1; y++)
+            for (int y = tree.CrownY - (tree.IsPine ? 5 : 2);
+                 y <= tree.CrownY + 1; y++)
             for (int z = tree.Z - CanopyRadius; z <= tree.Z + CanopyRadius; z++)
             for (int x = tree.X - CanopyRadius; x <= tree.X + CanopyRadius; x++)
                 if (ShapeAt(tree, x, y, z) == Leaves)
