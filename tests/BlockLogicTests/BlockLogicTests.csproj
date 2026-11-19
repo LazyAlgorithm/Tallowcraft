@@ -13,6 +13,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/BlockInventory.cs" Link="BlockInventory.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/CraftingRecipes.cs" Link="CraftingRecipes.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockMining.cs" Link="BlockMining.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/PlayerTools.cs" Link="PlayerTools.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockState.cs" Link="BlockState.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockPlacement.cs" Link="BlockPlacement.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockTextureAtlas.cs" Link="BlockTextureAtlas.cs" />

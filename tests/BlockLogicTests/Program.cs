@@ -30,6 +30,7 @@ static class Program
             ChunkSchedulingTests.Run(Check);
             InventoryTests.Run(Check);
             MiningTests.Run(Check);
+            ToolTests.Run(Check);
             HybridMeshTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();

@@ -4,8 +4,8 @@ namespace WorldGeneration;
 
 /// <summary>
 /// Shared, deterministic hardness values. Only the server advances breaking
-/// progress; a future equipment slot can select a tool without changing the
-/// material or networking protocol.
+/// progress; the equipped server-owned tool modifies the mining time without
+/// changing the voxel material or edit network protocol.
 /// </summary>
 public enum MiningTool : byte { Hand, Pickaxe, Axe, Shovel }
 

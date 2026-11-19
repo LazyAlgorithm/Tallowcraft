@@ -20,6 +20,7 @@ public class BlockEditor : Script
     [Sync] public int FacingOffset = 0;
     [Sync] public bool CreativeMode = true;
     [Sync] public string InventoryState = "";
+    [Sync] public string ToolState = "";
     [Sync] public bool InventoryOpen = false;
     // Quantized to ten-percent steps to avoid flooding player snapshots.
     [Sync] public int MiningPercent = 0;
@@ -38,6 +39,9 @@ public class BlockEditor : Script
     private float _craftCooldown;
     private readonly BlockInventory _inventory = new();
     private readonly BlockInventory _displayInventory = new();
+    private readonly PlayerTools _tools = new();
+    private readonly PlayerTools _displayTools = new();
+    private string _displayToolSnapshot = "";
     private string _displaySnapshot = "";
     private bool _miningActive;
     private BlockPosition _miningPosition;
@@ -55,6 +59,7 @@ public class BlockEditor : Script
             return;
         _inventory.FillStarter();
         InventoryState = _inventory.Serialize();
+        ToolState = _tools.Serialize();
     }
 
     public override void LocalUpdate(float deltaTime)
@@ -81,6 +86,17 @@ public class BlockEditor : Script
             _displaySnapshot = InventoryState;
         }
         return _displayInventory.Count(type);
+    }
+
+    /// <summary>Read the synchronized equipment state for the local HUD.</summary>
+    private PlayerTools DisplayTools()
+    {
+        if (ToolState != _displayToolSnapshot)
+        {
+            _displayTools.TryLoad(ToolState);
+            _displayToolSnapshot = ToolState;
+        }
+        return _displayTools;
     }
 
     public bool CanPlaceSelected => CreativeMode || AvailableCount(PlaceType) > 0;
@@ -112,6 +128,30 @@ public class BlockEditor : Script
         if (_inventory.TryCraft(recipeId))
         {
             InventoryState = _inventory.Serialize();
+            _craftCooldown = 0.12f;
+        }
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void EquipTool(int kind)
+    {
+        if (!Scene.IsServer || !InventoryOpen ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        if (_tools.TryEquip((MiningTool)kind))
+            ToolState = _tools.Serialize();
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void CraftTool(int kind)
+    {
+        if (!Scene.IsServer || !InventoryOpen || _craftCooldown > 0f ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        if (_tools.TryCraft(_inventory, (MiningTool)kind))
+        {
+            InventoryState = _inventory.Serialize();
+            ToolState = _tools.Serialize();
             _craftCooldown = 0.12f;
         }
     }
@@ -198,8 +238,9 @@ public class BlockEditor : Script
 
             _miningElapsed += MathF.Max(0f, deltaTime);
             MiningType = new BlockState(state).Type;
-            MiningPercent = BlockMining.Percent(_miningElapsed, state) / 10 * 10;
-            if (_miningElapsed < BlockMining.Seconds(state))
+            MiningPercent = BlockMining.Percent(_miningElapsed, state,
+                _tools.Equipped) / 10 * 10;
+            if (_miningElapsed < BlockMining.Seconds(state, _tools.Equipped))
                 return;
         }
         else if (!CreativeMode && !_inventory.CanSpend(PlaceType))
@@ -214,6 +255,8 @@ public class BlockEditor : Script
                 // Mining adds directly to the same inventory backing the HUD.
                 if (_inventory.TryCollect(new BlockState(previous).Type))
                     InventoryState = _inventory.Serialize();
+                if (_tools.OnBlockMined())
+                    ToolState = _tools.Serialize();
             }
             else if (!CreativeMode && _inventory.TrySpend(PlaceType))
                 InventoryState = _inventory.Serialize();
@@ -226,7 +269,7 @@ public class BlockEditor : Script
 
     private void DrawInventory()
     {
-        const float width = 528f, height = 438f;
+        const float width = 528f, height = 628f;
         float left = MathF.Max(8f, (GUI.Width - width) * 0.5f);
         float top = MathF.Max(8f, (GUI.Height - height) * 0.5f);
         GUI.Box(left, top, width, height,
@@ -268,8 +311,42 @@ public class BlockEditor : Script
                     available ? "Craft" : "Need items") && available)
                 Rpc(nameof(CraftRecipe), recipe.Id);
         }
-        GUI.Label(left + 18, top + 416,
-            "TAB closes  •  Mine with RMB  •  Click Craft to request from server");
+        GUI.Label(left + 18, top + 421, "MINING TOOLS");
+        PlayerTools equipped = DisplayTools();
+        for (int i = 1; i <= 3; i++)
+        {
+            MiningTool tool = (MiningTool)i;
+            float y = top + 442 + (i - 1) * 50;
+            int life = equipped.Durability(tool);
+            int max = PlayerTools.MaxDurability(tool);
+            PlayerTools.Recipe(tool, out int a, out int countA,
+                out int b, out int countB);
+            bool canCraft = AvailableCount(a) >= countA &&
+                AvailableCount(b) >= countB && life < max;
+
+            GUI.Box(left + 17, y, width - 34, 46,
+                new Color(.13f, .16f, .17f, .95f));
+            GUI.Label(left + 26, y + 4,
+                $"{PlayerTools.Name(tool)}  {life}/{max}");
+            GUI.Label(left + 26, y + 26,
+                $"{countA} Stone + {countB} Planks  •  " +
+                (life > 0 ? "craft again to repair" : "craft to unlock"));
+
+            if (life > 0 && GUI.Button(left + width - 199, y + 9, 78, 28,
+                    equipped.Equipped == tool ? "Equipped" : "Equip") &&
+                equipped.Equipped != tool)
+                Rpc(nameof(EquipTool), i);
+            if (GUI.Button(left + width - 109, y + 9, 77, 28,
+                    life == max ? "Full" :
+                    canCraft ? life > 0 ? "Repair" : "Craft" : "No items") &&
+                canCraft)
+                Rpc(nameof(CraftTool), i);
+        }
+        if (GUI.Button(left + width - 204, top + 596, 172, 24,
+                equipped.Equipped == MiningTool.Hand ? "Using hands" : "Use hands"))
+            Rpc(nameof(EquipTool), 0);
+        GUI.Label(left + 18, top + 601,
+            "TAB closes   •   Tools wear out when mining");
     }
 
     public override void OnGUI()
@@ -288,9 +365,9 @@ public class BlockEditor : Script
         const float width = 63f, gap = 5f;
         float total = 6 * width + 5 * gap;
         float left = MathF.Max(8f, (GUI.Width - total) * 0.5f);
-        float top = MathF.Max(20f, GUI.Height - 126f);
+        float top = MathF.Max(20f, GUI.Height - 148f);
 
-        GUI.Box(left - 10, top - 37, total + 20, 151,
+        GUI.Box(left - 10, top - 37, total + 20, 166,
             new Color(0.03f, 0.04f, 0.06f, 0.72f));
         GUI.Label(left + 8, top - 31,
             "TALLOWCRAFT        LMB PLACE   HOLD RMB TO MINE");
@@ -313,8 +390,14 @@ public class BlockEditor : Script
             MiningType is >= 1 and <= 9
                 ? $"Mining {BlockNames[MiningType - 1]}: {MiningPercent}%"
                 : $"Coal {AvailableCount(7)}   Iron {AvailableCount(8)}   Leaves {AvailableCount(9)}");
-        GUI.Label(left + 4, top + 103, CreativeMode
-            ? "Creative building ON  •  crafting still uses your inventory"
+        PlayerTools tools = DisplayTools();
+        MiningTool equipped = tools.Equipped;
+        GUI.Label(left + 4, top + 103,
+            $"Tool: {PlayerTools.Name(equipped)}" +
+            (equipped == MiningTool.Hand ? "" :
+                $"  {tools.Durability(equipped)}/{PlayerTools.MaxDurability(equipped)}"));
+        GUI.Label(left + 4, top + 121, CreativeMode
+            ? "Creative building ON  •  crafting uses materials"
             : "Survival building ON  •  mining collects materials");
         GUI.Label(GUI.Width * .5f - 4f, GUI.Height * .5f - 8f, "+");
     }
