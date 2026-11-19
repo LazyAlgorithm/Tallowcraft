@@ -94,17 +94,11 @@ internal static class MeshBenchmarks
             for (int cz = -12; cz <= 12 && keys.Count < 16; cz++)
             for (int cx = -12; cx <= 12 && keys.Count < 16; cx++)
             {
-                bool found = ruin
-                    ? WorldDecorations.TryRuinCellRoot(cx, cz, seed,
-                        out BlockPosition _)
-                    : WorldDecorations.TryBushCellRoot(cx, cz, seed,
-                        out BlockPosition _);
-                if (!found) continue;
                 BlockPosition root;
-                if (ruin)
-                    WorldDecorations.TryRuinCellRoot(cx, cz, seed, out root);
-                else
-                    WorldDecorations.TryBushCellRoot(cx, cz, seed, out root);
+                bool found = ruin
+                    ? WorldDecorations.TryRuinCellRoot(cx, cz, seed, out root)
+                    : WorldDecorations.TryBushCellRoot(cx, cz, seed, out root);
+                if (!found) continue;
                 ChunkKey key = new(
                     ChunkGenerator.FloorDiv(root.X, ChunkGenerator.Size),
                     ChunkGenerator.FloorDiv(root.Y, ChunkGenerator.Size),
