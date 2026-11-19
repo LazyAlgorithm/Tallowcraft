@@ -70,6 +70,10 @@ public static class WorldDecorations
         for (int dx = -RuinRadius; dx <= RuinRadius; dx++)
             if (Math.Abs(ChunkGenerator.Height(x + dx, z + dz, seed) - ground) > 1)
                 return false;
+        // The south-facing entrance must not be obstructed by a neighboring
+        // terrain step even though the rest of the foundation is level enough.
+        if (ChunkGenerator.Height(x, z - RuinRadius, seed) > ground)
+            return false;
 
         ruin = new Ruin(x, z, ground);
         return true;
