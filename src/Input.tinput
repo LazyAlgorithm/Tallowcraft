@@ -23,7 +23,7 @@ bind mouse 0
 bind key E
 bind pad North
 action Reload button
-bind key R
+bind key Tab
 bind pad West
 action Ability1 button
 bind key Q

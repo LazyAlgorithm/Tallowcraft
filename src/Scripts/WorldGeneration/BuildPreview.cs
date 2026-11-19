@@ -39,7 +39,7 @@ public class BuildPreview : Script
         _editor ??= GameObject.GetComponent<BlockEditor>();
         if (_camera is not { IsValid: true })
             _camera = Scene.Find("Main Camera");
-        if (_world == null || _editor == null ||
+        if (_world == null || _editor == null || _editor.InventoryOpen ||
             _camera is not { IsValid: true } camera)
             return;
 

@@ -99,7 +99,51 @@ internal static class InventoryTests
         check(survival.TryCollect(5) && survival.TrySpend(5),
             "A mined forge can be placed again without duplication");
 
+        // Recipes live in pure game logic. The server, not an RPC payload,
+        // chooses ingredient costs, outputs and quantities.
+        var crafting = new BlockInventory();
+        crafting.FillStarter();
+        check(crafting.CanCraft(1) && crafting.TryCraft(1) &&
+            crafting.Count(4) == 31 && crafting.Count(6) == 68,
+            "One log becomes four planks and charges exactly one log");
+        string craftedState = crafting.Serialize();
+        var joinedClient = new BlockInventory();
+        check(joinedClient.TryLoad(craftedState) &&
+            joinedClient.Count(4) == 31 && joinedClient.Count(6) == 68,
+            "Late-join inventory replication includes authoritative crafts");
+        check(!crafting.TryCraft(0) && !crafting.TryCraft(999) &&
+            crafting.Serialize() == craftedState,
+            "Invalid or forged recipe IDs cannot change material counts");
+
+        var shortage = new BlockInventory();
+        check(shortage.TryCollect(2, 2) && !shortage.TryCraft(2) &&
+            shortage.Count(2) == 2 && shortage.Count(1) == 0,
+            "Missing secondary ingredient must not consume primary ingredient");
+        check(shortage.TryCollect(9) && shortage.TryCraft(2) &&
+            shortage.Count(2) == 0 && shortage.Count(9) == 0 &&
+            shortage.Count(1) == 2,
+            "Grass recipe consumes two dirt and one leaves for two grass");
+
+        var forge = new BlockInventory();
+        check(forge.TryCollect(3, 8) && forge.TryCollect(8, 2) &&
+            forge.TryCraft(3) && forge.Count(5) == 1 &&
+            forge.Count(3) == 0 && forge.Count(8) == 0,
+            "Forge recipe consumes stone and iron atomically");
+
+        var saturated = new BlockInventory();
+        check(saturated.TryCollect(4) &&
+            saturated.TryCollect(6, BlockInventory.MaxPerType),
+            "Craft overflow case prepares full output stack");
+        string unchanged = saturated.Serialize();
+        check(!saturated.CanCraft(1) && !saturated.TryCraft(1) &&
+            saturated.Serialize() == unchanged,
+            "Full output inventory must not consume logs or overflow");
+        check(saturated.TrySpend(6, 4) && saturated.TryCraft(1) &&
+            saturated.Count(6) == BlockInventory.MaxPerType &&
+            saturated.Count(4) == 0,
+            "Craft accepts exact remaining output capacity");
+
         Console.WriteLine(
-            "PASS: validated material inventory snapshots, mining rewards and survival placement costs");
+            "PASS: validated inventory snapshots, atomic server crafting, mining rewards and placement costs");
     }
 }

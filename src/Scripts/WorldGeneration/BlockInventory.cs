@@ -53,6 +53,49 @@ public sealed class BlockInventory
         return true;
     }
 
+    /// <summary>
+    /// Server-side preflight for a recipe. Covers combined ingredient costs
+    /// and resulting stack capacity before any counts are changed.
+    /// </summary>
+    public bool CanCraft(int recipeId)
+    {
+        CraftingRecipe? recipe = CraftingRecipes.Find(recipeId);
+        if (recipe == null)
+            return false;
+
+        int requiredA = recipe.CountA +
+            (recipe.InputB == recipe.InputA ? recipe.CountB : 0);
+        if (!CanSpend(recipe.InputA, requiredA) ||
+            (recipe.InputB != 0 && recipe.InputB != recipe.InputA &&
+             !CanSpend(recipe.InputB, recipe.CountB)))
+            return false;
+
+        int outputBase = Count(recipe.Output);
+        if (recipe.Output == recipe.InputA)
+            outputBase -= recipe.CountA;
+        if (recipe.Output == recipe.InputB)
+            outputBase -= recipe.CountB;
+
+        return outputBase >= 0 &&
+            recipe.CountOut <= MaxPerType - outputBase;
+    }
+
+    /// <summary>
+    /// Atomic craft: a forged recipe ID, shortage or full output stack cannot
+    /// consume even one ingredient. Call only on the authoritative server.
+    /// </summary>
+    public bool TryCraft(int recipeId)
+    {
+        if (!CanCraft(recipeId))
+            return false;
+        CraftingRecipe recipe = CraftingRecipes.Find(recipeId)!;
+        _counts[recipe.InputA] -= recipe.CountA;
+        if (recipe.InputB != 0)
+            _counts[recipe.InputB] -= recipe.CountB;
+        _counts[recipe.Output] += recipe.CountOut;
+        return true;
+    }
+
     public string Serialize() =>
         "1|" + string.Join(",", _counts[1..]);
 

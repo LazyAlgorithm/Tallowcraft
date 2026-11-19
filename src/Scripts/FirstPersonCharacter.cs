@@ -88,6 +88,10 @@ public class FirstPersonCharacter : Script
         if (Scene.IsNetworked && !Scene.IsServer && !ControlsCamera)
             return;
 
+        // The replicated inventory menu also blocks movement on the server;
+        // unlocking the pointer must never let UI clicks move the player.
+        bool browsingInventory =
+            GameObject.GetComponent<BlockEditor>()?.InventoryOpen == true;
         if (GetCharacterController() is { } controller)
         {
             // Only the authoritative server relocates new player instances.
@@ -112,9 +116,10 @@ public class FirstPersonCharacter : Script
                     _spawnAligned = controller.Teleport(position);
             }
 
-            float speed = input.Crouch ? CrouchSpeed : input.Sprint ? SprintSpeed : WalkSpeed;
+            float speed = browsingInventory ? 0f :
+                input.Crouch ? CrouchSpeed : input.Sprint ? SprintSpeed : WalkSpeed;
             controller.SimpleMove(input.MoveDirection * speed, deltaTime,
-                input.Pressed(InputButton.Jump) ? JumpSpeed : 0f);
+                !browsingInventory && input.Pressed(InputButton.Jump) ? JumpSpeed : 0f);
             controller.SetHeight(input.Crouch ? CrouchHeight : StandHeight, StandHeight);
 
             float target = EyeHeight - (StandHeight - controller.Height);
@@ -142,7 +147,8 @@ public class FirstPersonCharacter : Script
             _eyeNow = Mathf.Lerp(_eyeStart, _eyeTarget, t);
         }
 
-        Transform.Rotation = RotationMath.EulerDegrees(new Vector3(0f, input.Yaw, 0f));
+        if (!browsingInventory)
+            Transform.Rotation = RotationMath.EulerDegrees(new Vector3(0f, input.Yaw, 0f));
 
         if (!ControlsCamera)
             return;
@@ -157,7 +163,8 @@ public class FirstPersonCharacter : Script
         if (_camera is { } camera && camera.IsValid)
         {
             camera.Transform.Position = Transform.Position + new Vector3(0f, _eyeNow, 0f);
-            camera.Transform.Rotation = input.LookRotation;
+            if (!browsingInventory)
+                camera.Transform.Rotation = input.LookRotation;
         }
     }
 }
