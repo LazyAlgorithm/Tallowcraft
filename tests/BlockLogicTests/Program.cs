@@ -29,6 +29,7 @@ static class Program
             DecorationTests.Run(Check);
             ChunkSchedulingTests.Run(Check);
             InventoryTests.Run(Check);
+            SectionEditTests.Run(Check);
             MiningTests.Run(Check);
             ToolTests.Run(Check);
             HybridMeshTests.Run(Check);

@@ -10,6 +10,10 @@
     <Using Include="System.Numerics" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockPosition.cs" Link="BlockPosition.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockEdits.cs" Link="BlockEdits.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/SectionedEditSnapshot.cs" Link="SectionedEditSnapshot.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/EditSectionCodec.cs" Link="EditSectionCodec.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/EditSectionTransfer.cs" Link="EditSectionTransfer.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WorldEditSave.cs" Link="WorldEditSave.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockInventory.cs" Link="BlockInventory.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/CraftingRecipes.cs" Link="CraftingRecipes.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockMining.cs" Link="BlockMining.cs" />

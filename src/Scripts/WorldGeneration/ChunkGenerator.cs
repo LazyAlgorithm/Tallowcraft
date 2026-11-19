@@ -35,7 +35,9 @@ public static class ChunkGenerator
         int z0 = key.Z * Size - 1;
         int x1 = (key.X + 1) * Size;
         int z1 = (key.Z + 1) * Size;
-        foreach (var pair in edits)
+        var nearby = edits is SectionedEditSnapshot sections
+            ? sections.Around(key) : edits;
+        foreach (var pair in nearby)
         {
             BlockPosition p = pair.Key;
             if (p.Y >= y0 && p.Y <= y1 &&
@@ -107,7 +109,9 @@ public static class ChunkGenerator
         if (WorldFlora.HasBlocksInChunk(key, seed) ||
             WorldDecorations.HasBlocksInChunk(key, seed))
             return true;
-        foreach (var edit in edits)
+        var candidates = edits is SectionedEditSnapshot sections
+            ? sections.InSection(key) : edits;
+        foreach (var edit in candidates)
             if (edit.Value != 0 &&
                 FloorDiv(edit.Key.X, Size) == key.X &&
                 FloorDiv(edit.Key.Y, Size) == key.Y &&
@@ -202,7 +206,9 @@ public static class ChunkGenerator
         WorldDecorations.DecorateChunk(key, seed, blocks);
 
         // Copy-on-write edit dictionaries are immutable for worker lifetimes.
-        foreach (var pair in edits)
+        var localEdits = edits is SectionedEditSnapshot sections
+            ? sections.InSection(key) : edits;
+        foreach (var pair in localEdits)
         {
             BlockPosition p = pair.Key;
             if (FloorDiv(p.Y, Size) != key.Y ||

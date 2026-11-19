@@ -37,6 +37,7 @@ public class BlockEditor : Script
     private BlockWorld? _world;
     private float _cooldown;
     private float _craftCooldown;
+    private float _chunkRequestCooldown;
     private readonly BlockInventory _inventory = new();
     private readonly BlockInventory _displayInventory = new();
     private readonly PlayerTools _tools = new();
@@ -156,6 +157,32 @@ public class BlockEditor : Script
         }
     }
 
+    /// <summary>Client-owned requests for one page of a nearby edited section.</summary>
+    public void RequestWorldSection(ChunkKey key, int page,
+        int cachedRevision, string cachedHash)
+    {
+        if (!IsLocal || Scene.IsServer || !Scene.IsNetworked ||
+            page < 0 || page >= 64)
+            return;
+        Rpc(nameof(RequestWorldSectionOnServer), key.X, key.Y, key.Z,
+            page, cachedRevision, cachedHash);
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void RequestWorldSectionOnServer(int x, int y, int z,
+        int page, int cachedRevision, string cachedHash)
+    {
+        if (!Scene.IsServer || !Scene.IsNetworked ||
+            RpcSender != GameObject.OwnerClientId ||
+            _chunkRequestCooldown > 0f || page < 0 || page >= 64 ||
+            cachedHash.Length > 64)
+            return;
+        _chunkRequestCooldown = 0.01f;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        _world?.SendSectionPage(RpcSender, new ChunkKey(x, y, z),
+            page, cachedRevision, cachedHash);
+    }
+
     public override void Update(TickInput input, float deltaTime)
     {
         if (!Scene.IsServer)
@@ -163,6 +190,7 @@ public class BlockEditor : Script
 
         _cooldown = MathF.Max(0f, _cooldown - deltaTime);
         _craftCooldown = MathF.Max(0f, _craftCooldown - deltaTime);
+        _chunkRequestCooldown = MathF.Max(0f, _chunkRequestCooldown - deltaTime);
 
         if (input.Pressed(InputButton.Reload))
         {

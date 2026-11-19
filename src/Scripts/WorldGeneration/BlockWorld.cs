@@ -790,6 +790,30 @@ public class BlockWorld : Script
             else if (!live.Dirty)
                 continue;
 
+            // Neighboring edit state must be authorized before meshing:
+            // otherwise a changed block on a chunk seam could render as its
+            // original terrain until that neighboring chunk is visited.
+            if (!Scene.IsServer)
+            {
+                bool neighborsReady = true;
+                ChunkKey[] neighbors =
+                {
+                    new(key.X - 1, key.Y, key.Z),
+                    new(key.X + 1, key.Y, key.Z),
+                    new(key.X, key.Y - 1, key.Z),
+                    new(key.X, key.Y + 1, key.Z),
+                    new(key.X, key.Y, key.Z - 1),
+                    new(key.X, key.Y, key.Z + 1)
+                };
+                foreach (ChunkKey near in neighbors)
+                    if (near.Y >= ChunkGenerator.MinChunkY &&
+                        near.Y <= ChunkGenerator.MaxChunkY &&
+                        !EnsureSectionReady(near))
+                        neighborsReady = false;
+                if (!neighborsReady)
+                    continue;
+            }
+
             int version = VersionFor(key);
             CancellationTokenSource cancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
