@@ -62,7 +62,8 @@ public class BuildPreview : Script
         bool planned = _world.TryPlanPlacement(_remove, adjacent,
             hitNormal, _selected, out _place, out ushort replacement);
         _placeState = planned ? new BlockState(replacement) : _selected;
-        _canPlace = planned && _world.CanPlaceAt(_place, replacement);
+        _canPlace = planned && _editor.CanPlaceSelected &&
+            _world.CanPlaceAt(_place, replacement);
 
         DrawShape(_remove, new BlockState(_world.BlockAt(_remove)),
             new Color(1f, .25f, .18f, 1f));
@@ -119,6 +120,8 @@ public class BuildPreview : Script
             ? stacking
                 ? $"LMB STACK SLAB → FULL  {blockName}  {_place.X}, {_place.Y}, {_place.Z}"
                 : $"LMB PLACE  {blockName} {shapeName}  {_place.X}, {_place.Y}, {_place.Z}"
-            : "LMB PLACE  blocked");
+            : !_editor.CanPlaceSelected
+                ? "LMB PLACE  not enough materials"
+                : "LMB PLACE  blocked");
     }
 }
