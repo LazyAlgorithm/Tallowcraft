@@ -9,6 +9,16 @@ namespace WorldGeneration;
 /// </summary>
 public static class ChunkScheduling
 {
+    /// <summary>
+    /// Underground chunks are sealed from a surface viewer by Y=0 stone.
+    /// They only become relevant when the viewer descends near the seam or
+    /// mining has opened a visible shaft into their horizontal chunk.
+    /// Above-ground layers still use normal visibility and occupancy checks.
+    /// </summary>
+    public static bool HiddenBelowSurface(ChunkKey key,
+        float viewerWorldY, bool openedByEdit) =>
+        key.Y < 0 && viewerWorldY >= 5f && !openedByEdit;
+
     public static long Priority(ChunkKey key, int centerX, int centerY,
         int centerZ, int collisionRadius)
     {
