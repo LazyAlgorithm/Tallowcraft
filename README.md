@@ -171,14 +171,22 @@ existing owner-authorized `BlockEditor` server RPCs.
 
 * 9-slot icon HUD, selected slot border, item counts, mining/creative status,
   held material, selected shape, and equipped tool durability.
-* 36 inventory slots with actual item images. Select a source stack, click a
-  destination; toggle **Move half** to split. Use **Set hotbar active** on a
-  selected hotbar slot, or mouse wheel during gameplay. The .tui API exposes
+* 36 inventory slots with actual item images: **three backpack rows
+  (slots 9–35) first, then the nine-slot hotbar (slots 0–8) below the
+  divider**, matching the Minecraft-style inventory order. Selecting a
+  source and destination moves an item; **Move half** splits stacks.
+  **Set hotbar active** selects a hotbar slot, or use the mouse wheel in
+  gameplay. The .tui API exposes
   click events but no native drag-and-drop hook, so click/click replaces
   the former immediate-mode drag gesture.
 * Dedicated tabs for crafting, forge smelting/iron tools, and nearby chest
   storage (27 slots). Content is synchronized with the server, not stored
   in the UI. Close with Tab, Escape, controller Cancel or X.
+* The planks icon is now a valid 32×32 RGBA pixel-art cube (the original
+  PNG had a corrupt image-data stream and displayed as a white square).
+  Asset validation now checks its PNG chunk CRCs and decoded scanlines.
+* The inventory and crafting columns use explicit heights with compact
+  crafting/tool rows so neither panel extends below the main dialogue.
 * 10 cropped icon PNGs in `src/Textures/UI`, plus
   `src/Textures/chest_item.png`, using nearest filtering, no compression,
   and no mipmaps. The original gameplay sprite atlas stays unchanged.

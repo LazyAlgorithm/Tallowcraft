@@ -57,8 +57,10 @@ public sealed class TallowcraftUI : Script
     private static bool ParseSlot(string id, out int slot)
     {
         slot = -1;
-        // p0_0..p3_8 = player slots 0..35, c0_0..c2_8
-        // = chest slots 36..62. h_0..h_8 is only the HUD display.
+        // Visual rows p0..p2 show backpack slots 9..35; p3 is the
+        // nine-slot hotbar (inventory slots 0..8), below the divider.
+        // c0..c2 are chest slots 36..62; h_0_* is the gameplay HUD.
+        // Map only the presentation, never move or migrate saved items.
         if (id.StartsWith("h_", StringComparison.Ordinal))
             return false;
         if (id.Length != 4 || id[2] != '_' ||
@@ -66,14 +68,17 @@ public sealed class TallowcraftUI : Script
             return false;
         int row = id[1] - '0', col = id[3] - '0';
         if (id[0] == 'p')
-            slot = row*9+col;
+            slot = row == 3 ? col : 9 + row*9 + col;
         else if (id[0] == 'c' && row < 3)
             slot = 36+row*9+col;
         return slot >= 0;
     }
 
     private static string PlayerId(int slot) =>
-        $"p{slot/9}_{slot%9}";
+        slot < BlockInventory.HotbarSlots
+            ? $"p3_{slot}"
+            : $"p{(slot-BlockInventory.HotbarSlots)/9}_" +
+              $"{(slot-BlockInventory.HotbarSlots)%9}";
 
     private static string ChestId(int slot) =>
         $"c{slot/9}_{slot%9}";
@@ -163,7 +168,7 @@ public sealed class TallowcraftUI : Script
         {
             bool active = _owner != null && _owner.SelectedHotbar == i;
             Visible("h_0_"+i+"_selected", active);
-            Visible("p0_"+i+"_selected", _source == i || active);
+            Visible("p3_"+i+"_selected", _source == i || active);
         }
         for (int i = 9; i < BlockInventory.SlotCount; i++)
             Visible(PlayerId(i)+"_selected", _source == i);

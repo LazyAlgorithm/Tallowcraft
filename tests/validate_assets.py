@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import struct
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = ROOT / "src/Models/QuaterniusBaseCharacter.glb"
@@ -312,6 +313,60 @@ def verify() -> None:
         check(any(x.attrib.get("src") == "Textures/UI/"+icon+".png"
                   for x in ui.iter("image")),
               "TUI must show generated item icon: "+icon)
+    # A PNG can have a correct signature and IHDR but a corrupt IDAT.
+    # The previous planks image passed the header checks yet rendered as a
+    # white square. Validate the image's CRCs and decompressed scanlines.
+    plank_png = (ROOT / "src/Textures/UI/planks.png").read_bytes()
+    check(plank_png[24:26] == bytes([8, 6]),
+          "Planks icon must be an RGBA8 PNG with transparent background")
+    chunk_offset, compressed, reached_end = 8, bytearray(), False
+    while chunk_offset + 12 <= len(plank_png):
+        length = struct.unpack_from(">I", plank_png, chunk_offset)[0]
+        chunk_offset += 4
+        typ = plank_png[chunk_offset:chunk_offset + 4]
+        chunk_offset += 4
+        check(length <= len(plank_png) - chunk_offset - 4,
+              "Planks icon has a truncated PNG chunk")
+        payload = plank_png[chunk_offset:chunk_offset + length]
+        chunk_offset += length
+        crc = struct.unpack_from(">I", plank_png, chunk_offset)[0]
+        chunk_offset += 4
+        check(zlib.crc32(typ + payload) & 0xffffffff == crc,
+              "Planks icon has a corrupt PNG chunk CRC")
+        if typ == b"IDAT":
+            compressed.extend(payload)
+        if typ == b"IEND":
+            reached_end = True
+            break
+    check(reached_end and bool(compressed) and
+          chunk_offset == len(plank_png),
+          "Planks icon is missing image data or its closing PNG chunk")
+    try:
+        scanlines = zlib.decompress(compressed)
+    except zlib.error:
+        scanlines = b""
+    check(len(scanlines) == 32 * (1 + 32 * 4) and
+          len(set(scanlines)) > 16,
+          "Planks icon pixel data is unreadable or blank")
+
+    # Only reorder the visual grid. The persistent server inventory must
+    # still own indices 0..8 as the hotbar and 9..35 as the backpack.
+    check("slot = row == 3 ? col : 9 + row*9 + col;" in ui_source
+          and 'slot < BlockInventory.HotbarSlots' in ui_source
+          and 'Visible("p3_"+i+"_selected"' in ui_source
+          and "HOTBAR  /  SLOTS 1–9" in ui_file.read_text()
+          and all(ui.find(".//*[@id='p3_" + str(i) + "']") is not None
+                  for i in range(9)),
+          "The bottom row below the divider must be the real hotbar")
+    check(".menu-content { flex-direction: row; gap: 18; height: 538 }"
+              in ui_style
+          and ".player-column { width: 610; height: 538;"
+              in ui_style
+          and ".detail-column { width: 422; height: 538;"
+              in ui_style
+          and ".detail { gap: 9; width: 100% }" in ui_style
+          and "height: 100%" not in ui_style.split(".player-column")[1].split("}")[0],
+          "Inventory and crafting panels must fit within the outer frame")
     check(any(x.attrib.get("src") == "Textures/chest_item.png"
               for x in ui.iter("image")) and
           "onclick=\"OnSlot\"" in ui_file.read_text() and
