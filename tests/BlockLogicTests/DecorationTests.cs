@@ -12,6 +12,8 @@ internal static class DecorationTests
         var bushes = new List<BlockPosition>();
         bool horizontalRuinSeam = false;
         bool verticalRuinSeam = false;
+        BlockPosition nearestRuin = default;
+        long nearestDistanceSquared = long.MaxValue;
 
         // Enumerate feature CELLS, not every voxel, to keep tests fast.
         for (int cz = -24; cz <= 24; cz++)
@@ -21,6 +23,13 @@ internal static class DecorationTests
                 out BlockPosition root))
                 continue;
             ruins.Add(root);
+            long distanceSquared = (long)root.X * root.X +
+                (long)root.Z * root.Z;
+            if (distanceSquared < nearestDistanceSquared)
+            {
+                nearestDistanceSquared = distanceSquared;
+                nearestRuin = root;
+            }
             check(WorldDecorations.TryRuinAt(root.X, root.Z, seed, out int y)
                 && y == root.Y,
                 "Ruin root must be discoverable from absolute coordinates");
@@ -133,6 +142,6 @@ internal static class DecorationTests
             "Decorations must not obstruct the initial spawn");
 
         Console.WriteLine(
-            $"PASS: shrub and ruin world-generation tests (ruins={ruins.Count}, bushes={bushes.Count})");
+            $"PASS: shrub and ruin world-generation tests (ruins={ruins.Count}, bushes={bushes.Count}, nearestRuin={nearestRuin.X},{nearestRuin.Y},{nearestRuin.Z})");
     }
 }
