@@ -275,9 +275,55 @@ def verify() -> None:
           and "public const int StackLimit = 64" in inventory_src
           and 'public bool TrySplit(int from, int to)' in inventory_src
           and 'private void MoveInventoryStack(int from, int to, bool split)' in editor_src
-          and 'private void HandleInventoryPointer()' in editor_src
+          and 'internal void UiMoveStack(int from, int to, bool split)' in editor_src
           and 'TrySpendSlot(SelectedHotbar)' in editor_src,
-          "Server-owned inventory must use physical stacks and validated drag/drop")
+          "Server-owned inventory must use physical stacks and validated UI transfers")
+    # The in-game inventory/hotbar now use a local UIDocument instead of
+    # manually positioned C# GUI widgets. The UI must show the exact
+    # generated atlas icons, not fallback colored rectangles.
+    import xml.etree.ElementTree as ET
+    ui_file = ROOT / "src/UI/tallowcraft.tui"
+    ui_css = ROOT / "src/UI/tallowcraft.tcss"
+    ui = ET.parse(ui_file).getroot()
+    ui_style = ui_css.read_text()
+    ui_source = (ROOT / "src/Scripts/WorldGeneration/TallowcraftUI.cs").read_text()
+    icon_files = ["grass", "dirt", "stone", "log", "forge", "planks",
+                  "coal", "iron_ore", "leaves", "iron_ingot"]
+    check(ui.tag == "panel" and ui.attrib.get("id") == "screen" and
+          len(list(ui.iter("image"))) >= 792 and
+          len([x for x in ui.iter("button")
+               if x.attrib.get("onclick") == "OnSlot"]) == 72,
+          "Full .tui HUD, player inventory and chest must have icon slots")
+    ids = [x.attrib["id"] for x in ui.iter() if "id" in x.attrib]
+    check(len(ids) == len(set(ids)) and
+          all(x in ids for x in ("overlay","hud","page_craft",
+              "page_forge","page_chest","chest-stack","notice")),
+          "The new UI must have unique, usable element IDs")
+    for icon in icon_files:
+        png = ROOT / ("src/Textures/UI/" + icon + ".png")
+        data = png.read_bytes()
+        check(data[:8] == bytes.fromhex("89504e470d0a1a0a") and
+              struct.unpack_from(">II",data,16)==(32,32),
+              "Item icon must be a cropped 32x32 PNG: "+icon)
+        opts = png.with_suffix(".png.import").read_text()
+        check(all(x in opts for x in ("filter = nearest","mipmaps = 0",
+              "compression = 0","fullResolution = 1")),
+              "Item icon must use lossless nearest filtering: "+icon)
+        check(any(x.attrib.get("src") == "Textures/UI/"+icon+".png"
+                  for x in ui.iter("image")),
+              "TUI must show generated item icon: "+icon)
+    check(any(x.attrib.get("src") == "Textures/chest_item.png"
+              for x in ui.iter("image")) and
+          "onclick=\"OnSlot\"" in ui_file.read_text() and
+          "public void OnSlot(string id)" in ui_source and
+          "public void OnTab(string id)" in ui_source and
+          "private void DrawInventory()" not in editor_src and
+          "public override void OnGUI()" not in editor_src and
+          "TallowcraftUI controller = view.AddComponent<TallowcraftUI>()"
+              in editor_src and
+          "UI/tallowcraft.tui" in editor_src and
+          "#overlay" in ui_style and ".slot-icon" in ui_style,
+          "Editor .tui must be mounted locally and replace the old C# GUI")
     profile_src = (ROOT / "src/Scripts/WorldGeneration/PlayerProfileStore.cs").read_text()
     check('fields[0] == "1"' in profile_src
           and 'fields[0] == "2"' in profile_src

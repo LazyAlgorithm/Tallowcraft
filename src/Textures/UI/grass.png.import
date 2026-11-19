@@ -1,0 +1,5 @@
+filter = nearest
+wrap = clamp
+mipmaps = 0
+compression = 0
+fullResolution = 1

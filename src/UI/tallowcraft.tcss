@@ -1,0 +1,74 @@
+/* Tallowcraft UI - editable in Tallow's visual .tui editor.
+   CSS is the engine's subset: flex row/column + absolute position. */
+#screen { width: 100%; height: 100% }
+#crosshair { position: absolute; left: 49.6%; top: 49%; width: 24; height: 28; font-size: 27; color: #f3f3e6c0; text-align: center }
+.hud { position: absolute; left: 0; right: 0; bottom: 22; height: 154; gap: 7; align-items: center; justify-content: center }
+.hud-title { flex-direction: row; gap: 18; align-items: center; background-color: #121916db; padding: 6 14; border-radius: 7; border-width: 1; border-color: #b8c59444 }
+#hud-name { font-size: 15; color: #f3e3ad }
+#hud-status { font-size: 14; color: #c1d3c1 }
+.hud-footer { flex-direction: row; gap: 28; align-items: center; background-color: #121916db; padding: 7 15; border-radius: 6 }
+#hud-held { font-size: 14; color: #f1e6b9 }
+#hud-tool { font-size: 14; color: #b6c8a2 }
+.slot-row { flex-direction: row; align-items: center; gap: 7 }
+.hud-slot, .slot, .chest-slot { position: relative; background-color: #28322fee; border-width: 2; border-color: #51645b; border-radius: 5; padding: 0; align-items: center; justify-content: center }
+.hud-slot { width: 58; height: 60; background-color: #222d29f5; border-color: #5b7365 }
+.slot { width: 59; height: 61 }
+.chest-slot { width: 42; height: 53; background-color: #3a3026; border-color: #7b6547 }
+.slot-art { position: absolute; left: 0; top: 5; width: 100%; height: 40; align-items: center; justify-content: center }
+.slot-icon { position: absolute; left: 12; top: 0; width: 34; height: 34 }
+.chest-icon { position: absolute; left: 5; top: 0; width: 30; height: 30 }
+.slot-count { position: absolute; right: 4; bottom: 2; height: 17; font-size: 13; color: #fff5da; text-align: right }
+.slot-key { position: absolute; left: 4; top: 2; height: 16; font-size: 11; color: #f4f1e2c2 }
+.slot-focus { position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-width: 3; border-color: #ecd187; border-radius: 5 }
+.overlay { position: absolute; top: 0; right: 0; bottom: 0; left: 0; align-items: center; justify-content: center; background-color: #0a100dd8 }
+.inventory-shell { width: 1110; height: 740; background-color: #1d2724fa; border-radius: 14; border-width: 2; border-color: #7b927d; padding: 18; gap: 14 }
+.menu-header { flex-direction: row; height: 70; justify-content: space-between; align-items: center; border-color: #526b59; border-width: 0 0 1 0 }
+.heading { gap: 3 }
+.eyebrow { font-size: 13; color: #e1b97c }
+.menu-title { font-size: 29; color: #f6edd6 }
+.tabs { flex-direction: row; gap: 9; align-items: center }
+.tab { font-size: 17; padding: 13 19; background-color: #384c3f; border-radius: 7; border-width: 1; border-color: #718670; color: #f2ecd9 }
+.close { font-size: 21; padding: 10 17; background-color: #7d3a37; border-radius: 7; color: #ffefed }
+.menu-content { flex-direction: row; gap: 18; height: 565 }
+.player-column { width: 610; height: 100%; background-color: #26322b; border-radius: 9; padding: 16; gap: 10; border-width: 1; border-color: #4a604c }
+.section-heading { flex-direction: row; justify-content: space-between; height: 26 }
+.section-title { font-size: 19; color: #e9d59e }
+.subtle { font-size: 13; color: #b1c2b0; white-space: normal }
+.slot-stack { gap: 8; align-items: center }
+.inventory-divider { height: 6; background-color: #455e49; width: 100% }
+.controls { flex-direction: row; gap: 10; align-items: center }
+#selection-note { height: 24; font-size: 14; color: #efd39f }
+.secondary { background-color: #3d5045; border-width: 1; border-color: #738a74; border-radius: 6; font-size: 14; color: #e7eee2; padding: 9 12 }
+.primary { background-color: #5a8057; border-width: 1; border-color: #b5d6a6; border-radius: 6; color: #f6f2dc; font-size: 17; padding: 11 14 }
+.reserve { margin-top: 4; justify-content: space-between; height: 36 }
+#reserve-info { font-size: 13; color: #c8bc95 }
+.detail-column { width: 422; height: 100%; background-color: #222e28; padding: 17; border-radius: 9; border-width: 1; border-color: #425a47 }
+.detail { gap: 16; width: 100%; height: 100% }
+.recipes { gap: 8; margin-top: 6; margin-bottom: 10 }
+.recipe { flex-direction: row; align-items: center; gap: 15; width: 100%; height: 67; background-color: #354638; padding: 9 12; border-radius: 8; border-color: #688067; border-width: 1 }
+.recipe-image { width: 38; height: 38 }
+.recipe-title { font-size: 17; color: #f6f0db }
+.recipe-sub { font-size: 12; color: #b9c9b4 }
+.tool-list { gap: 8; margin-top: 5 }
+.tool-row { flex-direction: row; align-items: center; gap: 7; height: 49; width: 100%; background-color: #324235; padding: 5 7; border-radius: 6 }
+.tool-row text { flex-grow: 1; font-size: 13; color: #e2ddca }
+.tool-row button { width: 60; height: 34; font-size: 13; background-color: #557357; border-radius: 4; color: #f9f1dc }
+.smelt { flex-direction: row; gap: 18; align-items: center; justify-content: center; margin-top: 36; margin-bottom: 18 }
+.recipe-arrow { font-size: 26; color: #deb978 }
+.chest-stack { gap: 9; align-items: center; margin-top: 14; margin-bottom: 15 }
+.menu-footer { flex-direction: row; justify-content: space-between; align-items: center; height: 45; padding: 0 9; border-color: #526b59; border-width: 1 0 0 0 }
+#menu-hint { font-size: 13; color: #bfd0b9 }
+#hands-button { padding: 9 16; background-color: #435448; border-radius: 6; color: #eff5e6 }
+.notice { position: absolute; top: 35; left: 35; width: 530; background-color: #51382eea; padding: 13 18; border-radius: 8 }
+#notice { color: #ffe2c2; font-size: 18 }
+@media (max-height: 830) {
+  .inventory-shell { height: 690; }
+  .menu-content { height: 525 }
+  .hud { bottom: 7 }
+}
+@media (max-width: 1150) {
+  .inventory-shell { width: 95% }
+  .menu-content { gap: 9 }
+  .player-column { width: 58% }
+  .detail-column { width: 40% }
+}

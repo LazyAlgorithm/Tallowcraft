@@ -17,21 +17,21 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Left mouse: place the selected block
 - Hold right mouse: mine the targeted block (stone and ores take longer than dirt and leaves). A pixelated, progressively spreading **ten-stage crack overlay** appears on the actual cube/slab/stair/half-wall faces. It resets immediately on release, target changes or breaking.
 - E (Use): alternate place control
-- 1–6: select grass, dirt, stone, log, forge, planks
+- 1–6: select the first six physical hotbar slots (not fixed material types); scroll the mouse wheel for all nine slots
 - 7, 8, 9: equip a crafted pickaxe, axe or shovel; 0: switch back to hands
 - Mouse wheel: cycle selected block
 - Q: cycle cube, slab, stair and half-wall shapes
 - F: rotate the next placed block in 90° increments
 - Ctrl while placing: place an upper slab or upside-down stair
 - Left-click a lower slab's top (or an upper slab's bottom) with the same slab type selected to combine both halves into one full block
-- On-screen **nine-slot hotbar** displays selected physical stacks, shape, rotation, and quantities. Keys 1–6 select the first six hotbar positions, the mouse wheel selects any of the nine, and middle-clicking a hotbar slot in the inventory selects it. Controls are networked with `Input.tinput`.
-- Tab (or gamepad West): open/close the **36-slot inventory** (9 hotbar + 27 backpack), crafting, forge, and storage pages. Stand near a placed chest, then click the Chest tab to open its 27-slot storage; drag stacks between chest and backpack. Escape (or gamepad East) also closes it. While it is open, gameplay input—including mouse look—is disabled instead of merely freezing the camera, so closing the screen does not snap to an accumulated mouse angle. The on-screen Close button works too.
+- The new **.tui nine-slot HUD** displays the generated icon for each material, the live quantity, selected slot, building shape/rotation, and equipped tool durability. The C# UI creates one local-only UIDocument per player; all gameplay state stays on the server.
+- Tab (or gamepad West): open/close the **36-slot inventory** (9 hotbar + 27 backpack), crafting, forge, and storage pages. Stand near a placed chest, then click the Storage tab to open its 27-slot storage; click a source stack then a destination to transfer it. Toggle Move half to transfer half a stack. Escape (or gamepad East) also closes it. While it is open, gameplay input—including mouse look—is disabled instead of merely freezing the camera, so closing the screen does not snap to an accumulated mouse angle. The on-screen Close button works too.
 - Craft stone tools in the Crafting page with stone and planks: pickaxe (3 stone + 2 planks), axe (2 stone + 2 planks), or shovel (1 stone + 2 planks). Click Equip to select one, or Use hands to unequip. Recraft a damaged tool to repair it.
 - **Forge progression:** place a Forge block (hotbar slot 5), stand within 3.5 m of it, press Tab, then select **Forge page**. Smelt 1 iron ore + 1 coal into 1 iron ingot, or smelt batches of five. Use the ingots and planks to craft an iron pickaxe (3 ingots), axe (2), or shovel (1); each costs 2 planks. Iron tools mine their specialty blocks faster and last longer. The server checks proximity to the actual forge for every smelt/iron-craft request.
 - Use **7/8/9** for pickaxe/axe/shovel; those keys automatically select the iron version if you own it, otherwise the stone version. Use **0** for bare hands. Iron ingots are inventory items, not placeable voxel blocks.
 - Pickaxes mine stone, ores and forges faster; axes mine logs and planks faster; shovels mine dirt and grass faster. Each successfully mined block consumes one durability point. A broken tool automatically unequips. Iron tools have higher durability and a 5.5× effective-mining speed multiplier versus stone's 3×.
-- Mining a block now spawns a **small floating item entity** with gravity. The server checks actual player distance before collecting it into an inventory stack. Nearby identical drops merge (up to 64), drops expire after five minutes, and at most 256 may exist per scene. If spawning fails at the limit, the server credits the item directly rather than losing it. Coal, iron ore and leaves can be moved into any hotbar slot and placed if their voxel types support placement. Stack limit is 64 per slot; drag left to move or swap, right-drag to split a stack in half, or click a stack and then a destination slot.
-- `BlockEditor.CreativeMode` is **enabled by default** to preserve unrestricted test-building. Disable it on the player prefab's BlockEditor component for survival building: the player starts with a small supply of each of the six hotbar materials, and successful placements consume one material. Empty slots cannot place blocks; mining replenishes stock. There are no physical pickups yet.
+- Mining a block now spawns a **small floating item entity** with gravity. The server checks actual player distance before collecting it into an inventory stack. Nearby identical drops merge (up to 64), drops expire after five minutes, and at most 256 may exist per scene. If spawning fails at the limit, the server credits the item directly rather than losing it. Coal, iron ore and leaves can be moved into any hotbar slot and placed if their voxel types support placement. Stack limit is 64 per slot; click a stack and then a destination to move or swap, or enable Move half to split a stack in half.
+- `BlockEditor.CreativeMode` is **enabled by default** to preserve unrestricted test-building. Disable it on the player prefab's BlockEditor component for survival building: the player starts with a small supply of each of the six hotbar materials, and successful placements consume one material. Empty slots cannot place blocks; mining replenishes stock. Mined items use physical server-owned drop entities.
 - Red wireframe shows the voxel that right-click will remove; green wireframe previews the chosen block shape/orientation on left-click. Orange indicates blocked placement. Previews are client-local and gameplay edits remain server-authoritative.
 
 Blocks can only be edited within 6 metres, and placement is refused when another physics body occupies the destination.
@@ -46,7 +46,7 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 - **Inventory and tools:** authoritative per-player 9-slot hotbar + 27-slot backpack `BlockInventory` with 64-item physical stacks of nine voxel types and iron ingots, and `PlayerTools` with three stone and three iron tools. Validated/versioned `[Sync] InventoryState` and `[Sync] ToolState` replicate quantity, equipped tool and durability. Server-only RPCs validate crafting/equip commands. Tool durability is spent only on a successful server-authoritative block break. The server persists inventory, equipped tool/durability and selected block/shape/facing per world and per persistent player token. Current inventory tracks materials rather than individual oriented or partial shapes.
 - **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
 - **Storage chests:** craft a chest from 8 planks, put it into a hotbar slot, and place it like any block. It has a dedicated lid/lock texture overlay and a separate dropped-item icon. Chest contents are 27 physical item stacks, shared by players, saved with the **same atomic world generation** as voxel edits, and recovered together on corruption. Empty the chest before mining it to prevent loss or duplication. The server validates proximity, selected chest, and both slot indices for every transfer.
-- **Item artwork:** `src/Textures/inventory_icons.png` is a new 5×2 sprite sheet of ten transparent 32×32 pixel-art icons including iron ingots, with nearest-neighbor sampling and compression/mips disabled. The atlas is used on world item-drop sprites through `Materials/item_drop.tmat`. The C# immediate-mode `GUI` API does not yet expose image widgets, so inventory slots currently use compact colored type swatches and labels; a future UIDocument UI can show the same sprites.
+- **Item artwork:** `src/Textures/inventory_icons.png` is a new 5×2 sprite sheet of ten transparent 32×32 pixel-art icons including iron ingots, with nearest-neighbor sampling and compression/mips disabled. The atlas is used on world item-drop sprites through `Materials/item_drop.tmat`. The inventory, hotbar, chest, forge, and crafting screens now use `src/UI/tallowcraft.tui` and `tallowcraft.tcss`, which support real images. The generated sprite atlas has been split into 10 individual uncompressed 32x32 icons under `src/Textures/UI`; the existing `chest_item.png` provides the eleventh icon. The code-behind is `TallowcraftUI.cs`.
 - **Textures:** the approved 3×3 block artwork is now in `src/Textures/block_atlas.png`: a lossless, indexed-color 108×108 PNG with nine 32×32 pixel-art tiles and 2px extruded borders. UVs point at texel centers; chunky source pixels are preserved by nearest-neighbor sampling. `src/Textures/block_atlas.png.import` configures `filter = nearest`, `wrap = clamp`, `mipmaps = 0`, `compression = 0`, and `fullResolution = 1`. Tallowcraft's build config also explicitly excludes this atlas from BC1/BC3 compression. Greedy chunk meshes share the atlas.
 - **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well. Placement checks the occupied half-cells rather than one oversized full-block overlap volume, and merges a matching slab into a full block when clicked on its exposed horizontal face.
 - **Network authority:** only server-side player TickInput can edit blocks. The player is a networked prefab; procedural chunk GameObjects remain transient and local to each machine.
@@ -115,8 +115,9 @@ items with the appropriate chunk.
   while an inexpensive local face decoration shows the distinctive
   chest lid/lock texture. Unlike a world point light, these details are
   only rendered for loaded chunks and use no new network entities.
-- Stand within **4.5m** of a chest, open Tab > Chest. Drag full stacks,
-  swap like items, right-drag half, or move items within the chest.
+- Stand within **4.5m** of a chest, open Tab > Storage. Click a source
+  and destination for a full-stack transfer or swap; turn on Move half
+  to split a stack, including transfers within a chest.
   The server rechecks the real chest voxel and player range for every
   interaction. Other players viewing the same chest see updates.
 - Chest contents are stored as a sparse, deterministic 27-stack map.
@@ -157,3 +158,34 @@ python3 tests/validate_assets.py
 
 Also build the game's .NET 11 scripts in your Tallow editor and verify both
 the block cracks and the dropped mesh rendering on the actual graphics backend.
+
+### In-game UI editor (.tui)
+
+This game uses Tallow's **UIDocument** for its in-game HUD and panels, not the
+immediate-mode `GUI.Box/Button` layout. Open `src/UI/tallowcraft.tui` in
+the Tallow UI editor to edit the element tree and `src/UI/tallowcraft.tcss`
+to edit spacing, typography, and colors. The local-only `TallowcraftUI`
+code-behind reads synchronized inventory/tool/chest snapshots and forwards
+all craft, move, smelt, equipment, chest and reserve operations through the
+existing owner-authorized `BlockEditor` server RPCs.
+
+* 9-slot icon HUD, selected slot border, item counts, mining/creative status,
+  held material, selected shape, and equipped tool durability.
+* 36 inventory slots with actual item images. Select a source stack, click a
+  destination; toggle **Move half** to split. Use **Set hotbar active** on a
+  selected hotbar slot, or mouse wheel during gameplay. The .tui API exposes
+  click events but no native drag-and-drop hook, so click/click replaces
+  the former immediate-mode drag gesture.
+* Dedicated tabs for crafting, forge smelting/iron tools, and nearby chest
+  storage (27 slots). Content is synchronized with the server, not stored
+  in the UI. Close with Tab, Escape, controller Cancel or X.
+* 10 cropped icon PNGs in `src/Textures/UI`, plus
+  `src/Textures/chest_item.png`, using nearest filtering, no compression,
+  and no mipmaps. The original gameplay sprite atlas stays unchanged.
+* The document is created only for the **local player**, even in multiplayer.
+  It is transient and has no NetworkIdentity. Profiles and worlds keep their
+  current save format; there is no UI migration of saved data.
+
+GitHub Actions workflows remain removed; validate locally with
+`python3 tests/validate_assets.py` and the Tallow editor's .NET 11
+gameplay compile. Asset checks do not verify final on-screen layout.
