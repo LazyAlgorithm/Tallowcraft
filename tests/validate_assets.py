@@ -197,6 +197,25 @@ def verify() -> None:
     check("public string WorldIdentity" in world_source
           and "public string PlayerProfilesFolder" in world_source,
           "Player profiles need the server's persistent world identity")
+    forge_src = (ROOT / "src/Scripts/WorldGeneration/ForgeCrafting.cs").read_text()
+    editor_src = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
+    inventory_src = (ROOT / "src/Scripts/WorldGeneration/BlockInventory.cs").read_text()
+    tools_src = (ROOT / "src/Scripts/WorldGeneration/PlayerTools.cs").read_text()
+    check("public const int MaxType = 10" in inventory_src
+          and 'serialized.StartsWith("1|"' in inventory_src
+          and 'serialized.StartsWith("2|"' in inventory_src
+          and 'sections[0] != "1" && sections[0] != "2"' in tools_src,
+          "Old saved inventories and tools must migrate without resetting items")
+    check("private void SmeltIron(int count)" in editor_src
+          and "private bool ServerNearForge()" in editor_src
+          and "ForgeCrafting.TrySmelt(_inventory, count)" in editor_src
+          and "&& !ServerNearForge()" in editor_src
+          and "recipeId is >= 1 and <= 3" in editor_src
+          and "BlockInventory.IronIngot" in forge_src,
+          "Iron smelting must be server-validated and locked to a real forge")
+    check("if (_tools.TryEquipSlot(kind))" in editor_src
+          and "MiningTool.IronPickaxe" in tools_src,
+          "Quick equip should choose crafted iron tools when available")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 

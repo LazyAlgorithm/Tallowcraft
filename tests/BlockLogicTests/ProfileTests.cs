@@ -100,6 +100,42 @@ internal static class ProfileTests
                     out _, out _, out _, out _) == ProfileLoadResult.Corrupt,
                 "Both damaged profiles are refused without resetting items");
 
+            // Prior releases wrote nine material counts and three stone
+            // durability entries. Existing checksummed profiles must migrate,
+            // not appear corrupted when a forge adds the tenth item slot.
+            string legacyToken = Guid.NewGuid().ToString("N");
+            string legacyWorld = Guid.NewGuid().ToString("N");
+            string legacyFolder = Path.Combine(temp, "legacy-players");
+            Directory.CreateDirectory(legacyFolder);
+            string legacyPayload = "1;" + legacyWorld +
+                ";1|32,64,64,32,8,64,3,4,5;1|80,0,0|1;6;2;1";
+            string legacyHash = Convert.ToHexString(SHA256.HashData(
+                Encoding.UTF8.GetBytes(legacyPayload))).ToLowerInvariant();
+            string legacyPath = Path.Combine(legacyFolder,
+                legacyToken + ".profile");
+            File.WriteAllText(legacyPath,
+                legacyHash + "\n" + legacyPayload + "\n");
+            check(PlayerProfileStore.Load(legacyFolder, legacyWorld,
+                    legacyToken, out var legacyItems, out var legacyTools,
+                    out int legacyType, out int legacyShape,
+                    out int legacyFacing) == ProfileLoadResult.Loaded &&
+                legacyItems.Count(10) == 0 &&
+                legacyItems.Count(8) == 4 &&
+                legacyTools.Equipped == MiningTool.Pickaxe &&
+                legacyTools.Durability(MiningTool.Pickaxe) == 80 &&
+                legacyTools.Durability(MiningTool.IronPickaxe) == 0 &&
+                legacyType == 6 && legacyShape == 2 && legacyFacing == 1,
+                "Original saved profiles migrate to smelting and iron tools");
+            PlayerProfileStore.Save(legacyFolder, legacyWorld, legacyToken,
+                legacyItems, legacyTools, legacyType,
+                legacyShape, legacyFacing);
+            check(PlayerProfileStore.Load(legacyFolder, legacyWorld,
+                    legacyToken, out var migratedItems, out var migratedTools,
+                    out _, out _, out _) == ProfileLoadResult.Loaded &&
+                migratedItems.Serialize().StartsWith("2|") &&
+                migratedTools.Serialize().StartsWith("2|"),
+                "Migrated inventories write the new version on next save");
+
             string otherWorld = Guid.NewGuid().ToString("N");
             check(PlayerProfileStore.Load(Path.Combine(temp, "players", otherWorld),
                     otherWorld, host, out _, out _, out _, out _, out _) ==

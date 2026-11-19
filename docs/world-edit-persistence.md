@@ -85,7 +85,7 @@ This code lives entirely in the game repository, not in Tallow's engine.
 - The client sends its token in an owner-checked server RPC, without publishing
   it in `[Sync]`. The server loads
   `worlds/default/players/<world GUID>/<token>.profile`, validates the
-  checksum and all nine counts, tool durability, equipment and selected
+  checksum and all ten counts (including iron ingots), tool durability, equipment and selected
   block state, and then enables the player's gameplay.
 - Reconnecting with the same token loads the previously saved profile.
   An active-claim guard rejects two simultaneous players with the same token.
@@ -101,3 +101,20 @@ This code lives entirely in the game repository, not in Tallow's engine.
   testing and trusted invite-only sessions are the intended initial targets.
 - World and profile saves are separate transactions; simultaneous world
   edits and item costs are not yet crash-atomic as a unit.
+
+## Smelting and iron upgrades
+
+- Forge recipe: 1 iron ore (type 8) + 1 coal (type 7) -> 1 iron ingot
+  (inventory-only type 10); atomic batches of five are also supported.
+- Iron tools: pickaxe = 3 ingots + 2 planks, axe = 2 + 2,
+  shovel = 1 + 2. The six equipment slots persist independently with their
+  remaining durability; quick equip 7/8/9 selects the iron version if owned.
+- The Forge page can be viewed anywhere, but the server allows smelting and
+  crafting iron tools only within 3.5 metres of a real Forge (type 5) block
+  recorded in the authoritative terrain/edits. The server validates
+  ownership, open inventory, cooldown, real proximity, item costs, and tool
+  identifiers. It never accepts the client's claimed forge location or prices.
+- The item snapshot format now uses v2 (10 materials) and the equipment
+  snapshot uses v2 (6 tools). Both readers accept v1 saves and promote them
+  to v2 on the next save. The world voxel atlas and block IDs stay the same:
+  ingots cannot accidentally become a placeable voxel.

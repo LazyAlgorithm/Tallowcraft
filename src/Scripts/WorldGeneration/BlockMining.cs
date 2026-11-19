@@ -7,7 +7,10 @@ namespace WorldGeneration;
 /// progress; the equipped server-owned tool modifies the mining time without
 /// changing the voxel material or edit network protocol.
 /// </summary>
-public enum MiningTool : byte { Hand, Pickaxe, Axe, Shovel }
+public enum MiningTool : byte
+{
+    Hand, Pickaxe, Axe, Shovel, IronPickaxe, IronAxe, IronShovel
+}
 
 public static class BlockMining
 {
@@ -35,10 +38,13 @@ public static class BlockMining
         {
             MiningTool.Pickaxe => type is 3 or 5 or 7 or 8,
             MiningTool.Axe => type is 4 or 6,
-            MiningTool.Shovel => type is 1 or 2,
+            MiningTool.Shovel or MiningTool.IronShovel => type is 1 or 2,
+            MiningTool.IronPickaxe => type is 3 or 5 or 7 or 8,
+            MiningTool.IronAxe => type is 4 or 6,
             _ => false
         };
-        return effective ? seconds / 3f : seconds;
+        bool iron = tool is >= MiningTool.IronPickaxe and <= MiningTool.IronShovel;
+        return effective ? seconds / (iron ? 5.5f : 3f) : seconds;
     }
 
     public static int Percent(float elapsed, ushort packedState,

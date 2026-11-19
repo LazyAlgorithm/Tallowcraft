@@ -32,7 +32,7 @@ public class BlockEditor : Script
     private static readonly string[] BlockNames =
     {
         "Grass", "Dirt", "Stone", "Log", "Forge", "Planks",
-        "Coal", "Iron", "Leaves"
+        "Coal", "Iron", "Leaves", "Iron ingots"
     };
     private static readonly string[] ShapeNames =
         { "Cube", "Slab", "Stair", "Half wall" };
@@ -41,6 +41,9 @@ public class BlockEditor : Script
     private float _cooldown;
     private float _craftCooldown;
     private float _chunkRequestCooldown;
+    private float _forgeCheckClock;
+    private bool _nearForge;
+    private bool _forgePage;
     private readonly BlockInventory _inventory = new();
     private readonly BlockInventory _displayInventory = new();
     private readonly PlayerTools _tools = new();
@@ -253,6 +256,19 @@ public class BlockEditor : Script
             Rpc(nameof(SetInventoryOpen), requestedOpen);
 
         bool open = _menu.Open;
+        if (open && _forgePage)
+        {
+            _forgeCheckClock -= MathF.Max(deltaTime, 0f);
+            if (_forgeCheckClock <= 0f)
+            {
+                _forgeCheckClock = .25f;
+                _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+                _nearForge = _world != null &&
+                    ForgeCrafting.NearForge(
+                        Transform.Position + Vector3.UnitY * EyeHeight,
+                        position => _world.BlockAt(position));
+            }
+        }
         if (!open)
         {
             // Server owns durability/equipment; hotkeys send only the tool id.
@@ -348,7 +364,9 @@ public class BlockEditor : Script
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         // No recipe contents or claimed resources are accepted over RPC.
-        if (_inventory.TryCraft(recipeId))
+        // Workstation-only recipe IDs may never be crafted through the
+        // ordinary inventory endpoint, even with a forged client RPC.
+        if (recipeId is >= 1 and <= 3 && _inventory.TryCraft(recipeId))
         {
             InventoryState = _inventory.Serialize();
             _profileDirty = true;
@@ -375,7 +393,7 @@ public class BlockEditor : Script
         if (!Scene.IsServer || !ProfileReady || InventoryOpen ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
-        if (_tools.TryEquip((MiningTool)kind))
+        if (_tools.TryEquipSlot(kind))
         {
             ToolState = _tools.Serialize();
             _profileDirty = true;
@@ -389,12 +407,42 @@ public class BlockEditor : Script
             !InventoryOpen || _craftCooldown > 0f ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
-        if (_tools.TryCraft(_inventory, (MiningTool)kind))
+        MiningTool tool = (MiningTool)kind;
+        if (tool is >= MiningTool.IronPickaxe and <= MiningTool.IronShovel &&
+            !ServerNearForge())
+            return;
+        if (_tools.TryCraft(_inventory, tool))
         {
             InventoryState = _inventory.Serialize();
             ToolState = _tools.Serialize();
             _profileDirty = true;
             _craftCooldown = 0.12f;
+        }
+    }
+
+    private bool ServerNearForge()
+    {
+        if (!Scene.IsServer)
+            return false;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        return _world != null && ForgeCrafting.NearForge(
+            Transform.Position + Vector3.UnitY * EyeHeight,
+            position => _world.BlockAt(position));
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void SmeltIron(int count)
+    {
+        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
+            _craftCooldown > 0f ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId) ||
+            !ServerNearForge())
+            return;
+        if (ForgeCrafting.TrySmelt(_inventory, count))
+        {
+            InventoryState = _inventory.Serialize();
+            _profileDirty = true;
+            _craftCooldown = .12f;
         }
     }
 
@@ -554,86 +602,129 @@ public class BlockEditor : Script
             ResetMining();
     }
 
+    private void DrawToolRow(float left, float width,
+        int i, float y, PlayerTools equipped, bool forge)
+    {
+        MiningTool tool = (MiningTool)i;
+        int life = equipped.Durability(tool);
+        int max = PlayerTools.MaxDurability(tool);
+        PlayerTools.Recipe(tool, out int a, out int countA,
+            out int b, out int countB);
+        bool canCraft = AvailableCount(a) >= countA &&
+            AvailableCount(b) >= countB && life < max && (!forge || _nearForge);
+
+        GUI.Box(left + 17, y, width - 34, 46,
+            new Color(.13f, .16f, .17f, .95f));
+        GUI.Label(left + 26, y + 4,
+            $"{PlayerTools.Name(tool)}  {life}/{max}");
+        GUI.Label(left + 26, y + 26,
+            $"{countA} {(forge ? "Ingots" : "Stone")} + {countB} Planks  •  " +
+            (life > 0 ? "craft again to repair" : "craft to unlock"));
+        if (life > 0 && GUI.Button(left + width - 199, y + 9, 78, 28,
+                equipped.Equipped == tool ? "Equipped" : "Equip") &&
+            equipped.Equipped != tool)
+            Rpc(nameof(EquipTool), i);
+        if (GUI.Button(left + width - 109, y + 9, 77, 28,
+                life == max ? "Full" :
+                canCraft ? life > 0 ? "Repair" : "Craft" : "No items") &&
+            canCraft)
+            Rpc(nameof(CraftTool), i);
+    }
+
     private void DrawInventory()
     {
-        const float width = 528f, height = 628f;
-        float left = MathF.Max(8f, (GUI.Width - width) * 0.5f);
-        float top = MathF.Max(8f, (GUI.Height - height) * 0.5f);
+        const float width = 528f, height = 652f;
+        float left = MathF.Max(8f, (GUI.Width - width) * .5f);
+        float top = MathF.Max(8f, (GUI.Height - height) * .5f);
         GUI.Box(left, top, width, height,
             new Color(.035f, .045f, .055f, .96f));
-        GUI.Label(left + 18, top + 12, "INVENTORY  /  CRAFTING");
-        GUI.Label(left + 252, top + 12, CreativeMode
-            ? "CREATIVE BUILDING" : "SURVIVAL BUILDING");
+        GUI.Label(left + 18, top + 12,
+            _forgePage ? "INVENTORY  /  FORGE" : "INVENTORY  /  CRAFTING");
+        if (GUI.Button(left + width - 244, top + 8, 135, 28,
+                _forgePage ? "Crafting page" : "Forge page"))
+        {
+            _forgePage = !_forgePage;
+            _forgeCheckClock = 0f;
+        }
         if (GUI.Button(left + width - 81, top + 8, 65, 28, "Close"))
             CloseMenuLocally();
 
+        // Ten inventory items: nine mineable block materials plus the
+        // smelted iron ingot. The ingot is never a placeable voxel.
         for (int i = 0; i < BlockNames.Length; i++)
         {
             int column = i % 3, row = i / 3;
             float x = left + 17 + column * 171;
-            float y = top + 50 + row * 62;
-            GUI.Box(x, y, 158, 54, new Color(.13f, .16f, .17f, .96f));
+            float y = top + 47 + row * 48;
+            GUI.Box(x, y, 158, 43,
+                new Color(.13f, .16f, .17f, .96f));
             GUI.Label(x + 10, y + 7, BlockNames[i]);
-            GUI.Label(x + 10, y + 28, $"x{AvailableCount(i + 1)} / 999");
+            GUI.Label(x + 10, y + 23,
+                $"x{AvailableCount(i + 1)} / 999");
         }
 
-        GUI.Label(left + 18, top + 244, "RECIPES  (crafting always spends materials)");
-        var recipes = CraftingRecipes.All;
-        for (int i = 0; i < recipes.Count; i++)
-        {
-            CraftingRecipe recipe = recipes[i];
-            float y = top + 269 + i * 48;
-            GUI.Box(left + 17, y, width - 34, 43,
-                new Color(.13f, .16f, .17f, .95f));
-            string ingredients = $"{recipe.CountA} {BlockNames[recipe.InputA - 1]}";
-            if (recipe.InputB != 0)
-                ingredients += $" + {recipe.CountB} {BlockNames[recipe.InputB - 1]}";
-            GUI.Label(left + 26, y + 5,
-                $"{recipe.Name}: {ingredients}");
-            GUI.Label(left + 26, y + 24,
-                $"Makes {recipe.CountOut} {BlockNames[recipe.Output - 1]}");
-            bool available = AvailableCount(recipe.InputA) >= recipe.CountA &&
-                (recipe.InputB == 0 || AvailableCount(recipe.InputB) >= recipe.CountB);
-            if (GUI.Button(left + width - 112, y + 7, 78, 29,
-                    available ? "Craft" : "Need items") && available)
-                Rpc(nameof(CraftRecipe), recipe.Id);
-        }
-        GUI.Label(left + 18, top + 421, "MINING TOOLS");
         PlayerTools equipped = DisplayTools();
-        for (int i = 1; i <= 3; i++)
+        if (_forgePage)
         {
-            MiningTool tool = (MiningTool)i;
-            float y = top + 442 + (i - 1) * 50;
-            int life = equipped.Durability(tool);
-            int max = PlayerTools.MaxDurability(tool);
-            PlayerTools.Recipe(tool, out int a, out int countA,
-                out int b, out int countB);
-            bool canCraft = AvailableCount(a) >= countA &&
-                AvailableCount(b) >= countB && life < max;
-
-            GUI.Box(left + 17, y, width - 34, 46,
-                new Color(.13f, .16f, .17f, .95f));
-            GUI.Label(left + 26, y + 4,
-                $"{PlayerTools.Name(tool)}  {life}/{max}");
-            GUI.Label(left + 26, y + 26,
-                $"{countA} Stone + {countB} Planks  •  " +
-                (life > 0 ? "craft again to repair" : "craft to unlock"));
-
-            if (life > 0 && GUI.Button(left + width - 199, y + 9, 78, 28,
-                    equipped.Equipped == tool ? "Equipped" : "Equip") &&
-                equipped.Equipped != tool)
-                Rpc(nameof(EquipTool), i);
-            if (GUI.Button(left + width - 109, y + 9, 77, 28,
-                    life == max ? "Full" :
-                    canCraft ? life > 0 ? "Repair" : "Craft" : "No items") &&
-                canCraft)
-                Rpc(nameof(CraftTool), i);
+            GUI.Label(left + 18, top + 245,
+                _nearForge ? "FORGE READY - within 3.5 m" :
+                    "PLACE A FORGE AND STAND WITHIN 3.5 m");
+            GUI.Label(left + 18, top + 272,
+                "Smelting: 1 iron ore + 1 coal = 1 iron ingot");
+            bool one = _nearForge && AvailableCount(8) >= 1 &&
+                AvailableCount(7) >= 1 && AvailableCount(10) < 999;
+            bool five = _nearForge && AvailableCount(8) >= 5 &&
+                AvailableCount(7) >= 5 && AvailableCount(10) <= 994;
+            if (GUI.Button(left + 18, top + 302, 146, 35,
+                    one ? "Smelt one" : "Need ore / coal") && one)
+                Rpc(nameof(SmeltIron), 1);
+            if (GUI.Button(left + 176, top + 302, 146, 35,
+                    five ? "Smelt five" : "Need 5 each") && five)
+                Rpc(nameof(SmeltIron), 5);
+            GUI.Label(left + 18, top + 363,
+                "IRON TOOLS  -  longer lasting and faster than stone");
+            for (int i = 4; i <= 6; i++)
+                DrawToolRow(left, width, i,
+                    top + 387 + (i - 4) * 55, equipped, true);
+            GUI.Label(left + 18, top + 566,
+                _nearForge ? "Forge crafting and smelting enabled" :
+                    "Iron tools can only be crafted near a real forge");
         }
-        if (GUI.Button(left + width - 204, top + 596, 172, 24,
-                equipped.Equipped == MiningTool.Hand ? "Using hands" : "Use hands"))
+        else
+        {
+            GUI.Label(left + 18, top + 245,
+                "RECIPES  (crafting spends materials)");
+            var recipes = CraftingRecipes.All;
+            for (int i = 0; i < 3; i++)
+            {
+                CraftingRecipe recipe = recipes[i];
+                float y = top + 269 + i * 48;
+                GUI.Box(left + 17, y, width - 34, 43,
+                    new Color(.13f, .16f, .17f, .95f));
+                string ingredients = $"{recipe.CountA} {BlockNames[recipe.InputA - 1]}";
+                if (recipe.InputB != 0)
+                    ingredients += $" + {recipe.CountB} {BlockNames[recipe.InputB - 1]}";
+                GUI.Label(left + 26, y + 5,
+                    $"{recipe.Name}: {ingredients}");
+                GUI.Label(left + 26, y + 24,
+                    $"Makes {recipe.CountOut} {BlockNames[recipe.Output - 1]}");
+                bool available = AvailableCount(recipe.InputA) >= recipe.CountA &&
+                    (recipe.InputB == 0 ||
+                     AvailableCount(recipe.InputB) >= recipe.CountB);
+                if (GUI.Button(left + width - 112, y + 7, 78, 29,
+                        available ? "Craft" : "Need items") && available)
+                    Rpc(nameof(CraftRecipe), recipe.Id);
+            }
+            GUI.Label(left + 18, top + 429, "STONE TOOLS");
+            for (int i = 1; i <= 3; i++)
+                DrawToolRow(left, width, i,
+                    top + 450 + (i - 1) * 50, equipped, false);
+        }
+        if (GUI.Button(left + width - 204, top + 613, 172, 26,
+                equipped.Equipped == MiningTool.Hand ?
+                    "Using hands" : "Use hands"))
             Rpc(nameof(EquipTool), 0);
-        GUI.Label(left + 18, top + 601,
-            "TAB closes   •   Tools wear out when mining");
+        GUI.Label(left + 18, top + 620, "TAB closes");
     }
 
     public override void OnGUI()
@@ -680,11 +771,11 @@ public class BlockEditor : Script
         GUI.Label(left + 4, top + 49,
             $"{BlockNames[selected - 1]}  •  {ShapeNames[shape]}  •  rotation {FacingOffset * 90}°");
         GUI.Label(left + 4, top + 66,
-            "1-6 blocks   7 pick   8 axe   9 shovel   0 hand   TAB inventory");
+            "1-6 blocks   7 pick   8 axe   9 shovel   0 hand   TAB forge");
         GUI.Label(left + 4, top + 85,
             MiningType is >= 1 and <= 9
                 ? $"Mining {BlockNames[MiningType - 1]}: {MiningPercent}%"
-                : $"Coal {AvailableCount(7)}   Iron {AvailableCount(8)}   Leaves {AvailableCount(9)}");
+                : $"Coal {AvailableCount(7)}   Iron ore {AvailableCount(8)}   Ingots {AvailableCount(10)}");
         PlayerTools tools = DisplayTools();
         MiningTool equipped = tools.Equipped;
         GUI.Label(left + 4, top + 103,

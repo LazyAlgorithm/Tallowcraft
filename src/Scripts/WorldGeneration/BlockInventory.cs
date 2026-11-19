@@ -11,7 +11,8 @@ namespace WorldGeneration;
 /// </summary>
 public sealed class BlockInventory
 {
-    public const int MaxType = 9;
+    public const int MaxType = 10;
+    public const int IronIngot = 10;
     public const int MaxPerType = 999;
     private readonly int[] _counts = new int[MaxType + 1];
 
@@ -96,23 +97,28 @@ public sealed class BlockInventory
         return true;
     }
 
+    /// <summary>v2 adds smelted iron ingots; v1 saves with nine materials
+    /// remain readable, preserving inventories from existing worlds.</summary>
     public string Serialize() =>
-        "1|" + string.Join(",", _counts[1..]);
+        "2|" + string.Join(",", _counts[1..]);
 
     /// <summary>
     /// Parse atomically. Invalid/stale data never partially changes inventory.
     /// </summary>
     public bool TryLoad(string? serialized)
     {
-        if (string.IsNullOrEmpty(serialized) || serialized.Length > 60 ||
-            !serialized.StartsWith("1|", StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(serialized) || serialized.Length > 64)
+            return false;
+        bool v1 = serialized.StartsWith("1|", StringComparison.Ordinal);
+        bool v2 = serialized.StartsWith("2|", StringComparison.Ordinal);
+        if (!v1 && !v2)
             return false;
         string[] parts = serialized[2..].Split(',');
-        if (parts.Length != MaxType)
+        if (parts.Length != (v1 ? 9 : MaxType))
             return false;
 
         var next = new int[MaxType + 1];
-        for (int type = 1; type <= MaxType; type++)
+        for (int type = 1; type <= parts.Length; type++)
         {
             if (!int.TryParse(parts[type - 1], NumberStyles.None,
                 CultureInfo.InvariantCulture, out int count) ||
