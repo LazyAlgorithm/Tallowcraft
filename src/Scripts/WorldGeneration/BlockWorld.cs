@@ -81,6 +81,10 @@ public class BlockWorld : Script
     private readonly List<(ChunkKey Key, long Distance)> _candidates = new();
     private readonly HashSet<ChunkKey> _candidateKeys = new();
     private readonly List<ChunkKey> _playerCenters = new();
+    private readonly List<float> _playerHeights = new();
+    // Y=0 air edits expose the negative-Y layer from the surface.
+    private readonly HashSet<ChunkKey> _exposedBelow = new();
+    private float _viewerWorldY;
     private readonly CancellationTokenSource _stop = new();
 
     private Vector2 _lastForward = Vector2.UnitY; // 2D Y represents world Z.
@@ -133,6 +137,7 @@ public class BlockWorld : Script
 
         int cy = Math.Clamp(ChunkGenerator.FloorDiv((int)MathF.Floor(position.Y), ChunkGenerator.Size),
             ChunkGenerator.MinChunkY, ChunkGenerator.MaxChunkY);
+        _viewerWorldY = position.Y;
         int cx = ChunkGenerator.FloorDiv((int)MathF.Floor(position.X), ChunkGenerator.Size);
         int cz = ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z), ChunkGenerator.Size);
 
@@ -159,6 +164,7 @@ public class BlockWorld : Script
     private void GatherCollisionCenters(int cx, int cy, int cz)
     {
         _playerCenters.Clear();
+        _playerHeights.Clear();
 
         if (Scene.IsServer && Scene.IsNetworked)
         {
@@ -168,7 +174,10 @@ public class BlockWorld : Script
         }
 
         if (_playerCenters.Count == 0 || !Scene.IsServer)
+        {
             _playerCenters.Add(new ChunkKey(cx, cy, cz));
+            _playerHeights.Add(_viewerWorldY);
+        }
     }
 
     private void AddPlayerCenter(GameObject? player)
@@ -177,6 +186,7 @@ public class BlockWorld : Script
             return;
 
         Vector3 position = p.Transform.Position;
+        _playerHeights.Add(position.Y);
         _playerCenters.Add(new ChunkKey(
             ChunkGenerator.FloorDiv((int)MathF.Floor(position.X), ChunkGenerator.Size),
             Math.Clamp(ChunkGenerator.FloorDiv((int)MathF.Floor(position.Y), ChunkGenerator.Size),
@@ -191,13 +201,34 @@ public class BlockWorld : Script
             dx * dx + dz * dz <= (long)radius * radius;
     }
 
+    private bool HiddenForViewer(ChunkKey key) =>
+        ChunkScheduling.HiddenBelowSurface(
+            key, _viewerWorldY, _exposedBelow.Contains(key));
+
+    private bool HiddenForPlayer(ChunkKey key, float height) =>
+        ChunkScheduling.HiddenBelowSurface(
+            key, height, _exposedBelow.Contains(key));
+
+    /// <summary>Track surface shafts on edit changes, not every streaming frame.</summary>
+    private void RebuildSurfaceOpenings()
+    {
+        _exposedBelow.Clear();
+        foreach (var edit in _edits.Snapshot)
+            if (edit.Key.Y == 0 && edit.Value == 0)
+                _exposedBelow.Add(new ChunkKey(
+                    ChunkGenerator.FloorDiv(edit.Key.X, ChunkGenerator.Size),
+                    -1,
+                    ChunkGenerator.FloorDiv(edit.Key.Z, ChunkGenerator.Size)));
+    }
+
     private int CollisionRadius() =>
         Math.Clamp(EditableRadius, 0, Math.Clamp(RenderRadius, 1, 16));
 
     private bool ShouldStream(ChunkKey key, int cx, int cy, int cz, int extra = 0)
     {
         if (key.Y < ChunkGenerator.MinChunkY || key.Y > ChunkGenerator.MaxChunkY ||
-            Math.Abs((long)key.Y - cy) > Math.Clamp(VerticalRadius, 0, 2) + extra)
+            Math.Abs((long)key.Y - cy) > Math.Clamp(VerticalRadius, 0, 2) + extra ||
+            HiddenForViewer(key))
             return false;
         int forwardRange = Math.Clamp(RenderRadius, 1, 16);
         int sideRange = Math.Clamp(SideRadius, 1, forwardRange);
@@ -225,21 +256,30 @@ public class BlockWorld : Script
         // Dedicated/host server must simulate collision around every client,
         // even when that player is far outside the host's viewing direction.
         if (Scene.IsServer)
-            foreach (ChunkKey center in _playerCenters)
-                if (Near(key, center.X, center.Y, center.Z, CollisionRadius() + margin))
+            for (int i = 0; i < _playerCenters.Count; i++)
+            {
+                ChunkKey center = _playerCenters[i];
+                if (!HiddenForPlayer(key, _playerHeights[i]) &&
+                    Near(key, center.X, center.Y, center.Z, CollisionRadius() + margin))
                     return true;
+            }
 
         return false;
     }
 
     private bool ShouldHaveCollider(ChunkKey key, int cx, int cy, int cz, int margin = 0)
     {
-        if (Near(key, cx, cy, cz, CollisionRadius() + margin))
+        if (!HiddenForViewer(key) &&
+            Near(key, cx, cy, cz, CollisionRadius() + margin))
             return true;
         if (Scene.IsServer)
-            foreach (ChunkKey center in _playerCenters)
-                if (Near(key, center.X, center.Y, center.Z, CollisionRadius() + margin))
+            for (int i = 0; i < _playerCenters.Count; i++)
+            {
+                ChunkKey center = _playerCenters[i];
+                if (!HiddenForPlayer(key, _playerHeights[i]) &&
+                    Near(key, center.X, center.Y, center.Z, CollisionRadius() + margin))
                     return true;
+            }
         return false;
     }
 
@@ -454,6 +494,7 @@ public class BlockWorld : Script
             MarkAllDirty();
         foreach (BlockPosition position in changed)
             MarkBlockDirty(position);
+        RebuildSurfaceOpenings();
         _appliedSnapshot = EditState;
     }
 
@@ -500,10 +541,13 @@ public class BlockWorld : Script
             }
         }
 
-        // Server-side colliders must also cover remote players. Avoid
-        // duplicate keys from the local camera and overlapping player areas.
+        // Keep collision around remote players even when outside the local
+        // camera, but don't queue their sealed underground layers either.
         if (Scene.IsServer)
-            foreach (ChunkKey center in _playerCenters)
+            for (int playerIndex = 0; playerIndex < _playerCenters.Count; playerIndex++)
+            {
+                ChunkKey center = _playerCenters[playerIndex];
+                float remoteHeight = _playerHeights[playerIndex];
                 for (int dy = -vertical; dy <= vertical; dy++)
                 for (int dz = -nearRadius; dz <= nearRadius; dz++)
                 for (int dx = -nearRadius; dx <= nearRadius; dx++)
@@ -515,12 +559,15 @@ public class BlockWorld : Script
                             (long)nearRadius * nearRadius)
                         continue;
                     ChunkKey key = new(center.X + dx, layer, center.Z + dz);
+                    if (HiddenForPlayer(key, remoteHeight))
+                        continue;
                     if (!_jobs.ContainsKey(key) &&
                         (!_loaded.TryGetValue(key, out LiveChunk? live) || live.Dirty) &&
                         _candidateKeys.Add(key))
                         _candidates.Add((key, ChunkScheduling.Priority(
                             key, center.X, center.Y, center.Z, nearRadius)));
                 }
+            }
 
         _candidates.Sort((a, b) =>
         {
@@ -692,6 +739,8 @@ public class BlockWorld : Script
             return false;
 
         MarkBlockDirty(target);
+        if (target.Y == 0)
+            RebuildSurfaceOpenings();
         EditState = _edits.Serialize(Seed);
         return true;
     }
