@@ -68,12 +68,15 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Calculate server-authoritative player spawn clearance from voxel surface, with initial spawn points adjusted (runtime verification pending)
 - [ ] Expand vertical world bounds and stream/simulate deeper caves based on world settings
 - [x] Seeded, world-coordinate 3D cave field and coal/iron deposits below ground (C# regression tests committed; Play-mode test pending)
-- [ ] Dedicated coal/iron atlas textures, mining drops and inventory; placeholder approved atlas tiles are used for now
-- [x] Seeded Meadow/Woodland/Drylands/Highlands climate classification and smoothly varied surface heights (automated regression tests pending execution)
+- [x] Dedicated coal/iron ore texture tiles integrated in the 4×4 atlas
+- [ ] Mining drops and inventory (ore blocks currently use the existing edit system)
+- [x] Seeded Meadow/Woodland/Drylands/Highlands climate classification and smoothly varied surface heights (automated regression tests passed on Nobara)
 - [x] Discover naturally elevated chunks above Y=15 using the authoritative world seed, with central spawn terrain preserved
-- [x] Deterministic seeded oak-like trees with chunk-independent trunks and leaf canopies (Play-mode verification pending)
+- [x] Deterministic seeded oak-like trees with chunk-independent trunks and leaf canopies (user confirmed Play-mode testing)
 - [x] 4x4 pixel atlas preserving original nine tiles with new coal, iron and leafy foliage tiles; nearest filtering, no mipmaps/compression
-- [ ] Additional vegetation species, biome-specific textures, inventory drops, and natural structures
+- [x] Tall tapered pine trees in highlands and woodlands using the existing logs/leaves
+- [x] Biome-dependent voxel shrubs and small abandoned stone ruins generated from world seed (Play-mode verification pending)
+- [ ] Flowers, thin grass sprites, extra biome textures and inventory drops
 - [x] Add negative-coordinate chunk ownership and neighboring partial-shape seam regression tests (runtime confirmation pending)
 - [ ] Verify world-space generation across negative coordinates and chunk seams in Play mode
 - [ ] Chunk-generation priority, cancellation and far-distance representation
@@ -209,3 +212,20 @@ After tests, launch Play mode, head more than 60 blocks from origin into woodlan
 ### Benchmark correction
 
 As part of the tree pass, corrected `MeshBenchmarks.Generate` to apply artificial dense partial-shape edits only to density cases 2 and 3. Previous `underground-caves` and `biome-upper-layer` results unintentionally included dense partial-block edits and should not be compared to the new pure natural terrain results. New `woodland-trees` and `forest-upper-layer` tests use no edits. The updated atlas's three new tiles have matching left/right and top/bottom edge pixels to reduce visible texture seams, with 2px extruded gutters still intact.
+
+## M4: shrubs, pines and ruined structures
+
+Following successful user-side verification of the original trees and the 4×4 atlas, `WorldFlora` now adds a second silhouette: tapered pines with 6–8 block trunks in highlands and a subset of woodlands, alongside existing 4–6 block oaks in meadows and woodlands. The current log and opaque leaf tiles remain unchanged, and the original 60-block spawn-safe area still excludes tree roots.
+
+`WorldDecorations` adds small leaf-block shrubs (more common in woodland, less common in meadows), with a 64-block spawn-safe zone, and rare abandoned stone ruins with 7×7 foundations, variable-height stone walls and a doorway. Ruins are kept at least 112 blocks from the initial spawn. Stone and planks reuse existing texture tiles; no atlas changes or Tallow Engine modifications were needed. Structures are intentionally simple, collidable, and mineable voxel constructions. Opaque bushes are collidable for now; flowers and thin grass will need a non-colliding decoration mesh/foliage renderer instead of full voxel cubes.
+
+All roots and construction shapes depend only on deterministic world coordinates and the synced world seed, not chunk load order. Decorations can span positive/negative X/Z and Y chunk boundaries. `ChunkGenerator.CreateBlocks` applies trees and then structures/shrubs before authoritative edits. `BaseBlock` and neighbor queries apply matching precedence, and `HasPotentialBlocks` includes upper-layer decorations so chunks with trees or ruins are not skipped. The existing bounded edit snapshot can remove structure blocks; persistence and large-scale chunk deltas remain future work.
+
+`DecorationTests` checks spawned structure/bush positions, biomes, protected spawn area, ruin door/floor/walls, direct-vs-buffered samples across seams, upper-layer stream discovery, and server-to-client edit snapshots. `FloraTests` now also checks pine placement and heights. The CPU benchmark adds `shrub-patches` and `stone-ruins` natural chunk cases. No .NET or in-engine build was run in the assistant environment; run on the tested Nobara installation:
+
+```bash
+cd ~/TallowProjects/Tallowcraft && git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+The decoration test's passing message reports a `nearestRuin=x,y,z` location (for seed 42) to make in-game checking easier. Verify structure materials, doorway clearance, vegetation, pine shape, chunk seams, and collider timing in Tallow Play mode.
