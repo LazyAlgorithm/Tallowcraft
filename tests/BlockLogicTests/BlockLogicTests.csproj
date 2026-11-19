@@ -21,6 +21,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/WorldBiomes.cs" Link="WorldBiomes.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldFlora.cs" Link="WorldFlora.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldDecorations.cs" Link="WorldDecorations.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/ChunkScheduling.cs" Link="ChunkScheduling.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/HybridChunkMesher.cs" Link="HybridChunkMesher.cs" />
   </ItemGroup>
 </Project>
