@@ -25,7 +25,9 @@ internal static class MeshBenchmarks
             ("underground-caves", 4, 8),
             ("biome-upper-layer", 5, 8),
             ("woodland-trees", 6, 8),
-            ("forest-upper-layer", 7, 8)
+            ("forest-upper-layer", 7, 8),
+            ("shrub-patches", 8, 8),
+            ("stone-ruins", 9, 8)
         };
 
         foreach (var test in cases)
@@ -81,6 +83,42 @@ internal static class MeshBenchmarks
         return keys[index % keys.Count];
     }
 
+    private static readonly Dictionary<int, List<ChunkKey>> DecorationCache = new();
+
+    private static ChunkKey DecorationKey(int index, int seed, bool ruin)
+    {
+        int which = ruin ? 1 : 0;
+        if (!DecorationCache.TryGetValue(which, out List<ChunkKey>? keys))
+        {
+            keys = new List<ChunkKey>();
+            for (int cz = -12; cz <= 12 && keys.Count < 16; cz++)
+            for (int cx = -12; cx <= 12 && keys.Count < 16; cx++)
+            {
+                bool found = ruin
+                    ? WorldDecorations.TryRuinCellRoot(cx, cz, seed,
+                        out BlockPosition _)
+                    : WorldDecorations.TryBushCellRoot(cx, cz, seed,
+                        out BlockPosition _);
+                if (!found) continue;
+                BlockPosition root;
+                if (ruin)
+                    WorldDecorations.TryRuinCellRoot(cx, cz, seed, out root);
+                else
+                    WorldDecorations.TryBushCellRoot(cx, cz, seed, out root);
+                ChunkKey key = new(
+                    ChunkGenerator.FloorDiv(root.X, ChunkGenerator.Size),
+                    ChunkGenerator.FloorDiv(root.Y, ChunkGenerator.Size),
+                    ChunkGenerator.FloorDiv(root.Z, ChunkGenerator.Size));
+                if (!keys.Contains(key))
+                    keys.Add(key);
+            }
+            DecorationCache.Add(which, keys);
+        }
+        if (keys.Count == 0)
+            throw new InvalidOperationException("No decorated chunks discovered.");
+        return keys[index % keys.Count];
+    }
+
     private static ChunkMesh Generate(int index, int density, int seed)
     {
         // Natural cave, biome and forest cases intentionally use no edits.
@@ -92,6 +130,8 @@ internal static class MeshBenchmarks
             5 => new ChunkKey((index % 8) + 12, 1, (index / 8) + 12),
             6 => ForestKey(index, seed, 0),
             7 => ForestKey(index, seed, 1),
+            8 => DecorationKey(index, seed, false),
+            9 => DecorationKey(index, seed, true),
             _ => new ChunkKey((index % 8) - 4, (index / 8) - 2)
         };
         var edits = new Dictionary<BlockPosition, ushort>();
