@@ -19,7 +19,7 @@ public static class WorldDecorations
     private const int SpawnClear = 112;
 
     private readonly record struct Bush(int X, int Z, int GroundY);
-    private readonly record struct Ruin(int X, int Z, int GroundY, int Variation)
+    private readonly record struct Ruin(int X, int Z, int GroundY)
     {
         public int TopY => GroundY + 3;
     }
@@ -71,7 +71,7 @@ public static class WorldDecorations
             if (Math.Abs(ChunkGenerator.Height(x + dx, z + dz, seed) - ground) > 1)
                 return false;
 
-        ruin = new Ruin(x, z, ground, (int)(hash >> 27));
+        ruin = new Ruin(x, z, ground);
         return true;
     }
 
