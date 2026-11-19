@@ -6,7 +6,6 @@ It tests asset structure, not actual rendering, animation quality or networking.
 from __future__ import annotations
 
 import json
-import hashlib
 from pathlib import Path
 import struct
 
@@ -130,16 +129,15 @@ def verify() -> None:
     atlas_bytes = atlas_path.read_bytes()
     check(atlas_bytes[:8] == bytes.fromhex("89504e470d0a1a0a"),
           "Atlas must be a PNG file")
-    check(struct.unpack_from(">II", atlas_bytes, 16) == (108, 108),
-          "Expected nine 32x32 tiles with 2px gutters (108x108)")
-    check(atlas_bytes[24:26] == bytes([8, 3]),
-          "Expected an 8-bit indexed, lossless pixel-art PNG")
-    check(hashlib.sha256(atlas_bytes).hexdigest() ==
-          "fc9568eaeeac6b932fcb5894e4b1147098b5e32e59457945bb18f100f6e5bc0d",
-          "Selected block atlas was changed unexpectedly")
+    check(struct.unpack_from(">II", atlas_bytes, 16) == (144, 144),
+          "Expected a 4x4 atlas of 32x32 tiles with 2px gutters (144x144)")
+    check(atlas_bytes[24:26] == bytes([8, 2]),
+          "Expected an 8-bit lossless RGB pixel-art PNG")
     atlas_source = (ROOT / "src/Scripts/WorldGeneration/BlockTextureAtlas.cs").read_text()
     check("public const int TileSize = 32;" in atlas_source
           and "public const int Gutter = 2;" in atlas_source
+          and "public const int Columns = 4;" in atlas_source
+          and "public const int Rows = 4;" in atlas_source
           and "0.5f + u * (TileSize - 1)" in atlas_source,
           "Atlas UV grid does not match the PNG")
     atlas_settings = (ROOT / "src/Textures/block_atlas.png.import").read_text()
@@ -179,6 +177,8 @@ def verify() -> None:
               "Hotbar number key binding is missing: " + str(i))
     check("bind wheel up" in actions and "bind wheel down" in actions,
           "Hotbar mouse wheel actions are missing")
+    check("action Reload button\nbind key Tab" in actions,
+          "Inventory toggle must use the transmitted Tab/Reload action")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 
