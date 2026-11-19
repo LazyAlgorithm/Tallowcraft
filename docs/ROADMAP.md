@@ -93,7 +93,9 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 ## M6 — Survival/crafting vertical slice
 
-- [ ] Inventory stacks, hotbar quantities and drop/pickup interactions
+- [x] Basic nine-material inventory counts, hotbar quantities, and direct collection when mining (compile/Play verification pending)
+- [x] Server-authoritative material spending, validated player inventory snapshots, optional creative/survival building toggle (compile/Play verification pending)
+- [ ] Physical item drops and pickup interactions, stack splitting, persistence and crafting UI
 - [ ] Crafting recipes, forge with sparse block-entity data, and basic tools
 - [ ] Health/damage, simple wildlife and AI, weather/day–night polish
 
@@ -278,3 +280,20 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 After the automated tests, revisit the same mountain viewpoint at `RenderRadius=16`. Allow chunks to finish loading, rotate and stand still. Compare *steady* FPS as well as initial loading hitches. If steady FPS still falls with higher `live_meshes`, next targets are mesh vertex count, per-chunk draw submissions, actual camera visibility, distant LODs and chunk batching. Shadows have already been deprioritized by the user's A/B result. Test multiplayer and mining edits as well, since chunk state and collider streaming remain authoritative.
+
+## M6: first material inventory and mining rewards
+
+First survival-oriented gameplay pass. `BlockInventory` tracks quantities for types 1–9 (grass, dirt, stone, logs, forge, planks, coal ore, iron ore, leaves), with a maximum of 999 per type, nine-count versioned snapshots and strict atomic validation. The server owns each player's inventory through `BlockEditor`. `[Sync] InventoryState` replicates counts to the owning client's hotbar, without trusting inventory values submitted by clients.
+
+To preserve creative testing, `BlockEditor.CreativeMode` is **true by default**. Turn it off on the player prefab's BlockEditor inspector component for survival building. Initial supplies: grass 32, dirt 64, stone 64, logs 32, forge 8, planks 64, ores/leaves 0. Mine blocks with right mouse to collect one matching material directly; placed blocks cost one selected material in survival mode. Server enforces material availability before an edit and changes quantities only after the actual voxel-edit transaction succeeds. Block edits remain subject to range, physics, and server authority checks. The existing six-slot hotbar retains its controls, and coal/iron/leaves are shown separately as collected resources. The local placement preview reports "not enough materials" for an empty selected slot.
+
+This is direct-to-inventory collection, **not** physically spawned pickups. A mined block at capacity does not yield another item; overflow/drop/spawn systems remain open. Item counts represent block types, not individual rotated/partial states; one successfully edited block costs or awards one material. Snapshot persistence and reconnect restoration have not been implemented. World block-edit replication remains the independent, existing bounded edit snapshot.
+
+`InventoryTests` validates starter supplies, successful spending, exhausted stacks, mining additions, capped resources, invalid types, strict replication payloads and atomic failure behavior. To validate on Nobara:
+
+```bash
+cd ~/TallowProjects/Tallowcraft && git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+Then in Play mode, switch the player's BlockEditor `CreativeMode` off, place several blocks and mine them back, collect coal and iron, and verify that the hotbar quantity changes on the host and a connected client. Make sure a failed placement (occupied space, out of range, no resources) does not consume items. None of the C# or game-engine runtime code was compiled or tested by the assistant session.
