@@ -23,7 +23,9 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - F: rotate the next placed block in 90° increments
 - Ctrl while placing: place an upper slab or upside-down stair
 - Left-click a lower slab's top (or an upper slab's bottom) with the same slab type selected to combine both halves into one full block
-- On-screen hotbar displays selection, shape, and rotation. Controls are networked with `Input.tinput`.
+- On-screen hotbar displays selection, shape, rotation, and available item quantities. Controls are networked with `Input.tinput`.
+- Mining a block deposits one material directly into the server-owned player inventory; coal, iron and leaves are collected even though they are not currently selectable hotbar slots.
+- `BlockEditor.CreativeMode` is **enabled by default** to preserve unrestricted test-building. Disable it on the player prefab's BlockEditor component for survival building: the player starts with a small supply of each of the six hotbar materials, and successful placements consume one material. Empty slots cannot place blocks; mining replenishes stock. There are no physical pickups yet.
 - Red wireframe shows the voxel that right-click will remove; green wireframe previews the chosen block shape/orientation on left-click. Orange indicates blocked placement. Previews are client-local and gameplay edits remain server-authoritative.
 
 Blocks can only be edited within 6 metres, and placement is refused when another physics body occupies the destination.
@@ -34,6 +36,7 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 - **Mesh:** 16×16×16 blocks, 0.5-metre occupancy for partial shapes, deterministic terrain, and greedy merging of compatible half-cell faces within each block. Atlas UV seams deliberately prevent merging textured quads across entire blocks; this is an explicit performance tradeoff pending a tiling shader. Cube-only chunks now take a one-metre meshing fast path (8× fewer occupancy cells); chunks with slabs/stairs/half-walls or neighboring partial blocks use the original half-metre path to preserve edge geometry. Neighboring chunk faces consult edits across boundaries.
 - **Character:** a real **Quaternius Universal Base Characters** CC0 skinned humanoid (free Standard *Superhero Male* model) plus the CC0 **Universal Animation Library**. Idle/Walk/Sprint/Jump are native library clips retargeted by joint name using `SkinnedMeshRenderer.clipLibrary`, not the old procedural .tanim motions. The Jolt capsule remains an invisible collision proxy and the model retains first-person shadow-only visibility. Sources and licensing: `src/Models/QUATERNIUS_LICENSE.md`.
 - **Building UX:** on-screen local-player hotbar driven by authoritative network `TickInput` (`Custom1..8`, Ability1 and Ability2). The project includes an `Input.tinput` map for number keys and mouse wheel.
+- **Inventory:** authoritative per-player `BlockInventory` with nine material counts, validated/versioned `[Sync] InventoryState`, optional `CreativeMode`, and mining/placement accounting triggered only after successful server voxel edits. Current inventory tracks materials rather than individual oriented or partial shapes.
 - **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
 - **Textures:** the approved 3×3 block artwork is now in `src/Textures/block_atlas.png`: a lossless, indexed-color 108×108 PNG with nine 32×32 pixel-art tiles and 2px extruded borders. UVs point at texel centers; chunky source pixels are preserved by nearest-neighbor sampling. `src/Textures/block_atlas.png.import` configures `filter = nearest`, `wrap = clamp`, `mipmaps = 0`, `compression = 0`, and `fullResolution = 1`. Tallowcraft's build config also explicitly excludes this atlas from BC1/BC3 compression. Greedy chunk meshes share the atlas.
 - **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well. Placement checks the occupied half-cells rather than one oversized full-block overlap volume, and merges a matching slab into a full block when clicked on its exposed horizontal face.
@@ -42,6 +45,8 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 - **WorldGeneration:** a separate C# assembly definition with one primary type per source file.
 
 ## Prototype limitations
+
+**Inventory is session-only:** it is replicated to the owning/observing clients through the player's networked script but is not persisted to disk or restored on reconnect. Mining resources go straight into inventory rather than spawning visible pickups. Collecting past the 999-item material limit discards the extra resource for now; dropping/storing items is future work.
 
 **Edits survive chunk unload/reload and late joining, but are not yet saved to disk or across server restarts.** The edit snapshot is deliberately limited to **512 differing blocks** (20,000-character upper bound). It sends the entire current edit state whenever a block changes; use reliable per-chunk snapshots and deltas before scaling to large or persistent multiplayer worlds.
 
