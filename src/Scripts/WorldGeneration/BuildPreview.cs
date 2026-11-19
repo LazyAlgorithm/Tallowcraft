@@ -60,18 +60,27 @@ public class BuildPreview : Script
             _damageObject = Scene.CreateGameObject("Block break cracks (local)");
             _damageRenderer = _damageObject.Value.AddComponent<MeshRenderer>();
             _damageRenderer.CastShadows = false;
-            _damageRenderer.BackFaceCulling = true;
+            _damageRenderer.Unlit = true;
+            // The crack shell is intentionally two-sided: a few partial
+            // block faces have opposite winding to the terrain mesh.
+            _damageRenderer.BackFaceCulling = false;
             _damageRenderer.Material = "Materials/block_break_damage.tmat";
+            _damageRenderer.Texture = "Textures/block_cracks.png";
             _damageObject.Value.SetActive(false);
             _damageVisible = false;
             _damageStage = -1;
         }
 
         GameObject overlay = _damageObject.Value;
-        if (!_damageVisible || _damagePosition != position ||
-            _damageBlock != block)
+        bool newTarget = !_damageVisible || _damagePosition != position ||
+            _damageBlock != block;
+        // Update only on target/shape changes or when a 10% damage stage
+        // advances. Sampling the atlas with UVs is reliable even if an
+        // optional custom Shader Graph is unavailable on this platform.
+        if (newTarget || _damageStage != stage)
         {
-            BlockDamageMesh mesh = BlockDamageMesh.Create(new BlockState(block));
+            BlockDamageMesh mesh = BlockDamageMesh.Create(
+                new BlockState(block), stage);
             if (mesh.FaceCount == 0)
             {
                 HideDamage();
@@ -79,16 +88,13 @@ public class BuildPreview : Script
             }
             _damageRenderer.SetMesh(mesh.Positions, mesh.Triangles,
                 mesh.Normals, mesh.Uvs);
-            overlay.Transform.Position = new Vector3(
-                position.X + .5f, position.Y + .5f, position.Z + .5f);
-            _damagePosition = position;
-            _damageBlock = block;
-            _damageStage = -1;
-        }
-
-        if (_damageStage != stage)
-        {
-            _damageRenderer.SetMaterialFloat("damage", stage);
+            if (newTarget)
+            {
+                overlay.Transform.Position = new Vector3(
+                    position.X + .5f, position.Y + .5f, position.Z + .5f);
+                _damagePosition = position;
+                _damageBlock = block;
+            }
             _damageStage = stage;
         }
         if (!_damageVisible)

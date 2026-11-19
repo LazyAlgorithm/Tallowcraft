@@ -4,54 +4,70 @@ using WorldGeneration;
 
 internal static class WorldDropTests
 {
-    public static void Run(Action<bool,string> check)
+    public static void Run(Action<bool, string> check)
     {
-        for (int type = 1; type <= 10; type++)
+        for (int type = 1; type <= BlockInventory.MaxType; type++)
         {
-            DroppedItemMesh sprite = DroppedItemMesh.ForType(type);
-            check(sprite.Positions.Length == 8 &&
-                sprite.Normals.Length == 8 &&
-                sprite.Uvs.Length == 8 &&
-                sprite.Triangles.Length == 12,
-                "Every material has exactly two crossed pickup sprite quads");
-
-            int column = (type - 1) % 5, row = (type - 1) / 5;
-            for (int vertex = 0; vertex < sprite.Uvs.Length; vertex++)
+            if (BlockDropMesh.IsCube(type))
             {
-                Vector2 uv = sprite.Uvs[vertex];
-                check(uv.X > column / 5f && uv.X < (column+1) / 5f &&
-                    uv.Y > row / 2f && uv.Y < (row+1) / 2f,
-                    "Sprite atlas UVs cannot bleed into adjacent item icons");
+                BlockDropMesh cube = BlockDropMesh.ForType(type);
+                check(cube.Positions.Length == 24 &&
+                    cube.Normals.Length == 24 &&
+                    cube.Uvs.Length == 24 &&
+                    cube.Triangles.Length == 36,
+                    "Each building block drops as a six-faced miniature cube");
+                for (int face = 0; face < 6; face++)
+                {
+                    int tile = BlockTextureAtlas.TileFor(
+                        BlockState.Create(type), face);
+                    check(cube.Uvs[face*4] ==
+                        BlockTextureAtlas.FaceUV(tile, face, 0f, 0f) &&
+                        cube.Uvs[face*4+2] ==
+                        BlockTextureAtlas.FaceUV(tile, face, 1f, 1f),
+                        "Mini cubes reuse exactly the placed block's face textures");
+                }
+                foreach (Vector3 v in cube.Positions)
+                    check(MathF.Abs(v.X) <= BlockDropMesh.Size*.5f &&
+                        MathF.Abs(v.Y) <= BlockDropMesh.Size*.5f &&
+                        MathF.Abs(v.Z) <= BlockDropMesh.Size*.5f,
+                        "Dropped cubes are much smaller than terrain blocks");
+                check(DroppedItemMesh.ForType(type).Triangles.Length == 0,
+                    "Block items do not create a billboard sprite");
             }
-            for (int vertex = 0; vertex < sprite.Positions.Length; vertex++)
+            else
             {
-                Vector3 position = sprite.Positions[vertex];
-                check(MathF.Abs(position.X) <= .2f &&
-                    MathF.Abs(position.Y) <= .2f &&
-                    MathF.Abs(position.Z) <= .2f,
-                    "Item sprites remain inside a small physical pickup");
+                check(DroppedItemMesh.IsBillboard(type),
+                    "Non-block resources use camera-facing sprites");
+                DroppedItemMesh sprite = DroppedItemMesh.ForType(type);
+                check(sprite.Positions.Length == 4 &&
+                    sprite.Normals.Length == 4 &&
+                    sprite.Uvs.Length == 4 &&
+                    sprite.Triangles.Length == 6,
+                    "Coal, iron ore and ingots have a single billboard quad");
+                int col = (type-1)%5, row = (type-1)/5;
+                foreach (Vector2 uv in sprite.Uvs)
+                    check(uv.X > col/5f && uv.X < (col+1)/5f &&
+                        uv.Y > row/2f && uv.Y < (row+1)/2f,
+                        "Billboard UVs remain inside the correct resource icon");
+                check(BlockDropMesh.ForType(type).Triangles.Length == 0,
+                    "Ore and ingots are not rendered as solid mini cubes");
             }
-            foreach (int index in sprite.Triangles)
-                check(index is >= 0 and < 8,
-                    "Crossed sprite indices always reference valid vertices");
         }
 
         check(DroppedItemMesh.ForType(0).Triangles.Length == 0 &&
-            DroppedItemMesh.ForType(12).Triangles.Length == 0,
-            "Invalid pickup types have no display geometry");
-        check(DroppedItemMesh.ForType(BlockInventory.Chest).Triangles.Length==12 &&
-            DroppedItemMesh.ForType(BlockInventory.Chest).Uvs[0].X>0 &&
-            DroppedItemMesh.ForType(BlockInventory.Chest).Uvs[0].X<1,
-            "The chest item has its own full-size sprite texture");
+            DroppedItemMesh.ForType(12).Triangles.Length == 0 &&
+            BlockDropMesh.ForType(0).Triangles.Length == 0 &&
+            !BlockDropMesh.IsCube(BlockInventory.IronIngot),
+            "Unknown types and ingots never become fake voxel cubes");
         check(DroppedItemMesh.InPickupRange(
                 new Vector3(0,0,0),new Vector3(1,0,0)) &&
             !DroppedItemMesh.InPickupRange(
                 new Vector3(0,0,0),new Vector3(1.7f,0,0)) &&
             !DroppedItemMesh.InPickupRange(
                 new Vector3(0,0,0),new Vector3(float.NaN,0,0)),
-            "Server pickup distance rejects remote and invalid positions");
+            "Server pickup distance still rejects remote positions");
 
-        Console.WriteLine("PASS: item drop atlas UVs, crossed sprites " +
-            "and server pickup distance limits");
+        Console.WriteLine("PASS: textured mini block cubes, ore/ingot billboards, " +
+            "atlas UV mapping and server pickup limits");
     }
 }

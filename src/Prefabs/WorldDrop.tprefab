@@ -15,13 +15,6 @@ field angularDamping 1
 field freezeRotation 1
 field allowSleeping 1
 field debris 1
-component Tallow.MeshRenderer enabled 1
-field mesh "builtin:plane"
-field material "Materials/item_drop.tmat"
-field texture "Textures/inventory_icons.png"
-field castShadows 0
-field unlit 1
-field backFaceCulling 0
 component Tallow.CSharpBehaviour enabled 1
 field scriptType "WorldGeneration.WorldDrop"
 field fieldOverrides ""

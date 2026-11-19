@@ -13,7 +13,9 @@ namespace WorldGeneration;
 /// </summary>
 public sealed class BlockDamageMesh
 {
-    public const float Offset = .006f;
+    // Keep the black cracks visibly above the surface of a voxel.
+    // 18 mm exceeds common voxel depth-buffer precision at normal reach.
+    public const float Offset = .018f;
 
     public Vector3[] Positions { get; private init; } = [];
     public Vector3[] Normals { get; private init; } = [];
@@ -27,7 +29,17 @@ public sealed class BlockDamageMesh
     public static int StageForPercent(int percent) =>
         percent < 0 ? -1 : Math.Clamp(percent / 10, 0, 9);
 
-    public static BlockDamageMesh Create(BlockState block)
+    /// <summary>Pixel-centred UV into one 16x16 crack stage of the
+    /// 160x16 atlas. No custom shader is needed for atlas selection.</summary>
+    public static Vector2 CrackUV(int stage, float u, float v)
+    {
+        stage = Math.Clamp(stage, 0, 9);
+        return new Vector2(
+            (stage * 16f + .5f + Math.Clamp(u, 0f, 1f) * 15f) / 160f,
+            (.5f + Math.Clamp(v, 0f, 1f) * 15f) / 16f);
+    }
+
+    public static BlockDamageMesh Create(BlockState block, int stage = 0)
     {
         if (!BlockState.IsValid(block.Packed) || block.IsAir)
             return new BlockDamageMesh();
@@ -50,10 +62,10 @@ public sealed class BlockDamageMesh
             vertices.Add(c);
             vertices.Add(d);
             for (int i = 0; i < 4; i++) normals.Add(outward);
-            uvs.Add(new Vector2(u0,v0));
-            uvs.Add(new Vector2(u0,v1));
-            uvs.Add(new Vector2(u1,v1));
-            uvs.Add(new Vector2(u1,v0));
+            uvs.Add(CrackUV(stage, u0, v0));
+            uvs.Add(CrackUV(stage, u0, v1));
+            uvs.Add(CrackUV(stage, u1, v1));
+            uvs.Add(CrackUV(stage, u1, v0));
             // Clockwise outward as expected by Tallow's left-handed mesh.
             indices.Add(start);
             indices.Add(start + 1);

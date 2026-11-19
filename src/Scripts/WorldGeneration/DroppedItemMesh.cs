@@ -4,57 +4,50 @@ using System.Numerics;
 namespace WorldGeneration;
 
 /// <summary>
-/// Small crossed sprites drawn from the 5x2 item icon atlas. Each tile is
-/// 32px, with a tiny inset so nearest filtering never picks adjacent tiles.
-/// This is visual-only: pickup authority is handled by server WorldDrop.
+/// True camera-facing billboard for non-cube resource pickups (coal, iron
+/// ore, iron ingots). An actual item sprite, not two intersecting panels.
+/// The WorldDrop visual child rotates to face each client's camera locally.
 /// </summary>
 public sealed class DroppedItemMesh
 {
+    public const float HalfSize = .17f;
     public Vector3[] Positions { get; private init; } = [];
     public Vector3[] Normals { get; private init; } = [];
     public Vector2[] Uvs { get; private init; } = [];
     public int[] Triangles { get; private init; } = [];
 
+    public static bool IsBillboard(int type) =>
+        type is 7 or 8 or BlockInventory.IronIngot;
+
     public static DroppedItemMesh ForType(int type)
     {
-        if (type is < 1 or > BlockInventory.MaxType)
+        if (!IsBillboard(type))
             return new DroppedItemMesh();
-        int frame = type - 1, column = frame % 5, row = frame / 5;
-        bool chest = type == BlockInventory.Chest;
-        float u0 = chest ? .035f : (column + .035f) / 5f;
-        float u1 = chest ? .965f : (column + .965f) / 5f;
-        float v0 = chest ? .035f : (row + .035f) / 2f;
-        float v1 = chest ? .965f : (row + .965f) / 2f;
-        const float size = .20f;
-        var positions = new Vector3[8];
-        var normals = new Vector3[8];
-        var uvs = new Vector2[8];
-        var triangles = new int[12];
 
-        for (int plane = 0; plane < 2; plane++)
-        {
-            int i = plane * 4;
-            // Two intersecting vertical planes, rotated 45 degrees so a
-            // player sees a recognizable item from any horizontal angle.
-            float x = plane == 0 ? size : -size;
-            float z = plane == 0 ? size : size;
-            positions[i] = new(-x, -size, -z);
-            positions[i+1] = new(-x, size, -z);
-            positions[i+2] = new(x, size, z);
-            positions[i+3] = new(x, -size, z);
-            for (int k = 0; k < 4; k++) normals[i+k] = Vector3.UnitZ;
-            uvs[i] = new(u0, v1);
-            uvs[i+1] = new(u0, v0);
-            uvs[i+2] = new(u1, v0);
-            uvs[i+3] = new(u1, v1);
-            int o = plane*6;
-            triangles[o] = i; triangles[o+1] = i+1; triangles[o+2] = i+2;
-            triangles[o+3] = i; triangles[o+4] = i+2; triangles[o+5] = i+3;
-        }
+        int frame = type - 1;
+        int col = frame % 5, row = frame / 5;
+        // Half-pixel texture atlas inset avoids adjacent icons bleeding.
+        float u0 = (col * 32f + .5f) / 160f;
+        float u1 = (col * 32f + 31.5f) / 160f;
+        float v0 = (row * 32f + .5f) / 64f;
+        float v1 = (row * 32f + 31.5f) / 64f;
+
         return new DroppedItemMesh
         {
-            Positions = positions, Normals = normals, Uvs = uvs,
-            Triangles = triangles
+            Positions =
+            [
+                new(-HalfSize, -HalfSize, 0f),
+                new(-HalfSize, HalfSize, 0f),
+                new(HalfSize, HalfSize, 0f),
+                new(HalfSize, -HalfSize, 0f)
+            ],
+            Normals = [Vector3.UnitZ, Vector3.UnitZ,
+                Vector3.UnitZ, Vector3.UnitZ],
+            Uvs =
+            [
+                new(u0,v1), new(u0,v0), new(u1,v0), new(u1,v1)
+            ],
+            Triangles = [0,1,2,0,2,3]
         };
     }
 

@@ -66,6 +66,25 @@ internal static class BlockDamageTests
             }
         }
 
+        // Direct UV sampling must land inside exactly one 16px stage;
+        // this is independent of the optional custom Shader Graph.
+        BlockState stone = BlockState.Create(3);
+        BlockDamageMesh first = BlockDamageMesh.Create(stone, 0);
+        BlockDamageMesh last = BlockDamageMesh.Create(stone, 9);
+        check(BlockDamageMesh.Offset >= .014f &&
+            first.FaceCount == last.FaceCount &&
+            first.Uvs[0] != last.Uvs[0],
+            "Crack shell clears the terrain depth and stages change UVs");
+        for (int stage = 0; stage < 10; stage++)
+        {
+            BlockDamageMesh mesh = BlockDamageMesh.Create(stone, stage);
+            foreach (Vector2 uv in mesh.Uvs)
+                check(uv.X > stage / 10f &&
+                    uv.X < (stage+1) / 10f &&
+                    uv.Y > 0f && uv.Y < 1f,
+                    "Every crack UV samples the correct atlas stage only");
+        }
+
         // All four stair directions and slab upper/lower variants must
         // have visibly distinct geometry, avoiding a floating full cube.
         BlockDamageMesh lower = BlockDamageMesh.Create(

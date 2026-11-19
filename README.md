@@ -130,3 +130,30 @@ items with the appropriate chunk.
   migrating previous v1-v3 inventory saves, maintaining all item
   quantities and physical slot positions. Iron ingots remain type 10
   inventory-only and cannot be placed as voxel blocks.
+
+
+### Rendering fix and manual testing
+
+The block-breaking overlay uses a reliable two-sided, unlit cutout material
+instead of depending on the experimental custom Shader Graph. The existing
+editable `block_break_damage.tsgraph` is retained as a reference; actual
+ten-stage selection comes from the crack mesh UVs, expanded 0.018m beyond
+the voxel surface to avoid z-fighting and face culling. It only rebuilds on
+target or ten-percent damage-stage changes.
+
+Mined grass, dirt, stone, logs, forge, planks, leaves and chests now drop
+as spinning 0.28m miniature cubes with the same exact face atlas tiles as
+their world blocks. Coal, iron ore and iron ingots remain single
+camera-facing 2D sprites. Visuals are client-local children of the original
+networked Jolt pickup body; only the visual rotates, never the physics body.
+
+**GitHub Actions workflows have been removed from both repository branches.**
+To run the checks locally rather than triggering Actions:
+
+```bash
+dotnet run --project tests/BlockLogicTests/BlockLogicTests.csproj
+python3 tests/validate_assets.py
+```
+
+Also build the game's .NET 11 scripts in your Tallow editor and verify both
+the block cracks and the dropped mesh rendering on the actual graphics backend.

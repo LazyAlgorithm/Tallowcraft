@@ -7,9 +7,10 @@ namespace WorldGeneration;
 
 /// <summary>
 /// Server-authoritative collectible item entity. The server owns item type,
-/// quantity, rigidbody movement and who may pick it up; clients only draw the
-/// 2-plane sprite atlas visual. No client RPC can claim an item or change its
-/// quantity. This deliberately has a small per-scene cap to protect netcode.
+/// quantity, rigidbody movement and who may pick it up. Each peer builds a
+/// transient child mesh: miniature textured cubes for building blocks and a
+/// camera-facing icon for ore, coal and ingots. Rendering never rotates the
+/// networked Jolt body. No client RPC may claim or modify a pickup.
 /// </summary>
 public sealed class WorldDrop : Script
 {
@@ -22,14 +23,16 @@ public sealed class WorldDrop : Script
     [Sync] public int Quantity = 0;
 
     private static readonly List<WorldDrop> Active = new();
-    private MeshRenderer _renderer;
+    private GameObject? _visualObject;
+    private GameObject? _camera;
+    private MeshRenderer _visualRenderer;
     private int _renderType;
+    private float _visualTime;
     private float _age;
     private bool _registered;
 
     public override void Start()
     {
-        _renderer = GameObject.GetComponent<MeshRenderer>();
         if (Scene.IsServer && !_registered)
         {
             Active.Add(this);
@@ -94,18 +97,9 @@ public sealed class WorldDrop : Script
 
     public override void Update(TickInput input, float deltaTime)
     {
-        // The scene replicates spawned objects and their transform; the
-        // cosmetic mesh is built on every peer from the saved type ID.
-        if (_renderer.IsValid && ItemType != _renderType)
-        {
-            _renderer.Material = ItemType == BlockInventory.Chest ?
-                "Materials/chest_item.tmat" : "Materials/item_drop.tmat";
-            DroppedItemMesh mesh = DroppedItemMesh.ForType(ItemType);
-            if (mesh.Triangles.Length > 0)
-                _renderer.SetMesh(mesh.Positions, mesh.Triangles,
-                    mesh.Normals, mesh.Uvs);
-            _renderType = ItemType;
-        }
+        // Only the lightweight visual child changes orientation. The
+        // replicated physics collider/transform always remains authoritative.
+        UpdateVisual(deltaTime);
         if (!Scene.IsServer || Quantity <= 0 || ItemType <= 0)
             return;
 
@@ -135,6 +129,84 @@ public sealed class WorldDrop : Script
         }
     }
 
+    private void UpdateVisual(float deltaTime)
+    {
+        if (ItemType is < 1 or > BlockInventory.MaxType)
+        {
+            if (_visualObject is { IsValid: true } hidden)
+                hidden.SetActive(false);
+            return;
+        }
+
+        if (_visualObject is not { IsValid: true })
+        {
+            GameObject visual = Scene.CreateGameObject("Local pickup visual");
+            visual.Transient = true;
+            if (!visual.SetParent(GameObject, keepWorldPose: false))
+            {
+                visual.Destroy();
+                return;
+            }
+            _visualRenderer = visual.AddComponent<MeshRenderer>();
+            _visualRenderer.CastShadows = false;
+            _visualRenderer.FlatShading = true;
+            _visualObject = visual;
+            _renderType = 0;
+        }
+
+        GameObject child = _visualObject.Value;
+        if (_renderType != ItemType)
+        {
+            if (BlockDropMesh.IsCube(ItemType))
+            {
+                BlockDropMesh mesh = BlockDropMesh.ForType(ItemType);
+                _visualRenderer.Material = "Materials/block_drop.tmat";
+                _visualRenderer.BackFaceCulling = true;
+                _visualRenderer.SetMesh(mesh.Positions, mesh.Triangles,
+                    mesh.Normals, mesh.Uvs);
+            }
+            else if (DroppedItemMesh.IsBillboard(ItemType))
+            {
+                DroppedItemMesh mesh = DroppedItemMesh.ForType(ItemType);
+                _visualRenderer.Material = "Materials/item_drop.tmat";
+                _visualRenderer.BackFaceCulling = false;
+                _visualRenderer.SetMesh(mesh.Positions, mesh.Triangles,
+                    mesh.Normals, mesh.Uvs);
+            }
+            _renderType = ItemType;
+            child.SetActive(true);
+        }
+
+        _visualTime += MathF.Max(0f, deltaTime);
+        child.Transform.LocalPosition = new Vector3(
+            0f, .045f + .025f * MathF.Sin(_visualTime * 3f), 0f);
+
+        if (DroppedItemMesh.IsBillboard(ItemType))
+        {
+            if (_camera is not { IsValid: true })
+                _camera = Scene.Find("Main Camera");
+            if (_camera is { IsValid: true } camera)
+            {
+                Vector3 towardCamera =
+                    camera.Transform.Position - child.Transform.Position;
+                if (towardCamera.LengthSquared() > 0.0001f)
+                {
+                    Vector3 forward = Vector3.Normalize(towardCamera);
+                    Vector3 up = MathF.Abs(Vector3.Dot(forward,
+                        Vector3.UnitY)) > .97f ? Vector3.UnitZ :
+                        Vector3.UnitY;
+                    child.Transform.Rotation =
+                        Quaternion.CreateFromRotationMatrix(
+                            Matrix4x4.CreateWorld(Vector3.Zero, forward, up));
+                }
+            }
+        }
+        else
+            child.Transform.LocalRotation =
+                Quaternion.CreateFromAxisAngle(Vector3.UnitY,
+                    _visualTime * 1.3f);
+    }
+
     private bool TryPickup(GameObject? gameObject)
     {
         if (gameObject is not { IsValid: true } player ||
@@ -162,6 +234,9 @@ public sealed class WorldDrop : Script
 
     public override void OnDestroy()
     {
+        if (_visualObject is { IsValid: true } visual)
+            visual.Destroy();
+        _visualObject = null;
         if (_registered)
         {
             Active.Remove(this);

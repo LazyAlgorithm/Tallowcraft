@@ -18,6 +18,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/WorldChestStorage.cs" Link="WorldChestStorage.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChestFrontMesh.cs" Link="ChestFrontMesh.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/DroppedItemMesh.cs" Link="DroppedItemMesh.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/BlockDropMesh.cs" Link="BlockDropMesh.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/InventoryMenuState.cs" Link="InventoryMenuState.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/CraftingRecipes.cs" Link="CraftingRecipes.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ForgeCrafting.cs" Link="ForgeCrafting.cs" />

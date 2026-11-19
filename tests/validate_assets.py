@@ -218,8 +218,8 @@ def verify() -> None:
     check("if (_tools.TryEquipSlot(kind))" in editor_src
           and "MiningTool.IronPickaxe" in tools_src,
           "Quick equip should choose crafted iron tools when available")
-    # Crack atlas uses a tiny lossless RGBA PNG with ten horizontal 16px
-    # sprites. Its alpha is sampled by the editable shader graph.
+    # Crack atlas is cut out directly by the standard renderer. Its ten
+    # 16px stages are selected by UVs so the custom Shader Graph is optional.
     damage_png = (ROOT / "src/Textures/block_cracks.png").read_bytes()
     check(damage_png[:8] == bytes.fromhex("89504e470d0a1a0a") and
           struct.unpack_from(">II", damage_png, 16) == (160, 16) and
@@ -241,17 +241,21 @@ def verify() -> None:
           and "link 3 0 1 1" in shader_graph
           and "property float damage" in shader
           and "texture2D(mainTexture" in shader
-          and 'shader "Shaders/block_break_damage.tshader"' in crack_material
+          and 'shader "Shaders/block_break_damage.tshader"' not in crack_material
           and 'texture "Textures/block_cracks.png"' in crack_material
+          and "doubleSided 1" in crack_material
           and "blend 1" in crack_material and "unlit 1" in crack_material,
-          "Breaking overlay needs an editable graph, compiled-source shader and cutout material")
+          "Breaking overlay must work with the standard cutout material")
     damage_mesh = (ROOT / "src/Scripts/WorldGeneration/BlockDamageMesh.cs").read_text()
     preview = (ROOT / "src/Scripts/WorldGeneration/BuildPreview.cs").read_text()
     editor_script = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
     check("block.ContainsMicro(x,y,z)" in damage_mesh
           and "new BlockDamageMesh" in damage_mesh
           and "_damageRenderer.SetMesh(" in preview
-          and '_damageRenderer.SetMaterialFloat("damage", stage)' in preview
+          and 'BlockDamageMesh.Create(' in preview
+          and 'CrackUV(stage,' in damage_mesh
+          and "BackFaceCulling = false" in preview
+          and 'public const float Offset = .018f' in damage_mesh
           and "overlay.Destroy()" in preview
           and "_editor.MiningActive" in preview
           and "[Sync] public int MiningX" in editor_script
@@ -287,10 +291,10 @@ def verify() -> None:
           and "component Tallow.Rigidbody enabled 1" in drop_prefab
           and "component Tallow.BoxCollider enabled 1" in drop_prefab
           and 'field scriptType "WorldGeneration.WorldDrop"' in drop_prefab
-          and 'field material "Materials/item_drop.tmat"' in drop_prefab
+          and "component Tallow.MeshRenderer enabled 1" not in drop_prefab
           and 'texture "Textures/inventory_icons.png"' in drop_mat
           and "doubleSided 1" in drop_mat and "blend 1" in drop_mat,
-          "Pickups need a networked, Jolt-simulated textured prefab")
+          "Pickup prefab must keep Jolt physics separate from local visual children")
     check("Scene.Destroy(" not in preview
           and "scene.Destroy(" not in drop_script
           and "Scene.Destroy(" not in drop_script
@@ -307,8 +311,21 @@ def verify() -> None:
           and 'if (!WorldDrop.TrySpawn(Scene, material, droppedAt))' in editor_src
           and 'Scene.Despawn(GameObject)' in drop_script
           and 'DroppedItemMesh.ForType(ItemType)' in drop_script
+          and 'BlockDropMesh.ForType(ItemType)' in drop_script
+          and 'Scene.CreateGameObject("Local pickup visual")' in drop_script
+          and 'Matrix4x4.CreateWorld(' in drop_script
           and 'Vector3.DistanceSquared' in drop_mesh,
-          "Server mining drops must replicate, merge, expire and collect safely")
+          "Server mining drops must replicate, merge, expire and render safely")
+    block_drop = (ROOT / "src/Scripts/WorldGeneration/BlockDropMesh.cs").read_text()
+    cube_material = (ROOT / "src/Materials/block_drop.tmat").read_text()
+    check('public const float Size = .28f' in block_drop
+          and 'BlockTextureAtlas.TileFor(block, faceId)' in block_drop
+          and 'BlockTextureAtlas.FaceUV(tile, faceId' in block_drop
+          and 'BlockDropMesh.IsCube(ItemType)' in drop_script
+          and 'DroppedItemMesh.IsBillboard(ItemType)' in drop_script
+          and 'public static bool IsBillboard(int type)' in drop_mesh
+          and 'texture "Textures/block_atlas.png"' in cube_material,
+          "Placeable blocks must drop as tiny cubes; ores and ingots as billboards")
     chest_tex = (ROOT / "src/Textures/chest_front.png").read_bytes()
     chest_icon = (ROOT / "src/Textures/chest_item.png").read_bytes()
     for name, raw in (("chest front",chest_tex),("chest item",chest_icon)):
