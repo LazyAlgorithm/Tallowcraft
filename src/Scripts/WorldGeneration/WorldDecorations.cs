@@ -1,0 +1,325 @@
+using System;
+
+namespace WorldGeneration;
+
+/// <summary>
+/// Small seeded shrub clusters and abandoned stone foundations. Features are
+/// sampled from WORLD coordinates, not random chunk order, so server, clients,
+/// chunk buffers, and neighbor mesh queries agree at every chunk seam.
+/// </summary>
+public static class WorldDecorations
+{
+    public const ushort Leaves = 9;
+    public const ushort Stone = 3;
+    public const ushort Planks = 6;
+
+    private const int BushCell = 6;
+    private const int RuinCell = 56;
+    private const int RuinRadius = 3;
+    private const int SpawnClear = 112;
+
+    private readonly record struct Bush(int X, int Z, int GroundY);
+    private readonly record struct Ruin(int X, int Z, int GroundY, int Variation)
+    {
+        public int TopY => GroundY + 3;
+    }
+
+    private static uint Hash(int x, int z, int seed, uint salt)
+    {
+        unchecked
+        {
+            uint h = (uint)seed ^ salt;
+            h = (h ^ ((uint)x * 0x9E3779B9u)) * 0x85EBCA6Bu;
+            h = (h ^ (h >> 16)) * 0xC2B2AE35u;
+            h = (h ^ ((uint)z * 0x165667B1u)) * 0x27D4EB2Fu;
+            h = (h ^ (h >> 15)) * 0x7FEB352Du;
+            return h ^ (h >> 16);
+        }
+    }
+
+    private static bool BeyondSpawn(int x, int z, int minRadius) =>
+        (long)x * x + (long)z * z >= (long)minRadius * minRadius;
+
+    private static bool TryRuinCell(int cellX, int cellZ, int seed, out Ruin ruin)
+    {
+        ruin = default;
+        uint hash = Hash(cellX, cellZ, seed, 0x51A47B3u);
+        if ((hash & 1023u) >= 370u)
+            return false;
+
+        // Every ruin remains inside its 56x56 anchor cell by at least 8m.
+        // This allows O(1) world-block queries without checking other cells.
+        int x = cellX * RuinCell + 8 + (int)((hash >> 10) % 40u);
+        int z = cellZ * RuinCell + 8 + (int)((hash >> 18) % 40u);
+        if (!BeyondSpawn(x, z, SpawnClear))
+            return false;
+
+        WorldBiomes.Biome biome = WorldBiomes.At(x, z, seed);
+        if (biome != WorldBiomes.Biome.Meadow &&
+            biome != WorldBiomes.Biome.Drylands &&
+            biome != WorldBiomes.Biome.Highlands)
+            return false;
+
+        int ground = ChunkGenerator.Height(x, z, seed);
+        if (ground < 3 || ground > ChunkGenerator.MaxWorldY - 4)
+            return false;
+
+        // Level or gently sloped ground. Do not bury half the walls or leave
+        // half the foundation floating over a steep hillside.
+        for (int dz = -RuinRadius; dz <= RuinRadius; dz++)
+        for (int dx = -RuinRadius; dx <= RuinRadius; dx++)
+            if (Math.Abs(ChunkGenerator.Height(x + dx, z + dz, seed) - ground) > 1)
+                return false;
+
+        ruin = new Ruin(x, z, ground, (int)(hash >> 27));
+        return true;
+    }
+
+    private static bool TryBushCell(int cellX, int cellZ, int seed, out Bush bush)
+    {
+        bush = default;
+        uint hash = Hash(cellX, cellZ, seed, 0xB057E55u);
+        int x = cellX * BushCell + 1 + (int)((hash >> 10) & 3u);
+        int z = cellZ * BushCell + 1 + (int)((hash >> 14) & 3u);
+        if (!BeyondSpawn(x, z, 64))
+            return false;
+
+        WorldBiomes.Biome biome = WorldBiomes.At(x, z, seed);
+        uint chance = biome switch
+        {
+            WorldBiomes.Biome.Woodland => 210u,
+            WorldBiomes.Biome.Meadow => 85u,
+            _ => 0u
+        };
+        if ((hash & 1023u) >= chance)
+            return false;
+
+        int ground = ChunkGenerator.Height(x, z, seed);
+        if (ground < 2 || ground > ChunkGenerator.MaxWorldY - 2)
+            return false;
+
+        // Only bush near gentle ground, and never in or next to a ruin.
+        if (Math.Abs(ChunkGenerator.Height(x - 1, z, seed) - ground) > 1 ||
+            Math.Abs(ChunkGenerator.Height(x + 1, z, seed) - ground) > 1 ||
+            Math.Abs(ChunkGenerator.Height(x, z - 1, seed) - ground) > 1 ||
+            Math.Abs(ChunkGenerator.Height(x, z + 1, seed) - ground) > 1)
+            return false;
+        if (NearRuin(x, z, seed, RuinRadius + 2))
+            return false;
+
+        bush = new Bush(x, z, ground);
+        return true;
+    }
+
+    /// <summary>True within range of a seeded ruin's center.</summary>
+    public static bool NearRuin(int x, int z, int seed, int radius)
+    {
+        int cellX = ChunkGenerator.FloorDiv(x, RuinCell);
+        int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
+        // Candidate origins are inset 8m from cell borders. Callers of
+        // NearRuin use radii <= 5m, so only the containing cell is needed.
+        return TryRuinCell(cellX, cellZ, seed, out Ruin ruin) &&
+            Math.Abs(x - ruin.X) <= radius &&
+            Math.Abs(z - ruin.Z) <= radius;
+    }
+
+    private static ushort RuinShape(Ruin ruin, int x, int y, int z, int seed)
+    {
+        int dx = x - ruin.X, dz = z - ruin.Z;
+        int ax = Math.Abs(dx), az = Math.Abs(dz);
+        if (ax > RuinRadius || az > RuinRadius)
+            return 0;
+
+        // Flat, mineable 7x7 floor replaces only one layer at the surface.
+        if (y == ruin.GroundY - 1)
+            return ax <= 2 && az <= 2 ? Planks : Stone;
+        if (y < ruin.GroundY || y > ruin.TopY)
+            return 0;
+        if (ax != RuinRadius && az != RuinRadius)
+            return 0;
+
+        // South-facing door, two blocks tall, with a ruined lintel above.
+        if (dz == -RuinRadius && dx == 0 && y < ruin.GroundY + 2)
+            return 0;
+
+        // Uneven, partially collapsed stone wall. Hashing individual positions
+        // makes the exact same shape appear in direct and buffered queries.
+        int wallHeight = 1 + (int)(Hash(x, z, seed, 0x7A1105u) % 4u);
+        if (ax == RuinRadius && az == RuinRadius)
+            wallHeight = 3;
+        if (y - ruin.GroundY >= wallHeight)
+            return 0;
+        return Stone;
+    }
+
+    private static ushort BushShape(Bush bush, int x, int y, int z)
+    {
+        int dx = Math.Abs(x - bush.X), dz = Math.Abs(z - bush.Z);
+        if (y == bush.GroundY + 1 && dx == 0 && dz == 0)
+            return Leaves;
+        if (y == bush.GroundY && dx <= 1 && dz <= 1 &&
+            dx + dz <= 1)
+            return Leaves;
+        return 0;
+    }
+
+    /// <summary>A stone or plank block of a natural ruin, or 0.</summary>
+    public static ushort StructureAt(int x, int y, int z, int seed)
+    {
+        if (y < 0 || y > ChunkGenerator.MaxWorldY ||
+            !BeyondSpawn(x, z, SpawnClear - RuinRadius))
+            return 0;
+        int cellX = ChunkGenerator.FloorDiv(x, RuinCell);
+        int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
+        return TryRuinCell(cellX, cellZ, seed, out Ruin ruin)
+            ? RuinShape(ruin, x, y, z, seed) : (ushort)0;
+    }
+
+    /// <summary>A shrub leaf block, or 0, below tree and ruin precedence.</summary>
+    public static ushort BushAt(int x, int y, int z, int seed)
+    {
+        if (y < 2 || y > ChunkGenerator.MaxWorldY ||
+            !BeyondSpawn(x, z, 62))
+            return 0;
+        int cellX = ChunkGenerator.FloorDiv(x, BushCell);
+        int cellZ = ChunkGenerator.FloorDiv(z, BushCell);
+        return TryBushCell(cellX, cellZ, seed, out Bush bush)
+            ? BushShape(bush, x, y, z) : (ushort)0;
+    }
+
+    public static bool TryRuinAt(int x, int z, int seed, out int groundY)
+    {
+        int cellX = ChunkGenerator.FloorDiv(x, RuinCell);
+        int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
+        if (TryRuinCell(cellX, cellZ, seed, out Ruin ruin) &&
+            ruin.X == x && ruin.Z == z)
+        {
+            groundY = ruin.GroundY;
+            return true;
+        }
+        groundY = 0;
+        return false;
+    }
+
+    public static bool TryBushAt(int x, int z, int seed, out int groundY)
+    {
+        int cellX = ChunkGenerator.FloorDiv(x, BushCell);
+        int cellZ = ChunkGenerator.FloorDiv(z, BushCell);
+        if (TryBushCell(cellX, cellZ, seed, out Bush bush) &&
+            bush.X == x && bush.Z == z)
+        {
+            groundY = bush.GroundY;
+            return true;
+        }
+        groundY = 0;
+        return false;
+    }
+
+    private static void NearbyRuins(ChunkKey key, int seed, Action<Ruin> apply)
+    {
+        int x0 = key.X * ChunkGenerator.Size - RuinRadius;
+        int x1 = (key.X + 1) * ChunkGenerator.Size - 1 + RuinRadius;
+        int z0 = key.Z * ChunkGenerator.Size - RuinRadius;
+        int z1 = (key.Z + 1) * ChunkGenerator.Size - 1 + RuinRadius;
+        for (int cz = ChunkGenerator.FloorDiv(z0, RuinCell);
+             cz <= ChunkGenerator.FloorDiv(z1, RuinCell); cz++)
+        for (int cx = ChunkGenerator.FloorDiv(x0, RuinCell);
+             cx <= ChunkGenerator.FloorDiv(x1, RuinCell); cx++)
+            if (TryRuinCell(cx, cz, seed, out Ruin ruin))
+                apply(ruin);
+    }
+
+    private static void NearbyBushes(ChunkKey key, int seed, Action<Bush> apply)
+    {
+        int x0 = key.X * ChunkGenerator.Size - 1;
+        int x1 = (key.X + 1) * ChunkGenerator.Size;
+        int z0 = key.Z * ChunkGenerator.Size - 1;
+        int z1 = (key.Z + 1) * ChunkGenerator.Size;
+        for (int cz = ChunkGenerator.FloorDiv(z0, BushCell);
+             cz <= ChunkGenerator.FloorDiv(z1, BushCell); cz++)
+        for (int cx = ChunkGenerator.FloorDiv(x0, BushCell);
+             cx <= ChunkGenerator.FloorDiv(x1, BushCell); cx++)
+            if (TryBushCell(cx, cz, seed, out Bush bush))
+                apply(bush);
+    }
+
+    /// <summary>Check extra above-ground chunks without requiring edits.</summary>
+    public static bool HasBlocksInChunk(ChunkKey key, int seed)
+    {
+        if (key.Y < 0 || key.Y > ChunkGenerator.MaxChunkY)
+            return false;
+        int minY = key.Y * ChunkGenerator.Size;
+        int maxY = minY + ChunkGenerator.Size - 1;
+        bool found = false;
+        NearbyRuins(key, seed, ruin =>
+        {
+            if (!found && ruin.GroundY - 1 <= maxY &&
+                ruin.TopY >= minY &&
+                ruin.X + RuinRadius >= key.X * ChunkGenerator.Size &&
+                ruin.X - RuinRadius < (key.X + 1) * ChunkGenerator.Size &&
+                ruin.Z + RuinRadius >= key.Z * ChunkGenerator.Size &&
+                ruin.Z - RuinRadius < (key.Z + 1) * ChunkGenerator.Size)
+                found = true;
+        });
+        if (found) return true;
+        NearbyBushes(key, seed, bush =>
+        {
+            if (!found && bush.GroundY <= maxY &&
+                bush.GroundY + 1 >= minY &&
+                bush.X + 1 >= key.X * ChunkGenerator.Size &&
+                bush.X - 1 < (key.X + 1) * ChunkGenerator.Size &&
+                bush.Z + 1 >= key.Z * ChunkGenerator.Size &&
+                bush.Z - 1 < (key.Z + 1) * ChunkGenerator.Size)
+                found = true;
+        });
+        return found;
+    }
+
+    /// <summary>Apply decorations before player edits, preserving their edits.</summary>
+    public static void DecorateChunk(ChunkKey key, int seed, ushort[] blocks)
+    {
+        if (key.Y < 0 || key.Y > ChunkGenerator.MaxChunkY)
+            return;
+
+        int x0 = key.X * ChunkGenerator.Size;
+        int y0 = key.Y * ChunkGenerator.Size;
+        int z0 = key.Z * ChunkGenerator.Size;
+
+        void Write(int x, int y, int z, ushort type, bool overwrite)
+        {
+            int lx = x - x0, ly = y - y0, lz = z - z0;
+            if ((uint)lx >= ChunkGenerator.Size ||
+                (uint)ly >= ChunkGenerator.Size ||
+                (uint)lz >= ChunkGenerator.Size)
+                return;
+            int index = ChunkGenerator.Index(lx, ly, lz);
+            if (overwrite || blocks[index] == 0)
+                blocks[index] = type;
+        }
+
+        // Tree foliage is lower precedence than ruined construction.
+        NearbyRuins(key, seed, ruin =>
+        {
+            for (int y = ruin.GroundY - 1; y <= ruin.TopY; y++)
+            for (int z = ruin.Z - RuinRadius; z <= ruin.Z + RuinRadius; z++)
+            for (int x = ruin.X - RuinRadius; x <= ruin.X + RuinRadius; x++)
+            {
+                ushort type = RuinShape(ruin, x, y, z, seed);
+                if (type != 0)
+                    Write(x, y, z, type, true);
+            }
+        });
+
+        NearbyBushes(key, seed, bush =>
+        {
+            for (int y = bush.GroundY; y <= bush.GroundY + 1; y++)
+            for (int z = bush.Z - 1; z <= bush.Z + 1; z++)
+            for (int x = bush.X - 1; x <= bush.X + 1; x++)
+            {
+                ushort type = BushShape(bush, x, y, z);
+                if (type != 0)
+                    Write(x, y, z, type, false);
+            }
+        });
+    }
+}
