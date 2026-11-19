@@ -31,7 +31,7 @@ This code lives entirely in the game repository, not in Tallow's engine.
   overwriting the user's construction with fresh terrain.
 - Autosaves run every 30 seconds on an immutable snapshot, and
   `OnDestroy` performs a final save. A crash can lose unsaved edits since
-  the last autosave. Save old generations should be pruned periodically.
+  the last autosave. Completed saves retain the previous committed generation\n  as a recovery backup and prune older complete generations.
 
 ## Clients and late joining
 
