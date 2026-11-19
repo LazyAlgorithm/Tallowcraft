@@ -20,7 +20,7 @@ internal static class ForgeTests
         check(ForgeCrafting.NearForge(eye,
                 p => blocks.TryGetValue(p, out ushort value) ? value : stone),
             "A placed forge within 3.5 metres unlocks smelting");
-        check(!ForgeCrafting.NearForge(new Vector3(6.5f, 10.5f, 0f),
+        check(!ForgeCrafting.NearForge(new Vector3(6.5f, 10.5f, .25f),
                 p => blocks.TryGetValue(p, out ushort value) ? value : stone),
             "A distant forge cannot be used by spoofing a client request");
         check(!ForgeCrafting.NearForge(new Vector3(float.NaN, 0, 0),
