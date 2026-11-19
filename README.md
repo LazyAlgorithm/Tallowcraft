@@ -18,13 +18,14 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Hold right mouse: mine the targeted block (stone and ores take longer than dirt and leaves)
 - E (Use): alternate place control
 - 1–6: select grass, dirt, stone, log, forge, planks
+- 7, 8, 9: equip a crafted pickaxe, axe or shovel; 0: switch back to hands
 - Mouse wheel: cycle selected block
 - Q: cycle cube, slab, stair and half-wall shapes
 - F: rotate the next placed block in 90° increments
 - Ctrl while placing: place an upper slab or upside-down stair
 - Left-click a lower slab's top (or an upper slab's bottom) with the same slab type selected to combine both halves into one full block
 - On-screen hotbar displays selection, shape, rotation, and available item quantities. Controls are networked with `Input.tinput`.
-- Tab: open the full nine-material inventory and crafting screen. While it is open, movement and block editing are paused.
+- Tab (or gamepad West): open/close the full nine-material inventory and crafting screen. Escape (or gamepad East) also closes it. While it is open, gameplay input—including mouse look—is disabled instead of merely freezing the camera, so closing the screen does not snap to an accumulated mouse angle. The on-screen Close button works too.
 - Craft stone tools in that panel with stone and planks: pickaxe (3 stone + 2 planks), axe (2 stone + 2 planks), or shovel (1 stone + 2 planks). Click Equip to select one, or Use hands to unequip. Recraft a damaged tool to repair it.
 - Pickaxes mine stone, ores and forges faster; axes mine logs and planks faster; shovels mine dirt and grass faster. Each successfully mined block consumes one durability point. A broken tool automatically unequips.
 - Mining a block deposits one material directly into the server-owned player inventory; coal, iron and leaves are collected even though they are not currently selectable hotbar slots.

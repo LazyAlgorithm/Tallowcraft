@@ -51,6 +51,9 @@ bind wheel up
 action Custom8 button
 bind wheel down
 map Menu
+action Inventory button
+bind key Tab
+bind pad West
 action Submit button
 bind key Return
 bind pad South

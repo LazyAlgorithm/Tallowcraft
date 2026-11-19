@@ -91,7 +91,7 @@ public class FirstPersonCharacter : Script
         // The replicated inventory menu also blocks movement on the server;
         // unlocking the pointer must never let UI clicks move the player.
         bool browsingInventory =
-            GameObject.GetComponent<BlockEditor>()?.InventoryOpen == true;
+            GameObject.GetComponent<BlockEditor>()?.IsInventoryVisible == true;
         if (GetCharacterController() is { } controller)
         {
             // Only the authoritative server relocates new player instances.

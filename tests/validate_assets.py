@@ -178,7 +178,14 @@ def verify() -> None:
     check("bind wheel up" in actions and "bind wheel down" in actions,
           "Hotbar mouse wheel actions are missing")
     check("action Reload button\nbind key Tab" in actions,
-          "Inventory toggle must use the transmitted Tab/Reload action")
+          "Inventory gamepad action should retain the Tab binding")
+    check("action Inventory button\nbind key Tab\nbind pad West" in actions,
+          "Menu must accept Tab/West while Player actions are disabled")
+    menu_script = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
+    check('InputActions.SetMapEnabled("Player", !open)' in menu_script
+          and 'InputActions.Pressed("Menu/Inventory")' in menu_script
+          and "private void SetInventoryOpen(bool open)" in menu_script,
+          "Menu focus must disable look input and use the server-authorized state RPC")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 

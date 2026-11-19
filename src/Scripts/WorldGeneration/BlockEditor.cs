@@ -50,9 +50,14 @@ public class BlockEditor : Script
     private float _miningElapsed;
     private bool _cursorInitialized;
     private bool _cursorMenuOpen;
+    private readonly InventoryMenuState _menu = new();
 
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
+
+    /// <summary>Client-side menu focus changes immediately, without waiting
+    /// for replicated server state. The server still authorizes all actions.</summary>
+    public bool IsInventoryVisible => IsLocal ? _menu.Open : InventoryOpen;
 
     public override void Start()
     {
@@ -68,14 +73,60 @@ public class BlockEditor : Script
         if (!IsLocal)
             return;
 
-        // InventoryOpen itself is replicated, so UI clicks cannot authorize
-        // gameplay. Only the owning peer needs an unlocked pointer.
-        if (!_cursorInitialized || _cursorMenuOpen != InventoryOpen)
+        // LocalControls.Read accumulates yaw/pitch from the Player/Look action
+        // even if a script chooses not to rotate its camera. Merely skipping
+        // camera rotation while browsing therefore makes the camera snap when
+        // the menu closes. Disable the whole local Player map instead: this
+        // stops look, movement, mining and placement at the input source.
+        // Menu/Cancel and direct Tab input remain available while it is off.
+        bool menuPressed = Input.GetKeyDown(KeyCode.Tab) ||
+            InputActions.Pressed("Menu/Inventory") ||
+            (_menu.Open && InputActions.Pressed("Menu/Cancel"));
+        bool menuHeld = Input.GetKey(KeyCode.Tab) ||
+            InputActions.Held("Menu/Inventory") ||
+            (_menu.Open && InputActions.Held("Menu/Cancel"));
+        if (_menu.Update(InventoryOpen, menuPressed, menuHeld,
+                deltaTime, out bool requestedOpen))
+            Rpc(nameof(SetInventoryOpen), requestedOpen);
+
+        bool open = _menu.Open;
+        if (!open)
         {
-            Cursor.Locked = !InventoryOpen;
-            _cursorMenuOpen = InventoryOpen;
+            // Server owns durability/equipment; hotkeys send only the tool id.
+            // 1-6 continue selecting building blocks in the networked hotbar.
+            int tool = Input.GetKeyDown(KeyCode.Alpha7) ? 1 :
+                Input.GetKeyDown(KeyCode.Alpha8) ? 2 :
+                Input.GetKeyDown(KeyCode.Alpha9) ? 3 :
+                Input.GetKeyDown(KeyCode.Alpha0) ? 0 : -1;
+            if (tool >= 0)
+                Rpc(nameof(EquipToolQuick), tool);
+        }
+        if (!_cursorInitialized || _cursorMenuOpen != open)
+        {
+            // Set the input map before unlocking/locking the mouse. The engine
+            // clears relative mouse motion when changing cursor-lock mode.
+            InputActions.SetMapEnabled("Player", !open);
+            Cursor.Locked = !open;
+            _cursorMenuOpen = open;
             _cursorInitialized = true;
         }
+    }
+
+    public override void OnDestroy()
+    {
+        if (!IsLocal)
+            return;
+        // A new Play session or reconnect must start with gameplay enabled.
+        InputActions.SetMapEnabled("Player", true);
+        Cursor.Locked = false;
+    }
+
+    private void CloseMenuLocally()
+    {
+        if (_menu.RequestClose())
+            Rpc(nameof(SetInventoryOpen), false);
+        // LocalUpdate will immediately re-enable mouse look on this frame's
+        // next input poll, after the engine's cursor-lock transition.
     }
 
     /// <summary>Clients read a fully validated server inventory snapshot.</summary>
@@ -111,12 +162,13 @@ public class BlockEditor : Script
     }
 
     [Rpc(RpcTarget.Server)]
-    private void CloseInventory()
+    private void SetInventoryOpen(bool open)
     {
         if (!Scene.IsServer ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
-        InventoryOpen = false;
+        InventoryOpen = open;
+        ResetMining();
     }
 
     [Rpc(RpcTarget.Server)]
@@ -137,6 +189,16 @@ public class BlockEditor : Script
     private void EquipTool(int kind)
     {
         if (!Scene.IsServer || !InventoryOpen ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        if (_tools.TryEquip((MiningTool)kind))
+            ToolState = _tools.Serialize();
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void EquipToolQuick(int kind)
+    {
+        if (!Scene.IsServer || InventoryOpen ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         if (_tools.TryEquip((MiningTool)kind))
@@ -192,11 +254,9 @@ public class BlockEditor : Script
         _craftCooldown = MathF.Max(0f, _craftCooldown - deltaTime);
         _chunkRequestCooldown = MathF.Max(0f, _chunkRequestCooldown - deltaTime);
 
-        if (input.Pressed(InputButton.Reload))
-        {
-            InventoryOpen = !InventoryOpen;
-            ResetMining();
-        }
+        // The owner's local menu RPC toggles this instead of TickInput.Reload.
+        // That lets the local machine suppress look input before the server
+        // has acknowledged the change, with no double Tab toggle.
         if (InventoryOpen)
         {
             ResetMining();
@@ -306,7 +366,7 @@ public class BlockEditor : Script
         GUI.Label(left + 252, top + 12, CreativeMode
             ? "CREATIVE BUILDING" : "SURVIVAL BUILDING");
         if (GUI.Button(left + width - 81, top + 8, 65, 28, "Close"))
-            Rpc(nameof(CloseInventory));
+            CloseMenuLocally();
 
         for (int i = 0; i < BlockNames.Length; i++)
         {
@@ -382,7 +442,7 @@ public class BlockEditor : Script
         if (!IsLocal)
             return;
 
-        if (InventoryOpen)
+        if (IsInventoryVisible)
         {
             DrawInventory();
             return;
@@ -413,7 +473,7 @@ public class BlockEditor : Script
         GUI.Label(left + 4, top + 49,
             $"{BlockNames[selected - 1]}  •  {ShapeNames[shape]}  •  rotation {FacingOffset * 90}°");
         GUI.Label(left + 4, top + 66,
-            "1-6 select   Wheel cycle   Q shape   F rotate   TAB inventory");
+            "1-6 blocks   7 pick   8 axe   9 shovel   0 hand   TAB inventory");
         GUI.Label(left + 4, top + 85,
             MiningType is >= 1 and <= 9
                 ? $"Mining {BlockNames[MiningType - 1]}: {MiningPercent}%"
