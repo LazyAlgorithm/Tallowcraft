@@ -28,6 +28,9 @@ public class BlockEditor : Script
     [Sync] public int ChestY = 0;
     [Sync] public int ChestZ = 0;
     [Sync] public string ChestState = "";
+    // Networked feedback makes a rejected chest request/transfer visible
+    // instead of silently leaving the storage UI empty.
+    [Sync] public string ChestStatus = "";
     [Sync] public bool InventoryOpen = false;
     [Sync] public bool ProfileReady = false;
     [Sync] public bool ProfileError = false;
@@ -318,6 +321,14 @@ public class BlockEditor : Script
         }
         if (!open)
         {
+            // E is interaction-only: the Player/Use action no longer
+            // binds this key. Interacting requests the nearby chest on the
+            // server, which atomically opens both the chest and menu when
+            // a real placed chest is in range. No client voxel claim.
+            if (!InventoryOpen && ProfileReady &&
+                InputActions.Pressed("Player/Interact"))
+                Rpc(nameof(InteractNearbyChest));
+
             // Server owns durability/equipment; hotkeys send only the tool id.
             // 1-6 continue selecting building blocks in the networked hotbar.
             int tool = Input.GetKeyDown(KeyCode.Alpha7) ? 1 :
@@ -498,28 +509,69 @@ public class BlockEditor : Script
             !_world.TryReadChest(new BlockPosition(ChestX,ChestY,ChestZ),
                 out ChestContents contents))
         {
-            ChestOpen=false; ChestState=""; return;
+            ChestOpen = false;
+            ChestState = "";
+            ChestStatus = "Chest closed: out of range or no longer placed.";
+            return;
         }
         string current=contents.Serialize();
         if (current!=ChestState) ChestState=current;
     }
 
+    /// <summary>Common server-side check for both E interaction and the
+    /// Storage tab. Only placed chest voxels in range may open. No client
+    /// location, block position, or item contents are trusted.</summary>
+    private bool TryOpenChestNearPlayer()
+    {
+        if (!Scene.IsServer || !ProfileReady)
+            return false;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        BlockPosition? found = _world?.NearestChest(
+            Transform.Position + Vector3.UnitY * EyeHeight);
+        if (found is not { } pos || _world == null ||
+            !_world.TryReadChest(pos, out ChestContents contents))
+        {
+            ChestOpen = false;
+            ChestState = "";
+            ChestStatus = "No placed chest within 4.5m. Move closer and try again.";
+            return false;
+        }
+        ChestX = pos.X;
+        ChestY = pos.Y;
+        ChestZ = pos.Z;
+        ChestOpen = true;
+        ChestState = contents.Serialize();
+        ChestStatus = "Chest ready. Select a stack, then an empty storage slot.";
+        return true;
+    }
+
+    /// <summary>World interaction opened by E, not the block placement
+    /// action. The menu and chest open in the same server transaction,
+    /// avoiding the tab menu's InventoryOpen acknowledgment race.</summary>
+    [Rpc(RpcTarget.Server)]
+    private void InteractNearbyChest()
+    {
+        if (!Scene.IsServer || !ProfileReady || InventoryOpen ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        if (!TryOpenChestNearPlayer())
+            return;
+        InventoryOpen = true;
+        ResetMining();
+    }
+
     [Rpc(RpcTarget.Server)]
     private void OpenNearbyChest()
     {
-        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
+        if (!Scene.IsServer ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
-        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
-        BlockPosition? found=_world?.NearestChest(
-            Transform.Position+Vector3.UnitY*EyeHeight);
-        if (found is not { } pos || _world==null ||
-            !_world.TryReadChest(pos,out ChestContents contents))
+        if (!ProfileReady || !InventoryOpen)
         {
-            ChestOpen=false; ChestState=""; return;
+            ChestStatus = "Inventory is not ready; open it before using storage.";
+            return;
         }
-        ChestX=pos.X; ChestY=pos.Y; ChestZ=pos.Z;
-        ChestOpen=true; ChestState=contents.Serialize();
+        TryOpenChestNearPlayer();
     }
 
     [Rpc(RpcTarget.Server)]
@@ -528,42 +580,76 @@ public class BlockEditor : Script
         if (!Scene.IsServer ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
-        ChestOpen=false; ChestState="";
+        ChestOpen = false;
+        ChestState = "";
+        ChestStatus = "";
     }
 
     [Rpc(RpcTarget.Server)]
     private void MoveChestStack(int from,int to,bool split)
     {
-        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
-            !ChestOpen || !ServerChestInReach() ||
-            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId) ||
-            from is < 0 or >= 63 || to is < 0 or >= 63)
+        if (!Scene.IsServer ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
+        if (!ProfileReady || !InventoryOpen || !ChestOpen)
+        {
+            ChestStatus = "Open a nearby chest before transferring items.";
+            return;
+        }
+        if (!ServerChestInReach())
+        {
+            ChestOpen = false;
+            ChestState = "";
+            ChestStatus = "Too far from the chest; move closer and reopen it.";
+            return;
+        }
+        if (from is < 0 or >= 63 || to is < 0 or >= 63 ||
+            from == to)
+        {
+            ChestStatus = "Invalid source or destination slot.";
+            return;
+        }
         _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
-        if (_world==null) return;
-        BlockPosition pos=new(ChestX,ChestY,ChestZ);
-        bool changed,playerChanged=false;
-        if (from<36 && to>=36)
+        if (_world == null)
         {
-            changed=_world.TryMoveChestItem(pos,_inventory,
-                from,to-36,true,split);
-            playerChanged=changed;
+            ChestStatus = "World storage is not ready.";
+            return;
         }
-        else if (from>=36 && to<36)
+        BlockPosition pos = new(ChestX, ChestY, ChestZ);
+        bool changed, playerChanged = false;
+        if (from < 36 && to >= 36)
         {
-            changed=_world.TryMoveChestItem(pos,_inventory,
-                to,from-36,false,split);
-            playerChanged=changed;
+            changed = _world.TryMoveChestItem(pos, _inventory,
+                from, to-36, true, split);
+            playerChanged = changed;
         }
-        else if (from>=36 && to>=36)
-            changed=_world.TryRearrangeChest(pos,from-36,to-36,split);
-        else return;
-        if (!changed) return;
+        else if (from >= 36 && to < 36)
+        {
+            changed = _world.TryMoveChestItem(pos, _inventory,
+                to, from-36, false, split);
+            playerChanged = changed;
+        }
+        else if (from >= 36 && to >= 36)
+            changed = _world.TryRearrangeChest(pos, from-36, to-36, split);
+        else
+        {
+            ChestStatus = "Select one storage slot and one player slot.";
+            return;
+        }
+        if (!changed)
+        {
+            ChestStatus = "Transfer failed: slot full, incompatible or empty.";
+            RefreshChest();
+            return;
+        }
         if (playerChanged)
         {
-            InventoryState=_inventory.Serialize();
-            _profileDirty=true;
+            InventoryState = _inventory.Serialize();
+            _profileDirty = true;
         }
+        ChestStatus = from < 36 && to >= 36 ? "Items stored." :
+            from >= 36 && to < 36 ? "Items withdrawn." :
+            "Chest items rearranged.";
         RefreshChest();
     }
 
@@ -594,7 +680,12 @@ public class BlockEditor : Script
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         InventoryOpen = open;
-        if (!open) { ChestOpen = false; ChestState = ""; }
+        if (!open)
+        {
+            ChestOpen = false;
+            ChestState = "";
+            ChestStatus = "";
+        }
         ResetMining();
     }
 

@@ -16,7 +16,7 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Ctrl: crouch
 - Left mouse: place the selected block
 - Hold right mouse: mine the targeted block (stone and ores take longer than dirt and leaves). A pixelated, progressively spreading **ten-stage crack overlay** appears on the actual cube/slab/stair/half-wall faces. It resets immediately on release, target changes or breaking.
-- E (Use): alternate place control
+- **E (Interact):** open the nearest placed chest within 4.5m directly into the Storage UI. E never places blocks; use **left mouse** (or controller North) to place. E does nothing if no chest is nearby.
 - 1–6: select the first six physical hotbar slots (not fixed material types); scroll the mouse wheel for all nine slots
 - 7, 8, 9: equip a crafted pickaxe, axe or shovel; 0: switch back to hands
 - Mouse wheel: cycle selected block
@@ -197,3 +197,37 @@ existing owner-authorized `BlockEditor` server RPCs.
 GitHub Actions workflows remain removed; validate locally with
 `python3 tests/validate_assets.py` and the Tallow editor's .NET 11
 gameplay compile. Asset checks do not verify final on-screen layout.
+
+### Chest storage interaction (fixed)
+
+Open **Tab → Storage** while standing within **4.5m** of a placed chest.
+The UI now waits for the server's inventory-open acknowledgement before
+requesting the chest, avoiding a dropped one-shot RPC if you switch tabs
+quickly. The chest panel displays either its coordinates and storage slots,
+or the server's actual reason for rejecting the request.
+
+To store a stack, click any backpack/hotbar stack and click **Store
+selected**. To withdraw, click an occupied chest slot and choose **Take
+selected**. You can still transfer into a specific slot by clicking the
+source and then the desired destination. Use **Move half** before either
+action to split a stack. All transfers remain server-authoritative,
+share chest state between players, and use the existing persisted world
+storage; the UI cannot create or duplicate items.
+
+If nothing moves, read the status line at the top of the Storage tab.
+It now reports out-of-range chests, incompatible/full slots and failed
+server-authorized transfers instead of silently ignoring them.
+
+### Chest E-key interaction
+
+Standing within 4.5m of a placed chest, press **E** to open it directly.
+The server checks the actual chest block and the player's position, then
+opens the inventory menu and Storage page together. E is now bound to
+`Player/Interact`, completely separate from `Player/Use` (left mouse to
+place). The action doesn't place voxels or transfer inventory automatically.
+If no chest exists within range, the menu stays closed. Press Tab, Escape
+or X to close storage and return to gameplay.
+
+When opening Storage through Tab, the UI still waits for the server's
+inventory-open acknowledgment before requesting a chest, so rapid tab
+switching does not silently lose the open request.

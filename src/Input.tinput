@@ -20,8 +20,9 @@ bind mouse 1
 bind pad RightTrigger
 action Use button
 bind mouse 0
-bind key E
 bind pad North
+action Interact button
+bind key E
 action Reload button
 bind key Tab
 bind pad West

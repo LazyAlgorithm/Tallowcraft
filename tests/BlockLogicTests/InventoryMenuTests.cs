@@ -54,6 +54,22 @@ internal static class InventoryMenuTests
 
         check(timeout.Update(false, true, true, 0.016f, out _) &&
             timeout.Open, "Tab can reopen after a timed-out RPC");
+
+        // Pressing E opens a chest on the server without a local Tab RPC.
+        // The local focus gate must honor unsolicited InventoryOpen=true
+        // and return input focus when the server closes it.
+        var chestInteraction = new InventoryMenuState();
+        check(!chestInteraction.Update(true, false, false, .016f,
+                out bool externalState) &&
+            externalState && chestInteraction.Open &&
+            !chestInteraction.AwaitingServer,
+            "Server-authorized E interaction opens the inventory UI");
+        check(chestInteraction.RequestClose() &&
+            !chestInteraction.Open && chestInteraction.AwaitingServer,
+            "Closing an E-opened chest immediately restores local gameplay focus");
+        check(!chestInteraction.Update(false, false, false, .016f, out _) &&
+            !chestInteraction.Open && !chestInteraction.AwaitingServer,
+            "The server acknowledges closing the chest with no extra toggle");
         Console.WriteLine(
             "PASS: immediate local inventory focus, key debouncing, RPC ack and timeout");
     }

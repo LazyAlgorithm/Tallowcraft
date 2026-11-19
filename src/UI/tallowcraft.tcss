@@ -59,7 +59,8 @@
 .tool-row button { width: 60; height: 30; font-size: 13; background-color: #557357; border-radius: 4; color: #f9f1dc }
 .smelt { flex-direction: row; gap: 18; align-items: center; justify-content: center; margin-top: 36; margin-bottom: 18 }
 .recipe-arrow { font-size: 26; color: #deb978 }
-.chest-stack { gap: 9; align-items: center; margin-top: 14; margin-bottom: 15 }
+.chest-stack { gap: 9; align-items: center; margin-top: 10; margin-bottom: 9 }
+.chest-actions { flex-direction: row; gap: 9; align-items: center; margin-top: 6; margin-bottom: 8 }
 .menu-footer { flex-direction: row; justify-content: space-between; align-items: center; height: 45; padding: 0 9; border-color: #526b59; border-width: 1 0 0 0 }
 #menu-hint { font-size: 13; color: #bfd0b9 }
 #hands-button { padding: 9 16; background-color: #435448; border-radius: 6; color: #eff5e6 }

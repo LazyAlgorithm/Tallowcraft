@@ -24,6 +24,10 @@ public sealed class TallowcraftUI : Script
     private bool _readyBefore;
     private bool _menuBefore;
     private bool _chestBefore;
+    private string _chestMessageBefore = "";
+    // The Storage tab may be clicked before the server acknowledges
+    // SetInventoryOpen. Defer the chest RPC until that acknowledgment.
+    private bool _chestOpenRequested;
     private int _selectedBefore = -1;
     private int _source = -1;
     private bool _moveHalf;
@@ -138,10 +142,15 @@ public sealed class TallowcraftUI : Script
             SetItem(ChestId(i), editor.ChestOpen ? chest.Slot(i) : default,
                 45+i);
         Text("chest-status", editor.ChestOpen ?
-            $"Chest at {editor.ChestX}, {editor.ChestY}, {editor.ChestZ}" :
-            "No chest open. Stand within 4.5m and click Find nearby chest.");
+            $"Chest at {editor.ChestX}, {editor.ChestY}, {editor.ChestZ}" +
+                (editor.ChestStatus.Length > 0 ? " - " + editor.ChestStatus : "") :
+            editor.ChestStatus.Length > 0 ? editor.ChestStatus :
+            _chestOpenRequested ?
+                "Opening nearby chest..." :
+                "No chest open. Stand within 4.5m and click Find nearby chest.");
         Visible("open-chest", !editor.ChestOpen);
         Visible("chest-stack", editor.ChestOpen);
+        Visible("chest-actions", editor.ChestOpen);
     }
 
     private void UpdateToolRows()
@@ -222,7 +231,11 @@ public sealed class TallowcraftUI : Script
             Visible("overlay", open);
             Visible("hud", !open);
             Visible("crosshair", !open);
-            if (!open) _source = -1;
+            if (!open)
+            {
+                _source = -1;
+                _chestOpenRequested = false;
+            }
             _menuBefore = open;
         }
 
@@ -246,11 +259,37 @@ public sealed class TallowcraftUI : Script
             UpdateInventory();
             RefreshPage();
         }
+        // The menu opens locally before InventoryOpen is replicated.
+        // Waiting for the server's acknowledgment avoids dropping the
+        // only OpenNearbyChest RPC on high-latency connections.
+        if (open && _page == "chest" && _chestOpenRequested &&
+            editor.InventoryOpen && editor.ProfileReady)
+        {
+            _chestOpenRequested = false;
+            // Always reissue on entering Storage. The previous CloseChest
+            // RPC may still be in flight, while the old replicated
+            // ChestOpen value momentarily remains true on this client.
+            editor.UiOpenChest();
+        }
+        // E opens the chest and inventory together on the server. When
+        // that open state replicates, switch straight to the Storage page.
+        // This also works when the player opens a chest from the Storage
+        // tab, with no local/persisted inventory slot changes.
+        if (open && editor.ChestOpen && !_chestBefore)
+        {
+            _page = "chest";
+            _source = -1;
+            _chestOpenRequested = false;
+            RefreshPage();
+            UpdateSelection();
+        }
         if (!_initialized || _chestSnapshot != editor.ChestState ||
-            _chestBefore != editor.ChestOpen)
+            _chestBefore != editor.ChestOpen ||
+            _chestMessageBefore != editor.ChestStatus)
         {
             _chestSnapshot = editor.ChestState;
             _chestBefore = editor.ChestOpen;
+            _chestMessageBefore = editor.ChestStatus;
             UpdateChest();
         }
         if (!_initialized || _toolSnapshot != editor.ToolState)
@@ -301,6 +340,110 @@ public sealed class TallowcraftUI : Script
         UpdateSelection();
     }
 
+    /// <summary>Deposit the selected player stack into the first
+    /// compatible chest slot. The server still validates the actual chest,
+    /// inventory and transfer quantity on every request.</summary>
+    public void OnDeposit()
+    {
+        if (_owner is not { } editor || !editor.IsInventoryVisible)
+            return;
+        if (!editor.ChestOpen)
+        {
+            Text("selection-note", "Open a nearby chest first.");
+            return;
+        }
+        if (_source is < 0 or >= BlockInventory.SlotCount)
+        {
+            Text("selection-note", "Select an item in your inventory to store.");
+            return;
+        }
+        ItemStack offered = editor.UiInventory.Slot(_source);
+        if (offered.IsEmpty) return;
+        ChestContents chest = editor.UiChest;
+        int destination = -1;
+        // Prefer adding to an existing matching stack before filling an
+        // empty chest slot. The server determines the actual amount moved.
+        for (int i = 0; i < ChestContents.SlotCount; i++)
+        {
+            ItemStack stack = chest.Slot(i);
+            if (stack.Type == offered.Type &&
+                stack.Quantity < BlockInventory.StackLimit)
+            {
+                destination = i;
+                break;
+            }
+        }
+        if (destination < 0)
+            for (int i = 0; i < ChestContents.SlotCount; i++)
+                if (chest.Slot(i).IsEmpty)
+                {
+                    destination = i;
+                    break;
+                }
+        if (destination < 0)
+        {
+            Text("selection-note", "Chest is full; choose another destination.");
+            return;
+        }
+        editor.UiMoveStack(_source, BlockInventory.SlotCount + destination,
+            _moveHalf);
+        _source = -1;
+        UpdateSelection();
+        Text("selection-note", "Store requested - server is confirming...");
+    }
+
+    /// <summary>Withdraw the selected chest stack into an available
+    /// player slot. Transfer validation and saved contents stay server-owned.</summary>
+    public void OnWithdraw()
+    {
+        if (_owner is not { } editor || !editor.IsInventoryVisible)
+            return;
+        if (!editor.ChestOpen)
+        {
+            Text("selection-note", "Open a nearby chest first.");
+            return;
+        }
+        if (_source is < BlockInventory.SlotCount or >= 63)
+        {
+            Text("selection-note", "Select an item in the chest to take.");
+            return;
+        }
+        ItemStack stored = editor.UiChest.Slot(
+            _source - BlockInventory.SlotCount);
+        if (stored.IsEmpty) return;
+        int quantity = _moveHalf ? (stored.Quantity + 1) / 2 : stored.Quantity;
+        ItemStack wanted = new(stored.Type, quantity);
+        int destination = -1;
+        BlockInventory player = editor.UiInventory;
+        for (int i = 0; i < BlockInventory.SlotCount; i++)
+        {
+            ItemStack occupied = player.Slot(i);
+            if (occupied.Type == stored.Type &&
+                player.CanInsertIntoSlot(i, wanted))
+            {
+                destination = i;
+                break;
+            }
+        }
+        if (destination < 0)
+            for (int i = 0; i < BlockInventory.SlotCount; i++)
+                if (player.Slot(i).IsEmpty &&
+                    player.CanInsertIntoSlot(i, wanted))
+                {
+                    destination = i;
+                    break;
+                }
+        if (destination < 0)
+        {
+            Text("selection-note", "Inventory full; free a slot to withdraw.");
+            return;
+        }
+        editor.UiMoveStack(_source, destination, _moveHalf);
+        _source = -1;
+        UpdateSelection();
+        Text("selection-note", "Withdrawal requested - server is confirming...");
+    }
+
     public void OnHalf()
     {
         _moveHalf = !_moveHalf;
@@ -330,13 +473,13 @@ public sealed class TallowcraftUI : Script
             "tab_chest" => "chest",
             _ => "craft"
         };
-        if (_page == "chest" && next != "chest" && editor.ChestOpen)
+        if (_page == "chest" && next != "chest")
             editor.UiCloseChest();
         _page = next;
         _source = -1;
-        if (_page == "chest" && !editor.ChestOpen)
-            editor.UiOpenChest();
+        _chestOpenRequested = _page == "chest";
         RefreshPage();
+        UpdateChest();
         UpdateSelection();
     }
 
@@ -384,7 +527,13 @@ public sealed class TallowcraftUI : Script
             }
     }
 
-    public void OnOpenChest() => _owner?.UiOpenChest();
+    public void OnOpenChest()
+    {
+        if (_owner is not { } editor || !editor.IsInventoryVisible)
+            return;
+        _chestOpenRequested = true;
+        UpdateChest();
+    }
 
     public void OnClose() => _owner?.UiCloseMenu();
 }

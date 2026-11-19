@@ -172,6 +172,12 @@ def verify() -> None:
           "Right mouse must remove blocks")
     check("action Use button\nbind mouse 0" in actions,
           "Left mouse must place blocks")
+    check("action Use button\nbind mouse 0\nbind pad North" in actions
+          and "action Interact button\nbind key E" in actions
+          and "bind key E" not in actions.split(
+              "action Use button", 1)[1].split(
+              "action Interact button", 1)[0],
+          "E must interact with chests, never place blocks")
     for i in range(1, 7):
         check("action Custom" + str(i) + " button" in actions
               and "bind key Alpha" + str(i) in actions,
@@ -446,6 +452,32 @@ def verify() -> None:
           and 'Materials/chest_front.tmat' in
           (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text(),
           "Chest texture and dropped item art should be wired into the renderer")
+    # UI chest opening must wait for the server to acknowledge
+    # SetInventoryOpen. A one-shot open during that race silently fails.
+    check('editor.InventoryOpen && editor.ProfileReady' in ui_source
+          and '_chestOpenRequested = _page == "chest"' in ui_source
+          and 'editor.UiOpenChest();' in ui_source
+          and '_chestMessageBefore != editor.ChestStatus' in ui_source
+          and 'public void OnDeposit()' in ui_source
+          and 'public void OnWithdraw()' in ui_source
+          and 'editor.UiMoveStack(_source,' in ui_source
+          and 'onclick="OnDeposit"' in ui_file.read_text()
+          and 'onclick="OnWithdraw"' in ui_file.read_text()
+          and 'id="chest-actions"' in ui_file.read_text()
+          and 'Visible("chest-actions", editor.ChestOpen)' in ui_source
+          and '[Sync] public string ChestStatus = "";' in editor_src
+          and 'ChestStatus = "No placed chest within 4.5m' in editor_src
+          and 'ChestStatus = "Transfer failed:' in editor_src,
+          "Chest UI must await inventory acknowledgement, support one-click "
+          "store/take, and display server transfer errors")
+    check('InputActions.Pressed("Player/Interact")' in editor_src
+          and 'private void InteractNearbyChest()' in editor_src
+          and 'private bool TryOpenChestNearPlayer()' in editor_src
+          and 'if (!TryOpenChestNearPlayer())' in editor_src
+          and 'InventoryOpen = true;' in editor_src
+          and 'if (open && editor.ChestOpen && !_chestBefore)' in ui_source,
+          "E chest interaction must validate a real chest on the server, "
+          "open menu and storage atomically, and switch to Storage UI")
     chest_code = (ROOT / "src/Scripts/WorldGeneration/WorldChestStorage.cs").read_text()
     world_code = (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text()
     save_code = (ROOT / "src/Scripts/WorldGeneration/WorldEditSave.cs").read_text()
