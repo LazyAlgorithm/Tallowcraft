@@ -122,6 +122,7 @@ public class BlockWorld : Script
     private readonly List<bool> _previousPlayerBelowSurface = new();
     private bool _streamStateKnown;
     private bool _streamExhausted;
+    private bool _collisionRescan;
     private bool _lastViewerBelowSurface;
     private int _lastStreamSettings;
     private string _appliedSnapshot = "";
@@ -187,8 +188,10 @@ public class BlockWorld : Script
             UnloadDistant(cx, cy, cz);
         }
         UploadFinished(cx, cy, cz);
-        if (streamChanged)
+        if (_collisionRescan)
         {
+            // Turning changes directional mesh residency, not who needs
+            // colliders. Avoid full live-chunk scans on camera rotation.
             UpdateColliders(cx, cy, cz);
             MaintainBlockCache(cx, cy, cz);
         }
@@ -206,21 +209,23 @@ public class BlockWorld : Script
         // Only rescan the directional mesh footprint when orientation changes
         // enough to add/remove a chunk. Small per-frame camera motion shouldn't
         // run thousands of live-chunk distance tests.
-        bool changed = !_streamStateKnown || _lastStreamCenter != center ||
-            Vector2.Dot(_lastStreamForward, _lastForward) < 0.997f ||
+        bool collisionChanged = !_streamStateKnown ||
+            _lastStreamCenter != center ||
             belowSurface != _lastViewerBelowSurface ||
             _lastStreamSettings != settings ||
             _previousPlayerCenters.Count != _playerCenters.Count;
-
-        if (!changed)
+        if (!collisionChanged)
             for (int i = 0; i < _playerCenters.Count; i++)
                 if (_previousPlayerCenters[i] != _playerCenters[i] ||
                     _previousPlayerBelowSurface[i] != (_playerHeights[i] < 5f))
                 {
-                    changed = true;
+                    collisionChanged = true;
                     break;
                 }
 
+        _collisionRescan = collisionChanged;
+        bool changed = collisionChanged ||
+            Vector2.Dot(_lastStreamForward, _lastForward) < 0.997f;
         if (!changed) return false;
 
         _streamStateKnown = true;
