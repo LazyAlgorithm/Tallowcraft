@@ -84,7 +84,9 @@ public class BlockWorld : Script
         Console.WriteLine(
             $"[Tallowcraft stream profile] uploads={_streamUploads} " +
             $"queue_to_upload_avg_ms={_streamLatencyTotal / _streamUploads:F1} " +
-            $"max_ms={_streamLatencyMax:F1}");
+            $"max_ms={_streamLatencyMax:F1} " +
+            $"live_meshes={_loaded.Count} empty_sections={_emptyChunks.Count} " +
+            $"colliders={_colliders.Count}");
         _streamUploads = 0;
         _streamLatencyTotal = 0;
         _streamLatencyMax = 0;
@@ -637,6 +639,11 @@ public class BlockWorld : Script
 
     private void MarkAllDirty()
     {
+        // Empty sections are generated from the old seed too. Their cache
+        // must not survive a synchronized world-seed replacement.
+        _emptyChunks.Clear();
+        _candidateListDirty = true;
+        _streamExhausted = false;
         foreach (ChunkKey key in _loaded.Keys)
             MarkDirty(key);
         foreach (ChunkKey key in _jobs.Keys)
