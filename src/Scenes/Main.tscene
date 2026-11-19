@@ -47,7 +47,7 @@ field playerControlled 0
 component Tallow.CSharpBehaviour enabled 1
 field scriptType "WorldGeneration.BlockWorld"
 field scriptAsset "2b76739e8fb5de354a86b507230d36a2"
-field fieldOverrides "WorkerCount	4\nRenderRadius	40\n"
+field fieldOverrides "WorkerCount	4\nRenderRadius	6\nUploadsPerFrame	3\n"
 field referenceNames "ViewCamera"
 field referenceTargets 1 1 -1
 object 3 parent 0 active 0 name "Ground"
