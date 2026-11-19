@@ -19,13 +19,15 @@ public class BlockWorld : Script
     public GameObject ViewCamera;
 
     public int Seed = 42;
-    public int RenderRadius = 8;
+    // Conservative default streaming radius; near chunks take priority before
+    // distant scenery. These remain adjustable in the BlockWorld Inspector.
+    public int RenderRadius = 6;
     public int SideRadius = 4;
     public int BehindRadius = 2;
     public int EditableRadius = 2;
     public int KeepMargin = 1;
-    public int WorkerCount = 2;
-    public int UploadsPerFrame = 1;
+    public int WorkerCount = 3;
+    public int UploadsPerFrame = 3;
     public int VerticalRadius = 1;
 
     // Diagnostic only: synchronous mesh and collider entry-point timings.
@@ -74,6 +76,9 @@ public class BlockWorld : Script
     private readonly Dictionary<ulong, ChunkKey> _chunkObjects = new();
     private readonly HashSet<ChunkKey> _colliders = new();
     private readonly List<ChunkKey> _scratch = new();
+    // Reused candidate buffer. Find priorities cheaply first, then only
+    // evaluate costly biome/tree/structure existence for slots we can queue.
+    private readonly List<(ChunkKey Key, long Distance)> _candidates = new();
     private readonly List<ChunkKey> _playerCenters = new();
     private readonly CancellationTokenSource _stop = new();
 
@@ -453,77 +458,99 @@ public class BlockWorld : Script
 
     private void StartNearestJobs(int cx, int cy, int cz)
     {
-        int radius = Math.Clamp(RenderRadius, 1, 16);
         int workers = Math.Clamp(WorkerCount, 1, 4);
+        if (_jobs.Count >= workers)
+            return;
+
+        int radius = Math.Clamp(RenderRadius, 1, 16);
         int nearRadius = CollisionRadius();
+        int vertical = Math.Clamp(VerticalRadius, 0, 2);
+        _candidates.Clear();
 
-        while (_jobs.Count < workers)
+        void Consider(ChunkKey key)
         {
-            ChunkKey? nearest = null;
-            long bestDistance = long.MaxValue;
+            // Do not run expensive HasPotentialBlocks/biome queries while
+            // scanning. Most candidates will never be launched this frame.
+            if (_jobs.ContainsKey(key))
+                return;
+            if (_loaded.TryGetValue(key, out LiveChunk? live) && !live.Dirty)
+                return;
+            _candidates.Add((key,
+                ChunkScheduling.Priority(key, cx, cy, cz, nearRadius)));
+        }
 
-            void Consider(ChunkKey key, long distance)
+        // Visible chunks first. The candidate order is irrelevant: priority
+        // is calculated in world/chunk coordinates and sorted below.
+        for (int dy = -vertical; dy <= vertical; dy++)
+        {
+            int layer = cy + dy;
+            if (layer < ChunkGenerator.MinChunkY ||
+                layer > ChunkGenerator.MaxChunkY)
+                continue;
+            for (int dz = -radius; dz <= radius; dz++)
+            for (int dx = -radius; dx <= radius; dx++)
             {
-                if (!ShouldKeep(key, cx, cy, cz) || _jobs.ContainsKey(key))
-                    return;
-                if (_loaded.TryGetValue(key, out LiveChunk? live))
-                {
-                    if (!live.Dirty) return;
-                }
-                else if (!ChunkGenerator.HasPotentialBlocks(key, Seed, _edits.Snapshot))
-                    return; // Avoid transient objects for empty upper layers.
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    nearest = key;
-                }
+                ChunkKey key = new(cx + dx, layer, cz + dz);
+                if (ShouldStream(key, cx, cy, cz))
+                    Consider(key);
             }
+        }
 
-            // Prioritize chunks at the viewer's height, then nearby vertical
-            // layers; keep horizontal directional streaming unchanged.
-            int vertical = Math.Clamp(VerticalRadius, 0, 2);
-            for (int dy = -vertical; dy <= vertical; dy++)
+        // Server-side colliders must also cover remote players. Avoid
+        // duplicate keys from the local camera and overlapping player areas.
+        if (Scene.IsServer)
+            foreach (ChunkKey center in _playerCenters)
+                for (int dy = -vertical; dy <= vertical; dy++)
+                for (int dz = -nearRadius; dz <= nearRadius; dz++)
+                for (int dx = -nearRadius; dx <= nearRadius; dx++)
+                {
+                    int layer = center.Y + dy;
+                    if (layer < ChunkGenerator.MinChunkY ||
+                        layer > ChunkGenerator.MaxChunkY ||
+                        (long)dx * dx + (long)dz * dz >
+                            (long)nearRadius * nearRadius)
+                        continue;
+                    ChunkKey key = new(center.X + dx, layer, center.Z + dz);
+                    if (!_jobs.ContainsKey(key) &&
+                        (!_loaded.TryGetValue(key, out LiveChunk? live) || live.Dirty) &&
+                        !_candidates.Exists(candidate => candidate.Key == key))
+                        _candidates.Add((key, ChunkScheduling.Priority(
+                            key, center.X, center.Y, center.Z, nearRadius)));
+                }
+
+        _candidates.Sort((a, b) =>
+        {
+            int compare = a.Distance.CompareTo(b.Distance);
+            if (compare != 0) return compare;
+            compare = a.Key.Y.CompareTo(b.Key.Y);
+            if (compare != 0) return compare;
+            compare = a.Key.X.CompareTo(b.Key.X);
+            return compare != 0 ? compare : a.Key.Z.CompareTo(b.Key.Z);
+        });
+
+        var snapshot = _edits.Snapshot;
+        int seed = Seed;
+        CancellationToken token = _stop.Token;
+        foreach (var candidate in _candidates)
+        {
+            if (_jobs.Count >= workers) break;
+            ChunkKey key = candidate.Key;
+            if (_jobs.ContainsKey(key))
+                continue;
+            if (!_loaded.TryGetValue(key, out LiveChunk? live))
             {
-                int layer = cy + dy;
-                if (layer < ChunkGenerator.MinChunkY || layer > ChunkGenerator.MaxChunkY)
+                // Expensive check is now restricted to the closest missing
+                // candidates, not every chunk in every vertical radius.
+                if (!ChunkGenerator.HasPotentialBlocks(key, seed, snapshot))
                     continue;
-                for (int dz = -radius; dz <= radius; dz++)
-                for (int dx = -radius; dx <= radius; dx++)
-                {
-                    ChunkKey key = new(cx + dx, layer, cz + dz);
-                    if (ShouldStream(key, cx, cy, cz))
-                        Consider(key, (long)dx * dx + (long)dz * dz +
-                            (long)dy * dy * 4);
-                }
             }
+            else if (!live.Dirty)
+                continue;
 
-            // A headless/server world also maintains collision neighborhoods
-            // centered around remote players' true 3D chunk coordinates.
-            if (Scene.IsServer)
-                foreach (ChunkKey center in _playerCenters)
-                    for (int dy = -vertical; dy <= vertical; dy++)
-                    for (int dz = -nearRadius; dz <= nearRadius; dz++)
-                    for (int dx = -nearRadius; dx <= nearRadius; dx++)
-                    {
-                        int layer = center.Y + dy;
-                        if (layer < ChunkGenerator.MinChunkY ||
-                            layer > ChunkGenerator.MaxChunkY ||
-                            (long)dx * dx + (long)dz * dz > (long)nearRadius * nearRadius)
-                            continue;
-                        Consider(new ChunkKey(center.X + dx, layer, center.Z + dz),
-                            (long)dx * dx + (long)dz * dz + (long)dy * dy * 4);
-                    }
-
-            if (nearest is not { } next)
-                break;
-
-            var snapshot = _edits.Snapshot;
-            int seed = Seed;
-            int version = VersionFor(next);
-            CancellationToken token = _stop.Token;
+            int version = VersionFor(key);
             Task<ChunkMesh> task = Task.Run(
-                () => ChunkGenerator.GenerateMesh(next, seed, snapshot, token), token);
-            _jobs.Add(next, new ChunkJob(task, version));
+                () => ChunkGenerator.GenerateMesh(key, seed, snapshot, token), token);
+            _jobs.Add(key, new ChunkJob(task, version));
         }
     }
 
