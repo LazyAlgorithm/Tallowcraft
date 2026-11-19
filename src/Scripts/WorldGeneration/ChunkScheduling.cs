@@ -19,6 +19,16 @@ public static class ChunkScheduling
         float viewerWorldY, bool openedByEdit) =>
         key.Y < 0 && viewerWorldY >= 5f && !openedByEdit;
 
+    /// <summary>Limit expensive cascaded chunk shadow submissions near the viewer.</summary>
+    public static bool ShouldCastShadow(ChunkKey key, int cx, int cy, int cz,
+        int radius)
+    {
+        long dx = (long)key.X - cx, dz = (long)key.Z - cz;
+        long r = Math.Clamp(radius, 0, 16);
+        return Math.Abs((long)key.Y - cy) <= 1 &&
+            dx * dx + dz * dz <= r * r;
+    }
+
     public static long Priority(ChunkKey key, int centerX, int centerY,
         int centerZ, int collisionRadius)
     {
