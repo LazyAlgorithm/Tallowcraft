@@ -37,8 +37,12 @@ internal static class WorldDropTests
         }
 
         check(DroppedItemMesh.ForType(0).Triangles.Length == 0 &&
-            DroppedItemMesh.ForType(11).Triangles.Length == 0,
+            DroppedItemMesh.ForType(12).Triangles.Length == 0,
             "Invalid pickup types have no display geometry");
+        check(DroppedItemMesh.ForType(BlockInventory.Chest).Triangles.Length==12 &&
+            DroppedItemMesh.ForType(BlockInventory.Chest).Uvs[0].X>0 &&
+            DroppedItemMesh.ForType(BlockInventory.Chest).Uvs[0].X<1,
+            "The chest item has its own full-size sprite texture");
         check(DroppedItemMesh.InPickupRange(
                 new Vector3(0,0,0),new Vector3(1,0,0)) &&
             !DroppedItemMesh.InPickupRange(

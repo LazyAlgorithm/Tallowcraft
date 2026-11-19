@@ -25,7 +25,7 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 - Ctrl while placing: place an upper slab or upside-down stair
 - Left-click a lower slab's top (or an upper slab's bottom) with the same slab type selected to combine both halves into one full block
 - On-screen **nine-slot hotbar** displays selected physical stacks, shape, rotation, and quantities. Keys 1–6 select the first six hotbar positions, the mouse wheel selects any of the nine, and middle-clicking a hotbar slot in the inventory selects it. Controls are networked with `Input.tinput`.
-- Tab (or gamepad West): open/close the **36-slot inventory** (9 hotbar + 27 backpack) and crafting screen. Escape (or gamepad East) also closes it. While it is open, gameplay input—including mouse look—is disabled instead of merely freezing the camera, so closing the screen does not snap to an accumulated mouse angle. The on-screen Close button works too.
+- Tab (or gamepad West): open/close the **36-slot inventory** (9 hotbar + 27 backpack), crafting, forge, and storage pages. Stand near a placed chest, then click the Chest tab to open its 27-slot storage; drag stacks between chest and backpack. Escape (or gamepad East) also closes it. While it is open, gameplay input—including mouse look—is disabled instead of merely freezing the camera, so closing the screen does not snap to an accumulated mouse angle. The on-screen Close button works too.
 - Craft stone tools in the Crafting page with stone and planks: pickaxe (3 stone + 2 planks), axe (2 stone + 2 planks), or shovel (1 stone + 2 planks). Click Equip to select one, or Use hands to unequip. Recraft a damaged tool to repair it.
 - **Forge progression:** place a Forge block (hotbar slot 5), stand within 3.5 m of it, press Tab, then select **Forge page**. Smelt 1 iron ore + 1 coal into 1 iron ingot, or smelt batches of five. Use the ingots and planks to craft an iron pickaxe (3 ingots), axe (2), or shovel (1); each costs 2 planks. Iron tools mine their specialty blocks faster and last longer. The server checks proximity to the actual forge for every smelt/iron-craft request.
 - Use **7/8/9** for pickaxe/axe/shovel; those keys automatically select the iron version if you own it, otherwise the stone version. Use **0** for bare hands. Iron ingots are inventory items, not placeable voxel blocks.
@@ -45,6 +45,7 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 - **Breaking overlay:** `BuildPreview` draws one local-only, collider-free `MeshRenderer` around only the mined block, with `BlockDamageMesh` generating outward partial-shape faces using the same 2×2×2 occupancy as the world mesher. Its cutout material uses `Shaders/block_break_damage.tsgraph` (editable Shader Graph), a generated `.tshader` and a 160×16 lossless crack-stage atlas. Server-authoritative, quantized `MiningPercent` and synced mining target select the crack stage. A target change rebuilds only this tiny overlay mesh, not a terrain chunk. No extra networked crack objects or engine changes.
 - **Inventory and tools:** authoritative per-player 9-slot hotbar + 27-slot backpack `BlockInventory` with 64-item physical stacks of nine voxel types and iron ingots, and `PlayerTools` with three stone and three iron tools. Validated/versioned `[Sync] InventoryState` and `[Sync] ToolState` replicate quantity, equipped tool and durability. Server-only RPCs validate crafting/equip commands. Tool durability is spent only on a successful server-authoritative block break. The server persists inventory, equipped tool/durability and selected block/shape/facing per world and per persistent player token. Current inventory tracks materials rather than individual oriented or partial shapes.
 - **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
+- **Storage chests:** craft a chest from 8 planks, put it into a hotbar slot, and place it like any block. It has a dedicated lid/lock texture overlay and a separate dropped-item icon. Chest contents are 27 physical item stacks, shared by players, saved with the **same atomic world generation** as voxel edits, and recovered together on corruption. Empty the chest before mining it to prevent loss or duplication. The server validates proximity, selected chest, and both slot indices for every transfer.
 - **Item artwork:** `src/Textures/inventory_icons.png` is a new 5×2 sprite sheet of ten transparent 32×32 pixel-art icons including iron ingots, with nearest-neighbor sampling and compression/mips disabled. The atlas is used on world item-drop sprites through `Materials/item_drop.tmat`. The C# immediate-mode `GUI` API does not yet expose image widgets, so inventory slots currently use compact colored type swatches and labels; a future UIDocument UI can show the same sprites.
 - **Textures:** the approved 3×3 block artwork is now in `src/Textures/block_atlas.png`: a lossless, indexed-color 108×108 PNG with nine 32×32 pixel-art tiles and 2px extruded borders. UVs point at texel centers; chunky source pixels are preserved by nearest-neighbor sampling. `src/Textures/block_atlas.png.import` configures `filter = nearest`, `wrap = clamp`, `mipmaps = 0`, `compression = 0`, and `fullResolution = 1`. Tallowcraft's build config also explicitly excludes this atlas from BC1/BC3 compression. Greedy chunk meshes share the atlas.
 - **Physics:** nearby static Jolt MeshColliders. Editing rebuilds the affected chunk's mesh and calls MeshCollider.Refresh(); chunk-edge edits rebuild the affected neighbor as well. Placement checks the occupied half-cells rather than one oversized full-block overlap volume, and merges a matching slab into a full block when clicked on its exposed horizontal face.
@@ -105,3 +106,27 @@ lost, subject to the existing per-type 999-item cap.
 Pick up valuable resources before shutting down. The next storage/chest
 milestone should persist world containers; a later pass can save loose
 items with the appropriate chunk.
+
+### Chests and world save v4
+
+- Craft **Storage chest** with 8 planks in the Craft tab (recipe 6). Move
+  it to the hotbar and place it. Chest blocks are cube-shaped with four
+  front-facing orientations; the main terrain uses the existing planks tile
+  while an inexpensive local face decoration shows the distinctive
+  chest lid/lock texture. Unlike a world point light, these details are
+  only rendered for loaded chunks and use no new network entities.
+- Stand within **4.5m** of a chest, open Tab > Chest. Drag full stacks,
+  swap like items, right-drag half, or move items within the chest.
+  The server rechecks the real chest voxel and player range for every
+  interaction. Other players viewing the same chest see updates.
+- Chest contents are stored as a sparse, deterministic 27-stack map.
+  The world save advances from v3 to v4 and stores a checksummed
+  `chests.bin` in the same generation as the terrain section files.
+  Loading an older v3 world starts with no stored chests. A corrupt
+  new chest file rolls **the entire world generation** back, never
+  restoring orphan contents. Chest-only changes trigger autosaving.
+  A filled chest cannot be mined until its slots are empty.
+- Player inventory v4 adds item type 11 (chest) while transparently
+  migrating previous v1-v3 inventory saves, maintaining all item
+  quantities and physical slot positions. Iron ingots remain type 10
+  inventory-only and cannot be placed as voxel blocks.

@@ -23,6 +23,11 @@ public class BlockEditor : Script
     [Sync] public bool CreativeMode = true;
     [Sync] public string InventoryState = "";
     [Sync] public string ToolState = "";
+    [Sync] public bool ChestOpen = false;
+    [Sync] public int ChestX = 0;
+    [Sync] public int ChestY = 0;
+    [Sync] public int ChestZ = 0;
+    [Sync] public string ChestState = "";
     [Sync] public bool InventoryOpen = false;
     [Sync] public bool ProfileReady = false;
     [Sync] public bool ProfileError = false;
@@ -37,18 +42,18 @@ public class BlockEditor : Script
     private static readonly string[] BlockNames =
     {
         "Grass", "Dirt", "Stone", "Log", "Forge", "Planks",
-        "Coal", "Iron", "Leaves", "Iron ingots"
+        "Coal", "Iron", "Leaves", "Iron ingots", "Chest"
     };
     private static readonly string[] ShapeNames =
         { "Cube", "Slab", "Stair", "Half wall" };
     private static readonly string[] ItemShort =
-        { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING" };
+        { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING", "CHT" };
     private static readonly Color[] ItemColors =
     {
         new(.33f,.66f,.20f), new(.48f,.30f,.19f), new(.50f,.53f,.54f),
         new(.54f,.35f,.21f), new(.57f,.49f,.34f), new(.77f,.61f,.36f),
         new(.25f,.27f,.30f), new(.65f,.53f,.45f), new(.25f,.58f,.23f),
-        new(.75f,.73f,.69f)
+        new(.75f,.73f,.69f), new(.61f,.38f,.19f)
     };
 
     private BlockWorld? _world;
@@ -58,6 +63,9 @@ public class BlockEditor : Script
     private float _forgeCheckClock;
     private bool _nearForge;
     private bool _forgePage;
+    private bool _chestPage;
+    private ChestContents _displayChest = new();
+    private string _displayChestSnapshot = "";
     private readonly BlockInventory _inventory = new();
     private readonly BlockInventory _displayInventory = new();
     private readonly PlayerTools _tools = new();
@@ -280,6 +288,7 @@ public class BlockEditor : Script
             Rpc(nameof(SetInventoryOpen), requestedOpen);
 
         bool open = _menu.Open;
+        if (!open) _chestPage = false;
         if (open && _forgePage)
         {
             _forgeCheckClock -= MathF.Max(deltaTime, 0f);
@@ -378,7 +387,8 @@ public class BlockEditor : Script
         get
         {
             ItemStack held = DisplayInventory().Slot(SelectedHotbar);
-            return held.Type is >= 1 and <= 9 &&
+            return held.Type is >= 1 and <= BlockInventory.Chest &&
+                held.Type != BlockInventory.IronIngot &&
                 (CreativeMode || held.Quantity > 0);
         }
     }
@@ -441,6 +451,121 @@ public class BlockEditor : Script
         return row * 9 + col;
     }
 
+    private static int ChestSlotAt(Vector2 pointer,float left,float top)
+    {
+        float x=pointer.X-(left+19), y=pointer.Y-(top+421);
+        if (x<0 || y<0) return -1;
+        int col=(int)(x/70f), row=(int)(y/67f);
+        if (col is < 0 or >= 9 || row is < 0 or >= 3 ||
+            x-col*70f>=64f || y-row*67f>=60f) return -1;
+        return 36+row*9+col;
+    }
+
+    private void RequestItemMove(int from,int to,bool split)
+    {
+        if (from<0 || to<0 || from==to) return;
+        if (from<36 && to<36)
+            Rpc(nameof(MoveInventoryStack),from,to,split);
+        else if (ChestOpen)
+            Rpc(nameof(MoveChestStack),from,to,split);
+    }
+
+    private bool ServerChestInReach()
+    {
+        if (!Scene.IsServer || !ChestOpen) return false;
+        Vector3 eye=Transform.Position+Vector3.UnitY*EyeHeight;
+        return Vector3.DistanceSquared(eye,
+            new Vector3(ChestX+.5f,ChestY+.5f,ChestZ+.5f))<=4.5f*4.5f;
+    }
+
+    private void RefreshChest()
+    {
+        if (!ChestOpen) return;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world==null || !ServerChestInReach() ||
+            !_world.TryReadChest(new BlockPosition(ChestX,ChestY,ChestZ),
+                out ChestContents contents))
+        {
+            ChestOpen=false; ChestState=""; return;
+        }
+        string current=contents.Serialize();
+        if (current!=ChestState) ChestState=current;
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void OpenNearbyChest()
+    {
+        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        BlockPosition? found=_world?.NearestChest(
+            Transform.Position+Vector3.UnitY*EyeHeight);
+        if (found is not { } pos || _world==null ||
+            !_world.TryReadChest(pos,out ChestContents contents))
+        {
+            ChestOpen=false; ChestState=""; return;
+        }
+        ChestX=pos.X; ChestY=pos.Y; ChestZ=pos.Z;
+        ChestOpen=true; ChestState=contents.Serialize();
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void CloseChest()
+    {
+        if (!Scene.IsServer ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        ChestOpen=false; ChestState="";
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void MoveChestStack(int from,int to,bool split)
+    {
+        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
+            !ChestOpen || !ServerChestInReach() ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId) ||
+            from is < 0 or >= 63 || to is < 0 or >= 63)
+            return;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world==null) return;
+        BlockPosition pos=new(ChestX,ChestY,ChestZ);
+        bool changed,playerChanged=false;
+        if (from<36 && to>=36)
+        {
+            changed=_world.TryMoveChestItem(pos,_inventory,
+                from,to-36,true,split);
+            playerChanged=changed;
+        }
+        else if (from>=36 && to<36)
+        {
+            changed=_world.TryMoveChestItem(pos,_inventory,
+                to,from-36,false,split);
+            playerChanged=changed;
+        }
+        else if (from>=36 && to>=36)
+            changed=_world.TryRearrangeChest(pos,from-36,to-36,split);
+        else return;
+        if (!changed) return;
+        if (playerChanged)
+        {
+            InventoryState=_inventory.Serialize();
+            _profileDirty=true;
+        }
+        RefreshChest();
+    }
+
+    private ChestContents DisplayChest()
+    {
+        if (ChestState!=_displayChestSnapshot &&
+            ChestContents.TryLoad(ChestState,out ChestContents next))
+        {
+            _displayChest=next;
+            _displayChestSnapshot=ChestState;
+        }
+        return _displayChest;
+    }
+
     private void HandleInventoryPointer()
     {
         const float width = 680f, height = 682f;
@@ -448,6 +573,8 @@ public class BlockEditor : Script
         float top = MathF.Max(8f, (GUI.Height - height) * .5f);
         Vector2 pointer = Input.MousePosition;
         int slot = InventorySlotAt(pointer, left, top);
+        if (slot < 0 && _chestPage && ChestOpen)
+            slot = ChestSlotAt(pointer,left,top);
         bool rightDown = Input.GetMouseButtonDown(MouseButton.Right);
         bool leftDown = Input.GetMouseButtonDown(MouseButton.Left);
         if (slot is >= 0 and < BlockInventory.HotbarSlots &&
@@ -458,7 +585,7 @@ public class BlockEditor : Script
             if (_pickedFrom >= 0)
             {
                 if (slot != _pickedFrom)
-                    Rpc(nameof(MoveInventoryStack), _pickedFrom, slot, _pickedSplit);
+                    RequestItemMove(_pickedFrom, slot, _pickedSplit);
                 _pickedFrom = -1;
                 _dragFrom = -1;
             }
@@ -473,7 +600,7 @@ public class BlockEditor : Script
                 MouseButton.Left)))
         {
             if (slot >= 0 && slot != _dragFrom)
-                Rpc(nameof(MoveInventoryStack), _dragFrom, slot, _dragSplit);
+                RequestItemMove(_dragFrom, slot, _dragSplit);
             else if (slot == _dragFrom)
             {
                 _pickedFrom = _dragFrom;
@@ -499,6 +626,7 @@ public class BlockEditor : Script
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         InventoryOpen = open;
+        if (!open) { ChestOpen = false; ChestState = ""; }
         ResetMining();
     }
 
@@ -512,7 +640,8 @@ public class BlockEditor : Script
         // No recipe contents or claimed resources are accepted over RPC.
         // Workstation-only recipe IDs may never be crafted through the
         // ordinary inventory endpoint, even with a forged client RPC.
-        if (recipeId is >= 1 and <= 3 && _inventory.TryCraft(recipeId))
+        if ((recipeId is >= 1 and <= 3 || recipeId == 6) &&
+            _inventory.TryCraft(recipeId))
         {
             InventoryState = _inventory.Serialize();
             _profileDirty = true;
@@ -655,6 +784,7 @@ public class BlockEditor : Script
         if (InventoryOpen)
         {
             ResetMining();
+            RefreshChest();
             return;
         }
 
@@ -679,7 +809,9 @@ public class BlockEditor : Script
         SelectedHotbar = Math.Clamp(SelectedHotbar, 0,
             BlockInventory.HotbarSlots - 1);
         int heldType = _inventory.Slot(SelectedHotbar).Type;
-        PlaceType = heldType is >= 1 and <= 9 ? heldType : 0;
+        PlaceType = heldType is >= 1 and <= BlockInventory.Chest ?
+            heldType : 0;
+        if (PlaceType == BlockInventory.Chest) PlaceShape = 0;
         PlaceShape = Math.Clamp(PlaceShape, 0, 3);
         FacingOffset &= 3;
         if (previousHotbar != SelectedHotbar || previousType != PlaceType ||
@@ -746,7 +878,7 @@ public class BlockEditor : Script
                 return;
         }
         else if (placing &&
-            (PlaceType is < 1 or > 9 ||
+            (PlaceType is < 1 or > BlockInventory.Chest ||
              (!CreativeMode &&
               _inventory.Slot(SelectedHotbar).Quantity == 0)))
             return;
@@ -821,18 +953,24 @@ public class BlockEditor : Script
         float top = MathF.Max(8f, (GUI.Height - height) * .5f);
         GUI.Box(left, top, width, height,
             new Color(.035f,.045f,.055f,.97f));
-        GUI.Label(left + 18, top + 12,
-            _forgePage ? "INVENTORY / FORGE" : "INVENTORY / CRAFTING");
-        if (GUI.Button(left + 290, top + 8, 150, 28,
-                _forgePage ? "Crafting page" : "Forge page"))
+        GUI.Label(left+18,top+12,"INVENTORY");
+        if (GUI.Button(left+276,top+8,87,28,"Craft"))
         {
-            _forgePage = !_forgePage;
-            _forgeCheckClock = 0;
-            _pickedFrom = -1;
+            _forgePage=false; _chestPage=false; _pickedFrom=-1;
+            if (ChestOpen) Rpc(nameof(CloseChest));
         }
-        if (GUI.Button(left + 450, top + 8, 115, 28, "Use hands"))
-            Rpc(nameof(EquipTool), 0);
-        if (GUI.Button(left + 594, top + 8, 68, 28, "Close"))
+        if (GUI.Button(left+371,top+8,87,28,"Forge"))
+        {
+            _forgePage=true; _chestPage=false; _forgeCheckClock=0;
+            _pickedFrom=-1;
+            if (ChestOpen) Rpc(nameof(CloseChest));
+        }
+        if (GUI.Button(left+466,top+8,87,28,"Chest"))
+        {
+            _forgePage=false; _chestPage=true; _pickedFrom=-1;
+            if (!ChestOpen) Rpc(nameof(OpenNearbyChest));
+        }
+        if (GUI.Button(left+594,top+8,68,28,"Close"))
             CloseMenuLocally();
 
         BlockInventory items = DisplayInventory();
@@ -853,7 +991,8 @@ public class BlockEditor : Script
                     new Color(.13f,.16f,.18f,.98f));
             if (row == 0)
                 GUI.Label(x + 3, y + 2, (slot + 1).ToString());
-            if (!stack.IsEmpty && stack.Type is >= 1 and <= 10)
+            if (!stack.IsEmpty &&
+                stack.Type is >= 1 and <= BlockInventory.MaxType)
             {
                 GUI.Box(x + 5, y + 21, 12, 16,
                     ItemColors[stack.Type-1]);
@@ -887,7 +1026,35 @@ public class BlockEditor : Script
         }
 
         PlayerTools equipped = DisplayTools();
-        if (_forgePage)
+        if (_chestPage)
+        {
+            GUI.Label(left+19,top+392, ChestOpen ? "CHEST - 27 SLOTS" :
+                "NO CHEST OPEN - stand within 4.5m and click Chest");
+            if (ChestOpen)
+            {
+                ChestContents contents=DisplayChest();
+                for (int slot=0;slot<ChestContents.SlotCount;slot++)
+                {
+                    int row=slot/9,col=slot%9;
+                    float x=left+19+col*70,y=top+421+row*67;
+                    ItemStack item=contents.Slot(slot);
+                    bool picked=_pickedFrom==36+slot || _dragFrom==36+slot;
+                    GUI.Box(x,y,64,60,picked ?
+                        new Color(.57f,.39f,.17f,.97f) :
+                        new Color(.20f,.15f,.11f,.97f));
+                    if (!item.IsEmpty &&
+                        item.Type is >= 1 and <= BlockInventory.MaxType)
+                    {
+                        GUI.Box(x+5,y+21,12,16,ItemColors[item.Type-1]);
+                        GUI.Label(x+19,y+21,ItemShort[item.Type-1]);
+                        GUI.Label(x+7,y+39,"x"+item.Quantity);
+                    }
+                }
+                GUI.Label(left+19,top+630,
+                    "Drag between chest and backpack; empty before mining.");
+            }
+        }
+        else if (_forgePage)
         {
             GUI.Label(left + 19, top + 394,
                 _nearForge ? "FORGE ACTIVE (within 3.5m)" :
@@ -912,12 +1079,12 @@ public class BlockEditor : Script
         else
         {
             GUI.Label(left + 19, top + 394, "CRAFTING RECIPES");
-            var recipes = CraftingRecipes.All;
-            for (int i = 0; i < 3; i++)
+            int[] recipeIds={1,2,3,6};
+            for (int i=0;i<recipeIds.Length;i++)
             {
-                CraftingRecipe recipe = recipes[i];
-                float y = top + 418 + i * 43;
-                GUI.Box(left + 17, y, width - 34, 40,
+                CraftingRecipe recipe=CraftingRecipes.Find(recipeIds[i])!;
+                float y=top+418+i*34;
+                GUI.Box(left + 17, y, width - 34, 32,
                     new Color(.13f,.16f,.17f,.95f));
                 string ingredients = recipe.CountA + " " +
                     BlockNames[recipe.InputA - 1];
@@ -926,13 +1093,11 @@ public class BlockEditor : Script
                         BlockNames[recipe.InputB - 1];
                 GUI.Label(left + 26, y + 5,
                     recipe.Name + "  /  " + ingredients);
-                GUI.Label(left + 26, y + 23,
-                    "Makes " + recipe.CountOut + " " +
-                    BlockNames[recipe.Output - 1]);
+                // Keep four rows compact enough for the stone tool buttons.
                 bool available = AvailableCount(recipe.InputA) >= recipe.CountA &&
                     (recipe.InputB == 0 ||
                     AvailableCount(recipe.InputB) >= recipe.CountB);
-                if (GUI.Button(left + width - 113, y + 6, 79, 28,
+                if (GUI.Button(left + width - 113, y + 2, 79, 28,
                         available ? "Craft" : "Need items") && available)
                     Rpc(nameof(CraftRecipe), recipe.Id);
             }

@@ -1,0 +1,12 @@
+material 1
+color 1 1 1 1
+metallic 0
+roughness 1
+unlit 1
+flatShading 1
+doubleSided 1
+blend 1
+cutoff 0.4
+texture "Textures/chest_item.png"
+tiling 1 1
+offset 0 0

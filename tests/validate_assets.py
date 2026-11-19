@@ -201,10 +201,11 @@ def verify() -> None:
     editor_src = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
     inventory_src = (ROOT / "src/Scripts/WorldGeneration/BlockInventory.cs").read_text()
     tools_src = (ROOT / "src/Scripts/WorldGeneration/PlayerTools.cs").read_text()
-    check("public const int MaxType = 10" in inventory_src
+    check("public const int MaxType = 11" in inventory_src
           and 'encoded.StartsWith("1|"' in inventory_src
           and 'encoded.StartsWith("2|"' in inventory_src
           and 'encoded.StartsWith("3|"' in inventory_src
+          and 'encoded.StartsWith("4|"' in inventory_src
           and 'sections[0] != "1" && sections[0] != "2"' in tools_src,
           "Old saved inventories and tools must migrate without resetting items")
     check("private void SmeltIron(int count)" in editor_src
@@ -300,6 +301,38 @@ def verify() -> None:
           and 'DroppedItemMesh.ForType(ItemType)' in drop_script
           and 'Vector3.DistanceSquared' in drop_mesh,
           "Server mining drops must replicate, merge, expire and collect safely")
+    chest_tex = (ROOT / "src/Textures/chest_front.png").read_bytes()
+    chest_icon = (ROOT / "src/Textures/chest_item.png").read_bytes()
+    for name, raw in (("chest front",chest_tex),("chest item",chest_icon)):
+        check(raw[:8] == bytes.fromhex("89504e470d0a1a0a") and
+              struct.unpack_from(">II",raw,16)==(32,32) and
+              raw[24:26]==bytes([8,6]),
+              name+" must be crisp, 32x32, lossless RGBA")
+    for name in ("chest_front","chest_item"):
+        opts = (ROOT / ("src/Textures/"+name+".png.import")).read_text()
+        check(all(value in opts for value in (
+              "filter = nearest","mipmaps = 0","compression = 0",
+              "fullResolution = 1")),name+" texture should remain pixel-sharp")
+    check("component Tallow.CSharpBehaviour" in
+          (ROOT / "src/Prefabs/WorldDrop.tprefab").read_text()
+          and 'Materials/chest_item.tmat' in
+          (ROOT / "src/Scripts/WorldGeneration/WorldDrop.cs").read_text()
+          and 'Materials/chest_front.tmat' in
+          (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text(),
+          "Chest texture and dropped item art should be wired into the renderer")
+    chest_code = (ROOT / "src/Scripts/WorldGeneration/WorldChestStorage.cs").read_text()
+    world_code = (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text()
+    save_code = (ROOT / "src/Scripts/WorldGeneration/WorldEditSave.cs").read_text()
+    check('public const int SlotCount = 27' in chest_code
+          and 'public bool TryTransfer(BlockPosition position' in chest_code
+          and 'ChestSaveCodec.Encode(chests)' in save_code
+          and 'ChestSaveCodec.TryDecode(bytes' in save_code
+          and 'WorldEditSave.Save(folder, id, seed, snapshot, revisions, chests)' in world_code
+          and '_chests.IsEmpty(target)' in world_code
+          and 'TryReadChest(pos' in editor_src
+          and 'private void MoveChestStack(int from,int to,bool split)' in editor_src
+          and 'private void OpenNearbyChest()' in editor_src,
+          "Chest transfers must be server-owned and saved atomically with terrain")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 

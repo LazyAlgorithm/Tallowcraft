@@ -23,6 +23,7 @@ public static class CraftingRecipes
         // actual forge through the separate SmeltIron RPC.
         new(4, "Iron ingot", 8, 1, 7, 1, BlockInventory.IronIngot, 1),
         new(5, "Five iron ingots", 8, 5, 7, 5, BlockInventory.IronIngot, 5),
+        new(6, "Storage chest", 6, 8, 0, 0, BlockInventory.Chest, 1),
     };
 
     public static System.Collections.Generic.IReadOnlyList<CraftingRecipe> All => Recipes;

@@ -19,7 +19,9 @@ public readonly record struct BlockState(ushort Packed)
     public static BlockState Create(int type, BlockShape shape = BlockShape.Cube,
         int facing = 0, bool upper = false)
     {
-        if (type < 1 || type > 9 || (uint)shape > 3)
+        if (type < 1 || type > BlockInventory.Chest ||
+            type == BlockInventory.IronIngot || (uint)shape > 3 ||
+            (type == BlockInventory.Chest && shape != BlockShape.Cube))
             return default;
         if (shape != BlockShape.Slab && shape != BlockShape.Stair)
             upper = false;
@@ -30,9 +32,13 @@ public readonly record struct BlockState(ushort Packed)
     public static bool IsValid(ushort packed)
     {
         if (packed == 0) return true;
-        if ((packed & 0xE000) != 0 || (packed & 255) is < 1 or > 9)
+        if ((packed & 0xE000) != 0 || (packed & 255) is < 1 or > BlockInventory.Chest)
             return false;
         int shape = (packed >> 10) & 3;
+        if ((packed & 255) == BlockInventory.IronIngot)
+            return false;
+        if ((packed & 255) == BlockInventory.Chest && shape != 0)
+            return false;
         return (packed & 0x1000) == 0 || shape == 1 || shape == 2;
     }
 

@@ -18,7 +18,8 @@ public readonly record struct ItemStack(int Type, int Quantity)
 /// </summary>
 public sealed class BlockInventory
 {
-    public const int MaxType = 10;
+    public const int MaxType = 11;
+    public const int Chest = 11;
     public const int IronIngot = 10;
     public const int MaxPerType = 999;
     public const int StackLimit = 64;
@@ -100,6 +101,39 @@ public sealed class BlockInventory
         ItemStack stack = _slots[slot];
         int remain = stack.Quantity - quantity;
         _slots[slot] = remain == 0 ? default : new(stack.Type, remain);
+        return true;
+    }
+
+    public bool CanInsertIntoSlot(int slot, ItemStack item)
+    {
+        if (slot is < 0 or >= SlotCount ||
+            item.Type is < 1 or > MaxType ||
+            item.Quantity is < 1 or > StackLimit ||
+            item.Quantity > MaxPerType - Count(item.Type))
+            return false;
+        ItemStack current = _slots[slot];
+        return current.IsEmpty || (current.Type == item.Type &&
+            current.Quantity <= StackLimit - item.Quantity);
+    }
+
+    /// <summary>Exact-slot insertion without spilling into the legacy
+    /// reserve. Used for atomic chest withdrawals.</summary>
+    public bool TryInsertIntoSlot(int slot, ItemStack item)
+    {
+        if (!CanInsertIntoSlot(slot, item)) return false;
+        ItemStack current = _slots[slot];
+        _slots[slot] = new(item.Type, current.Quantity + item.Quantity);
+        return true;
+    }
+
+    public bool TryRemoveFromSlot(int slot, int quantity)
+    {
+        if (slot is < 0 or >= SlotCount || quantity <= 0 ||
+            _slots[slot].IsEmpty || quantity > _slots[slot].Quantity)
+            return false;
+        ItemStack old = _slots[slot];
+        int remain = old.Quantity - quantity;
+        _slots[slot] = remain > 0 ? new(old.Type, remain) : default;
         return true;
     }
 
@@ -219,7 +253,7 @@ public sealed class BlockInventory
     }
 
     /// <summary>
-    /// v3 lists exactly 36 real stacks (type:count or 0) and 10 reserves.
+    /// v4 lists exactly 36 real stacks (type:count or 0) and 11 reserves.
     /// The payload stays under 700 characters, well inside the sync bridge.
     /// </summary>
     public string Serialize()
@@ -229,7 +263,7 @@ public sealed class BlockInventory
             slots[i] = _slots[i].IsEmpty ? "0" :
                 _slots[i].Type.ToString(CultureInfo.InvariantCulture) + ":" +
                 _slots[i].Quantity.ToString(CultureInfo.InvariantCulture);
-        return "3|" + string.Join(',', slots) + "|" +
+        return "4|" + string.Join(',', slots) + "|" +
             string.Join(',', _reserve[1..]);
     }
 
@@ -241,7 +275,7 @@ public sealed class BlockInventory
         {
             bool old = encoded[0] == '1';
             string[] counts = encoded[2..].Split(',');
-            if (counts.Length != (old ? 9 : MaxType)) return false;
+            if (counts.Length != (old ? 9 : 10)) return false;
             var parsed = new int[MaxType + 1];
             for (int type = 1; type <= counts.Length; type++)
                 if (!int.TryParse(counts[type - 1], NumberStyles.None,
@@ -256,12 +290,15 @@ public sealed class BlockInventory
             Array.Copy(staged._reserve, _reserve, MaxType + 1);
             return true;
         }
-        if (!encoded.StartsWith("3|", StringComparison.Ordinal)) return false;
+        bool legacySlots = encoded.StartsWith("3|", StringComparison.Ordinal);
+        if (!legacySlots &&
+            !encoded.StartsWith("4|", StringComparison.Ordinal)) return false;
         string[] fields = encoded.Split('|');
         if (fields.Length != 3) return false;
         string[] items = fields[1].Split(',');
         string[] reserve = fields[2].Split(',');
-        if (items.Length != SlotCount || reserve.Length != MaxType)
+        if (items.Length != SlotCount ||
+            reserve.Length != (legacySlots ? 10 : MaxType))
             return false;
 
         var next = new ItemStack[SlotCount];
@@ -281,7 +318,7 @@ public sealed class BlockInventory
             next[i] = new(type, amount);
             totals[type] += amount;
         }
-        for (int type = 1; type <= MaxType; type++)
+        for (int type = 1; type <= reserve.Length; type++)
         {
             if (!int.TryParse(reserve[type - 1], NumberStyles.None,
                 CultureInfo.InvariantCulture, out extras[type]) ||

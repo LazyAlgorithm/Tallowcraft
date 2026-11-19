@@ -20,10 +20,11 @@ public sealed class DroppedItemMesh
         if (type is < 1 or > BlockInventory.MaxType)
             return new DroppedItemMesh();
         int frame = type - 1, column = frame % 5, row = frame / 5;
-        float u0 = (column + .035f) / 5f;
-        float u1 = (column + .965f) / 5f;
-        float v0 = (row + .035f) / 2f;
-        float v1 = (row + .965f) / 2f;
+        bool chest = type == BlockInventory.Chest;
+        float u0 = chest ? .035f : (column + .035f) / 5f;
+        float u1 = chest ? .965f : (column + .965f) / 5f;
+        float v0 = chest ? .035f : (row + .035f) / 2f;
+        float v1 = chest ? .965f : (row + .965f) / 2f;
         const float size = .20f;
         var positions = new Vector3[8];
         var normals = new Vector3[8];

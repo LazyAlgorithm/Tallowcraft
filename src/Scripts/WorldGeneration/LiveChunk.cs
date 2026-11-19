@@ -1,4 +1,5 @@
 using Tallow;
+using System.Collections.Generic;
 
 namespace WorldGeneration;
 
@@ -9,6 +10,14 @@ public sealed class LiveChunk
     public MeshRenderer Renderer;
     public ushort[]? Blocks;
     public bool Dirty;
+    public readonly List<GameObject> Decorations = new();
+
+    public void ClearDecorations()
+    {
+        foreach (GameObject decoration in Decorations)
+            if (decoration.IsValid) decoration.Destroy();
+        Decorations.Clear();
+    }
 
     public LiveChunk(GameObject obj, MeshRenderer renderer, ushort[]? blocks)
     {

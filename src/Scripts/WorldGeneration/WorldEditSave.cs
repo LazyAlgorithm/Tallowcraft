@@ -35,7 +35,12 @@ public static class WorldEditSave
     }
 
     public static void Save(string root, string worldId, int seed,
-        SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions)
+        SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions) =>
+        Save(root, worldId, seed, edits, revisions, null);
+
+    public static void Save(string root, string worldId, int seed,
+        SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions,
+        IReadOnlyDictionary<BlockPosition, ChestContents>? chests)
     {
         if (!Guid.TryParseExact(worldId, "N", out _))
             throw new ArgumentException("Invalid world identity.");
@@ -50,9 +55,17 @@ public static class WorldEditSave
             keys.Sort((a,b) => a.X != b.X ? a.X.CompareTo(b.X) :
                 a.Y != b.Y ? a.Y.CompareTo(b.Y) : a.Z.CompareTo(b.Z));
             var manifest = new StringBuilder();
-            manifest.Append("3|").Append(worldId).Append('|')
+            byte[]? chestBytes = chests == null ? null :
+                ChestSaveCodec.Encode(chests);
+            manifest.Append(chestBytes == null ? "3|" : "4|")
+                .Append(worldId).Append('|')
                 .Append(seed.ToString(Invariant)).Append('|')
-                .Append(keys.Count.ToString(Invariant)).Append('\n');
+                .Append(keys.Count.ToString(Invariant));
+            if (chestBytes != null)
+                manifest.Append('|').Append(EditSectionCodec.Hash(chestBytes));
+            manifest.Append('\n');
+            if (chestBytes != null)
+                DurableWrite(Path.Combine(staging, "chests.bin"), chestBytes);
             foreach (ChunkKey key in keys)
             {
                 int revision = revisions[key];
@@ -125,8 +138,15 @@ public static class WorldEditSave
     /// <summary>True in recovered when a previous save replaced a corrupt
     /// current generation. An unrecoverable save always returns false.</summary>
     public static bool TryLoad(string root, out string worldId,
-        out int seed, out BlockEdits edits, out bool recovered)
+        out int seed, out BlockEdits edits, out bool recovered) =>
+        TryLoad(root, out worldId, out seed, out edits, out _,
+            out recovered);
+
+    public static bool TryLoad(string root, out string worldId,
+        out int seed, out BlockEdits edits,
+        out WorldChestStorage chests, out bool recovered)
     {
+        chests = new WorldChestStorage();
         worldId = "";
         seed = 0;
         edits = new BlockEdits();
@@ -134,9 +154,11 @@ public static class WorldEditSave
 
         string current = Path.Combine(root, "current.txt");
         string previous = Path.Combine(root, "previous.txt");
-        if (TryReadPointer(root, current, out worldId, out seed, out edits))
+        if (TryReadPointer(root, current, out worldId, out seed,
+                out edits, out chests))
             return true;
-        if (!TryReadPointer(root, previous, out worldId, out seed, out edits))
+        if (!TryReadPointer(root, previous, out worldId, out seed,
+                out edits, out chests))
             return false;
 
         recovered = true;
@@ -156,11 +178,13 @@ public static class WorldEditSave
     }
 
     private static bool TryReadPointer(string root, string pointer,
-        out string worldId, out int seed, out BlockEdits edits)
+        out string worldId, out int seed, out BlockEdits edits,
+        out WorldChestStorage chests)
     {
         worldId = "";
         seed = 0;
         edits = new BlockEdits();
+        chests = new WorldChestStorage();
         try
         {
             string generation = File.ReadAllText(pointer).Trim();
@@ -171,7 +195,9 @@ public static class WorldEditSave
             if (lines.Length < 1)
                 return false;
             string[] header = lines[0].Split('|');
-            if (header.Length != 4 || header[0] != "3" ||
+            bool v3 = header.Length == 4 && header[0] == "3";
+            bool v4 = header.Length == 5 && header[0] == "4";
+            if ((!v3 && !v4) ||
                 !Guid.TryParseExact(header[1], "N", out _) ||
                 !int.TryParse(header[2], NumberStyles.Integer,
                     Invariant, out int parsedSeed) ||
@@ -211,9 +237,30 @@ public static class WorldEditSave
                 restored.ReplaceSection(key, section, revision, parsedSeed);
             }
 
+            var loadedChests = new WorldChestStorage();
+            if (v4)
+            {
+                byte[] bytes = File.ReadAllBytes(
+                    Path.Combine(folder, "chests.bin"));
+                if (bytes.Length > ChestSaveCodec.MaxBytes ||
+                    header[4].Length != 64 ||
+                    !string.Equals(EditSectionCodec.Hash(bytes), header[4],
+                        StringComparison.Ordinal) ||
+                    !ChestSaveCodec.TryDecode(bytes, out var chestEntries))
+                    return false;
+                // A chest must exist as a voxel in the SAME committed
+                // generation. This rejects orphaned or mismatched saves.
+                foreach (BlockPosition position in chestEntries.Keys)
+                    if (new BlockState(restored.Get(position.X, position.Y,
+                            position.Z, parsedSeed)).Type !=
+                        BlockInventory.Chest)
+                        return false;
+                loadedChests.Restore(chestEntries);
+            }
             worldId = header[1];
             seed = parsedSeed;
             edits = restored;
+            chests = loadedChests;
             return true;
         }
         catch (IOException) { return false; }

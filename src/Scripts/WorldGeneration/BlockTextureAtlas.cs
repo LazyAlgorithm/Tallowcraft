@@ -59,6 +59,7 @@ public static class BlockTextureAtlas
             7 => 9,
             8 => 10,
             9 => 11,
+            11 => 8, // Plank-textured until the chest front art is added.
             _ => 3
         };
 }

@@ -57,7 +57,7 @@ internal static class InventorySlotTests
 
         string current = inventory.Serialize();
         var joined = new BlockInventory();
-        check(current.StartsWith("3|", StringComparison.Ordinal) &&
+        check(current.StartsWith("4|", StringComparison.Ordinal) &&
             joined.TryLoad(current) &&
             joined.Serialize() == current &&
             joined.Slot(9) == inventory.Slot(9),
@@ -100,10 +100,10 @@ internal static class InventorySlotTests
         string baseline = joined.Serialize();
         foreach (string invalid in new[]
         {
-            "3|0|0", "3|" + new string('0', 300),
-            saved.Replace("3|","9|", StringComparison.Ordinal),
+            "4|0|0", "4|" + new string('0', 300),
+            saved.Replace("4|","9|", StringComparison.Ordinal),
             saved.Replace("1:64","1:999", StringComparison.Ordinal),
-            current.Replace("3|","3|x", StringComparison.Ordinal)
+            current.Replace("4|","4|x", StringComparison.Ordinal)
         })
         {
             check(!joined.TryLoad(invalid) &&

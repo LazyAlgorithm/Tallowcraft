@@ -100,6 +100,7 @@ public class BlockWorld : Script
     [Sync] public string EditState = "";
 
     private BlockEdits _edits = new();
+    private WorldChestStorage _chests = new();
     private string _worldId = "";
     private bool _saveLoadFailed;
     private Task? _saveTask;
@@ -170,7 +171,7 @@ public class BlockWorld : Script
         {
             if (!WorldEditSave.TryLoad(SaveFolder, out string loadedId,
                     out int loadedSeed, out BlockEdits loaded,
-                    out bool recovered))
+                    out WorldChestStorage chests, out bool recovered))
             {
                 _saveLoadFailed = true;
                 Console.WriteLine("Tallowcraft world save is corrupt or incomplete; " +
@@ -180,6 +181,7 @@ public class BlockWorld : Script
             _worldId = loadedId;
             Seed = loadedSeed;
             _edits = loaded;
+            _chests = chests;
             RebuildSurfaceOpenings();
             if (recovered)
                 Console.WriteLine(
@@ -193,7 +195,7 @@ public class BlockWorld : Script
             try
             {
                 WorldEditSave.Save(SaveFolder, _worldId, Seed,
-                    _edits.Snapshot, _edits.Revisions);
+                    _edits.Snapshot, _edits.Revisions, _chests.Snapshot);
             }
             catch (Exception exception)
             {
@@ -254,11 +256,12 @@ public class BlockWorld : Script
         _saveClock = 0;
         var snapshot = _edits.Snapshot;
         var revisions = _edits.Revisions;
+        var chests = _chests.Snapshot;
         string folder = SaveFolder, id = _worldId;
         int seed = Seed;
         _savingGeneration = _generation;
         _saveTask = Task.Run(() =>
-            WorldEditSave.Save(folder, id, seed, snapshot, revisions));
+            WorldEditSave.Save(folder, id, seed, snapshot, revisions, chests));
     }
 
     private void SaveNow()
@@ -272,7 +275,7 @@ public class BlockWorld : Script
             if (_generation != _savedGeneration)
             {
                 WorldEditSave.Save(SaveFolder, _worldId, Seed,
-                    _edits.Snapshot, _edits.Revisions);
+                    _edits.Snapshot, _edits.Revisions, _chests.Snapshot);
                 _savedGeneration = _generation;
             }
         }
@@ -306,6 +309,7 @@ public class BlockWorld : Script
                 _publishedSeed = Seed;
                 _worldId = WorldEditSave.NewWorldId();
                 _edits = new BlockEdits();
+                _chests = new WorldChestStorage();
                 _encodedSections.Clear();
                 _generation++;
                 EditState = WorldMetadata();
@@ -629,6 +633,36 @@ public class BlockWorld : Script
             _emptyChunks.Remove(key);
     }
 
+    private void DecorateChestFronts(ChunkKey key, LiveChunk chunk,
+        ushort[] blocks)
+    {
+        chunk.ClearDecorations();
+        for (int y=0;y<16;y++)
+        for (int z=0;z<16;z++)
+        for (int x=0;x<16;x++)
+        {
+            BlockState state=new(blocks[ChunkGenerator.Index(x,y,z)]);
+            if (state.Type != BlockInventory.Chest) continue;
+            ChestFrontMesh.Build(state.Facing, out Vector3[] points,
+                out Vector3[] normals, out Vector2[] uvs,
+                out int[] indices, out Vector3 offset);
+
+            GameObject front=Scene.CreateGameObject("Chest lock and lid");
+            front.Transient=true;
+            front.Transform.Position=new Vector3(
+                key.X*16+x+.5f,key.Y*16+y+.5f,
+                key.Z*16+z+.5f)+offset;
+            var renderer=front.AddComponent<MeshRenderer>();
+            renderer.CastShadows=false;
+            renderer.FlatShading=true;
+            renderer.BackFaceCulling=false;
+            renderer.Material="Materials/chest_front.tmat";
+            renderer.SetMesh(points,indices,normals,uvs);
+            front.SetParent(chunk.Object,true);
+            chunk.Decorations.Add(front);
+        }
+    }
+
     private void UploadFinished(int cx, int cy, int cz)
     {
         int processed = 0;
@@ -704,6 +738,7 @@ public class BlockWorld : Script
 
                 long meshStart = ProfileStart();
                 live.Renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
+                DecorateChestFronts(pair.Key, live, data.Blocks);
                 RecordChunkProfile(0, meshStart);
                 if (_colliders.Contains(pair.Key) &&
                     live.Object.GetComponent<MeshCollider>() is { } collider &&
@@ -756,8 +791,10 @@ public class BlockWorld : Script
                 FaceCount = data.Triangles.Length / 6
             });
             _chunkObjects[obj.Id] = pair.Key;
-            _loaded.Add(pair.Key,
-                new LiveChunk(obj, renderer, collision ? data.Blocks : null));
+            var newChunk=new LiveChunk(obj,renderer,
+                collision ? data.Blocks : null);
+            _loaded.Add(pair.Key,newChunk);
+            DecorateChestFronts(pair.Key,newChunk,data.Blocks);
         }
 
         foreach (ChunkKey key in _scratch)
@@ -1259,6 +1296,69 @@ public class BlockWorld : Script
         return true;
     }
 
+    /// <summary>Server-owned chest inventory at a validated chest voxel.
+    /// Clients never access mutable world chest data directly.</summary>
+    public bool TryReadChest(BlockPosition position, out ChestContents contents)
+    {
+        contents = new ChestContents();
+        if (!Scene.IsServer || _saveLoadFailed ||
+            new BlockState(BlockAt(position)).Type != BlockInventory.Chest)
+            return false;
+        contents = _chests.At(position);
+        return true;
+    }
+
+    public bool TryMoveChestItem(BlockPosition position, BlockInventory player,
+        int playerSlot, int chestSlot, bool fromPlayer, bool split)
+    {
+        if (!TryReadChest(position, out _)) return false;
+        if (!_chests.TryTransfer(position, player, playerSlot,
+                chestSlot, fromPlayer, split))
+            return false;
+        _generation++; // A chest-only change needs a world autosave too.
+        return true;
+    }
+
+    public bool TryRearrangeChest(BlockPosition position, int from,
+        int to, bool split)
+    {
+        if (!TryReadChest(position, out _) ||
+            !_chests.TryRearrange(position, from, to, split))
+            return false;
+        _generation++;
+        return true;
+    }
+
+    public BlockPosition? NearestChest(Vector3 position, float reach = 4.5f)
+    {
+        if (!Scene.IsServer || _saveLoadFailed || reach <= 0 ||
+            !float.IsFinite(position.X) ||
+            !float.IsFinite(position.Y) ||
+            !float.IsFinite(position.Z)) return null;
+        int minX = (int)MathF.Floor(position.X - reach);
+        int minY = (int)MathF.Floor(position.Y - reach);
+        int minZ = (int)MathF.Floor(position.Z - reach);
+        int maxX = (int)MathF.Floor(position.X + reach);
+        int maxY = (int)MathF.Floor(position.Y + reach);
+        int maxZ = (int)MathF.Floor(position.Z + reach);
+        float best = reach*reach;
+        BlockPosition? closest = null;
+        for (int y = minY; y <= maxY; y++)
+        for (int z = minZ; z <= maxZ; z++)
+        for (int x = minX; x <= maxX; x++)
+        {
+            var point = new BlockPosition(x,y,z);
+            if (new BlockState(BlockAt(point)).Type != BlockInventory.Chest)
+                continue;
+            float dist = Vector3.DistanceSquared(position,
+                new Vector3(x+.5f,y+.5f,z+.5f));
+            if (dist > best) continue;
+            best = dist;
+            closest = point;
+        }
+        return closest;
+    }
+
     /// <summary>Server-authoritative edit using the same target as preview.</summary>
     public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach,
         bool breaking, GameObject actingPlayer, ushort placeState) =>
@@ -1301,11 +1401,16 @@ public class BlockWorld : Script
         ushort previous = BlockAt(target);
         if (breaking && previous == 0)
             return false;
+        if (breaking && new BlockState(previous).Type == BlockInventory.Chest &&
+            !_chests.IsEmpty(target))
+            return false; // Empty a chest before mining it to avoid lost contents.
         if (!_edits.Set(target, replacement, Seed))
             return false;
 
         previousState = previous;
         replacementState = replacement;
+        if (breaking && new BlockState(previous).Type == BlockInventory.Chest)
+            _chests.Remove(target);
         MarkBlockDirty(target);
         UpdateSurfaceOpening(target);
         _generation++;

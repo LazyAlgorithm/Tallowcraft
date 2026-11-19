@@ -58,7 +58,7 @@ internal static class ForgeTests
         check(legacyItems.TryLoad("1|32,64,64,32,8,64,3,4,5") &&
             legacyItems.Count(7) == 3 && legacyItems.Count(8) == 4 &&
             legacyItems.Count(9) == 5 && legacyItems.Count(10) == 0 &&
-            legacyItems.Serialize().StartsWith("3|", StringComparison.Ordinal),
+            legacyItems.Serialize().StartsWith("4|", StringComparison.Ordinal),
             "Original nine-item save migrates to the ten-item format");
         var overflow = new BlockInventory();
         check(overflow.TryCollect(10, 999) && overflow.TryCollect(8) &&

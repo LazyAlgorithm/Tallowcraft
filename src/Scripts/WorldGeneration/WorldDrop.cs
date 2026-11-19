@@ -98,6 +98,8 @@ public sealed class WorldDrop : Script
         // cosmetic mesh is built on every peer from the saved type ID.
         if (_renderer.IsValid && ItemType != _renderType)
         {
+            _renderer.Material = ItemType == BlockInventory.Chest ?
+                "Materials/chest_item.tmat" : "Materials/item_drop.tmat";
             DroppedItemMesh mesh = DroppedItemMesh.ForType(ItemType);
             if (mesh.Triangles.Length > 0)
                 _renderer.SetMesh(mesh.Positions, mesh.Triangles,
