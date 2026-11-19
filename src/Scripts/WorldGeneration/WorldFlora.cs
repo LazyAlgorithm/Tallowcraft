@@ -49,6 +49,10 @@ public static class WorldFlora
         // Cheap early rejection, then resolve climate only for candidates.
         if ((hash & 1023u) >= 680u)
             return false;
+        // Avoid trunks or canopies obstructing a natural ruin. This depends
+        // only on the same world seed, not on whether the ruin chunk is loaded.
+        if (WorldDecorations.NearRuin(x, z, seed, 5))
+            return false;
         WorldBiomes.Biome biome = WorldBiomes.At(x, z, seed);
         uint chance = biome switch
         {
