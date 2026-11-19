@@ -70,9 +70,9 @@ internal static class BlockDamageTests
         // have visibly distinct geometry, avoiding a floating full cube.
         BlockDamageMesh lower = BlockDamageMesh.Create(
             BlockState.Create(4, BlockShape.Slab, 0, false));
-        BlockDamageMesh upper = BlockDamageMesh.Create(
+        BlockDamageMesh upperMesh = BlockDamageMesh.Create(
             BlockState.Create(4, BlockShape.Slab, 0, true));
-        check(lower.Positions[0].Y != upper.Positions[0].Y,
+        check(lower.Positions[0].Y != upperMesh.Positions[0].Y,
             "Upper and lower slabs receive different crack shells");
 
         BlockDamageMesh stair0 = BlockDamageMesh.Create(
