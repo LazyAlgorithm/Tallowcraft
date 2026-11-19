@@ -136,10 +136,34 @@ internal static class SectionEditTests
                 WorldEditSave.TryLoad(folder, out _, out _, out var newest) &&
                 newest.Get(0,32,0,seed) == 0,
                 "The pointer switches only after a complete generation commits");
-            File.WriteAllText(Path.Combine(folder, "current.txt"), "invalid!");
+            string currentFile = Path.Combine(folder, "current.txt");
+            string previousFile = Path.Combine(folder, "previous.txt");
+            check(File.ReadAllText(previousFile) == pointer,
+                "The previous committed save has an explicit recovery pointer");
+
+            File.WriteAllText(currentFile, "invalid!");
+            check(WorldEditSave.TryLoad(folder, out string recoveredId,
+                    out int recoveredSeed, out BlockEdits recoveredWorld,
+                    out bool recovered) &&
+                recovered && recoveredId == worldId && recoveredSeed == seed &&
+                recoveredWorld.Get(0,32,0,seed) == stair &&
+                File.ReadAllText(currentFile) == pointer,
+                "A corrupt current pointer restores and heals the previous save");
+
+            File.WriteAllText(currentFile, newPointer);
+            string newestManifest = Path.Combine(folder, "generations",
+                newPointer.Trim(), "manifest.txt");
+            File.WriteAllText(newestManifest, "damaged");
+            check(WorldEditSave.TryLoad(folder, out _, out _, out var fallbackWorld,
+                    out recovered) && recovered &&
+                fallbackWorld.Get(0,32,0,seed) == stair,
+                "A corrupt newest manifest rolls back to the verified previous generation");
+
+            File.WriteAllText(currentFile, "invalid!");
+            File.WriteAllText(previousFile, "invalid!");
             check(!WorldEditSave.TryLoad(folder, out _, out _, out _),
-                "Corrupted world pointers are refused, not silently reset");
-            File.WriteAllText(Path.Combine(folder, "current.txt"), newPointer);
+                "Both corrupt save pointers are refused without resetting the world");
+            File.WriteAllText(currentFile, pointer);
         }
         finally
         {

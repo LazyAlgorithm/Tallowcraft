@@ -16,7 +16,8 @@ public static class WorldEditSave
 {
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
     public static bool HasSave(string root) =>
-        File.Exists(Path.Combine(root, "current.txt"));
+        File.Exists(Path.Combine(root, "current.txt")) ||
+        File.Exists(Path.Combine(root, "previous.txt"));
 
     public static string NewWorldId() => Guid.NewGuid().ToString("N");
 
@@ -73,6 +74,18 @@ public static class WorldEditSave
             string pointer = Path.Combine(root, "current.txt");
             string previous = File.Exists(pointer)
                 ? File.ReadAllText(pointer).Trim() : "";
+            // Retain the last committed generation as an explicit restore
+            // target, not merely as an unindexed directory. Commit this
+            // backup pointer before promoting the new current generation.
+            if (Guid.TryParseExact(previous, "N", out _))
+            {
+                string previousPointer = Path.Combine(root, "previous.txt");
+                string backupPending = Path.Combine(root,
+                    generation + ".previous.tmp");
+                DurableWrite(backupPending, Encoding.ASCII.GetBytes(previous));
+                File.Move(backupPending, previousPointer, overwrite: true);
+            }
+
             string pending = Path.Combine(root, generation + ".pointer.tmp");
             DurableWrite(pending, Encoding.ASCII.GetBytes(generation));
             File.Move(pending, pointer, overwrite: true);
@@ -100,18 +113,60 @@ public static class WorldEditSave
         }
     }
 
+    /// <summary>
+    /// Load the current committed generation, falling back to the previous
+    /// committed generation if the current manifest or block files are
+    /// unreadable. A bad current pointer must not erase a playable world.
+    /// </summary>
     public static bool TryLoad(string root, out string worldId,
-        out int seed, out BlockEdits edits)
+        out int seed, out BlockEdits edits) =>
+        TryLoad(root, out worldId, out seed, out edits, out _);
+
+    /// <summary>True in recovered when a previous save replaced a corrupt
+    /// current generation. An unrecoverable save always returns false.</summary>
+    public static bool TryLoad(string root, out string worldId,
+        out int seed, out BlockEdits edits, out bool recovered)
+    {
+        worldId = "";
+        seed = 0;
+        edits = new BlockEdits();
+        recovered = false;
+
+        string current = Path.Combine(root, "current.txt");
+        string previous = Path.Combine(root, "previous.txt");
+        if (TryReadPointer(root, current, out worldId, out seed, out edits))
+            return true;
+        if (!TryReadPointer(root, previous, out worldId, out seed, out edits))
+            return false;
+
+        recovered = true;
+        try
+        {
+            // Heal the primary pointer when possible, so a later autosave
+            // begins from the recovered world rather than the bad generation.
+            string backup = File.ReadAllText(previous).Trim();
+            string pending = Path.Combine(root, NewWorldId() + ".recovery.tmp");
+            DurableWrite(pending, Encoding.ASCII.GetBytes(backup));
+            File.Move(pending, current, overwrite: true);
+        }
+        catch (IOException) { /* still use the verified backup in memory */ }
+        catch (UnauthorizedAccessException) { /* read-only disk */ }
+        catch (PlatformNotSupportedException) { /* virtual storage */ }
+        return true;
+    }
+
+    private static bool TryReadPointer(string root, string pointer,
+        out string worldId, out int seed, out BlockEdits edits)
     {
         worldId = "";
         seed = 0;
         edits = new BlockEdits();
         try
         {
-            string pointer = File.ReadAllText(Path.Combine(root, "current.txt")).Trim();
-            if (!Guid.TryParseExact(pointer, "N", out _))
+            string generation = File.ReadAllText(pointer).Trim();
+            if (!Guid.TryParseExact(generation, "N", out _))
                 return false;
-            string folder = Path.Combine(root, "generations", pointer);
+            string folder = Path.Combine(root, "generations", generation);
             string[] lines = File.ReadAllLines(Path.Combine(folder, "manifest.txt"));
             if (lines.Length < 1)
                 return false;
@@ -166,6 +221,7 @@ public static class WorldEditSave
         catch (FormatException) { return false; }
         catch (ArgumentException) { return false; }
     }
+
 }
 
 /// <summary>Validated, non-authoritative client cache keyed by saved world id.</summary>

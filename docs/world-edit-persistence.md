@@ -26,12 +26,16 @@ This code lives entirely in the game repository, not in Tallow's engine.
 - Saves write a completely new generation in a temporary folder, rename it
   into place, then atomically update `current.txt`. Incomplete staged saves
   are never loaded.
-- The server loads the last committed generation when starting. A damaged
-  committed save causes a load error and disables edits, rather than silently
-  overwriting the user's construction with fresh terrain.
+- The server loads the latest valid generation when starting. The previous
+  committed generation is explicitly recorded in `previous.txt`. If the
+  latest manifest, section file or pointer is corrupted, the verified previous
+  generation is restored and the current pointer is repaired when writable.
+  A world with neither valid generation refuses to load rather than silently
+  resetting the user's construction.
 - Autosaves run every 30 seconds on an immutable snapshot, and
   `OnDestroy` performs a final save. A crash can lose unsaved edits since
-  the last autosave. Completed saves retain the previous committed generation\n  as a recovery backup and prune older complete generations.
+  the last autosave. Completed saves retain the previous committed generation
+  as a recovery backup and prune older complete generations.
 
 ## Clients and late joining
 

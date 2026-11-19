@@ -163,7 +163,8 @@ public class BlockWorld : Script
         if (WorldEditSave.HasSave(SaveFolder))
         {
             if (!WorldEditSave.TryLoad(SaveFolder, out string loadedId,
-                    out int loadedSeed, out BlockEdits loaded))
+                    out int loadedSeed, out BlockEdits loaded,
+                    out bool recovered))
             {
                 _saveLoadFailed = true;
                 Console.WriteLine("Tallowcraft world save is corrupt or incomplete; " +
@@ -174,6 +175,10 @@ public class BlockWorld : Script
             Seed = loadedSeed;
             _edits = loaded;
             RebuildSurfaceOpenings();
+            if (recovered)
+                Console.WriteLine(
+                    "Tallowcraft recovered the previous world save after " +
+                    "the latest generation failed validation.");
             Console.WriteLine($"Tallowcraft restored {_edits.Count} modified voxels.");
         }
         else
