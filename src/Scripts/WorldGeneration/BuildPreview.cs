@@ -26,22 +26,104 @@ public class BuildPreview : Script
     private BlockState _selected;
     private BlockState _placeState;
 
+    // One tiny, local-only renderer. Never replicate it, add collision, or
+    // rebuild an entire terrain chunk to show cosmetic mining damage.
+    private GameObject? _damageObject;
+    private MeshRenderer _damageRenderer;
+    private BlockPosition _damagePosition;
+    private ushort _damageBlock;
+    private int _damageStage = -1;
+    private bool _damageVisible;
+
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
+
+    private void HideDamage()
+    {
+        if (_damageObject is { IsValid: true } overlay && _damageVisible)
+            overlay.SetActive(false);
+        _damageVisible = false;
+        _damageStage = -1;
+    }
+
+    private void ShowDamage(BlockPosition position, ushort block, int percent)
+    {
+        int stage = BlockDamageMesh.StageForPercent(percent);
+        if (stage < 0 || block == 0)
+        {
+            HideDamage();
+            return;
+        }
+
+        if (_damageObject is not { IsValid: true })
+        {
+            _damageObject = Scene.CreateGameObject("Block break cracks (local)");
+            _damageRenderer = _damageObject.Value.AddComponent<MeshRenderer>();
+            _damageRenderer.CastShadows = false;
+            _damageRenderer.BackFaceCulling = true;
+            _damageRenderer.Material = "Materials/block_break_damage.tmat";
+            _damageObject.Value.SetActive(false);
+            _damageVisible = false;
+            _damageStage = -1;
+        }
+
+        GameObject overlay = _damageObject.Value;
+        if (!_damageVisible || _damagePosition != position ||
+            _damageBlock != block)
+        {
+            BlockDamageMesh mesh = BlockDamageMesh.Create(new BlockState(block));
+            if (mesh.FaceCount == 0)
+            {
+                HideDamage();
+                return;
+            }
+            _damageRenderer.SetMesh(mesh.Positions, mesh.Triangles,
+                mesh.Normals, mesh.Uvs);
+            overlay.Transform.Position = new Vector3(
+                position.X + .5f, position.Y + .5f, position.Z + .5f);
+            _damagePosition = position;
+            _damageBlock = block;
+            _damageStage = -1;
+        }
+
+        if (_damageStage != stage)
+        {
+            _damageRenderer.SetMaterialFloat("damage", stage);
+            _damageStage = stage;
+        }
+        if (!_damageVisible)
+        {
+            overlay.SetActive(true);
+            _damageVisible = true;
+        }
+    }
+
+    public override void OnDestroy()
+    {
+        if (_damageObject is { IsValid: true } overlay)
+            Scene.Destroy(overlay);
+        _damageObject = null;
+    }
 
     public override void LocalUpdate(float deltaTime)
     {
         _targeted = false;
         if (!IsLocal)
+        {
+            HideDamage();
             return;
+        }
 
         _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
         _editor ??= GameObject.GetComponent<BlockEditor>();
         if (_camera is not { IsValid: true })
             _camera = Scene.Find("Main Camera");
-        if (_world == null || _editor == null || _editor.InventoryOpen ||
+        if (_world == null || _editor == null || _editor.IsInventoryVisible ||
             _camera is not { IsValid: true } camera)
+        {
+            HideDamage();
             return;
+        }
 
         var look = camera.Transform.Forward;
         Vector3 origin = Transform.Position + Vector3.UnitY * EyeHeight;
@@ -49,7 +131,10 @@ public class BuildPreview : Script
             Math.Clamp(Reach, 1f, 8f), GameObject, out _remove,
             out BlockPosition adjacent, out Vector3 hitNormal);
         if (!_targeted)
+        {
+            HideDamage();
             return;
+        }
 
         int facing = (BlockState.FacingTowardPlayer(look) +
             _editor.FacingOffset) & 3;
@@ -64,6 +149,17 @@ public class BuildPreview : Script
         _placeState = planned ? new BlockState(replacement) : _selected;
         _canPlace = planned && _editor.CanPlaceSelected &&
             _world.CanPlaceAt(_place, replacement);
+
+        if (_editor.MiningActive &&
+            _editor.MiningX == _remove.X &&
+            _editor.MiningY == _remove.Y &&
+            _editor.MiningZ == _remove.Z &&
+            _editor.MiningType ==
+                new BlockState(_world.BlockAt(_remove)).Type)
+            ShowDamage(_remove, _world.BlockAt(_remove),
+                _editor.MiningPercent);
+        else
+            HideDamage();
 
         DrawShape(_remove, new BlockState(_world.BlockAt(_remove)),
             new Color(1f, .25f, .18f, 1f));

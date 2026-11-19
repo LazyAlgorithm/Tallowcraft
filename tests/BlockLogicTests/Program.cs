@@ -32,6 +32,7 @@ static class Program
             InventoryMenuTests.Run(Check);
             SectionEditTests.Run(Check);
             MiningTests.Run(Check);
+            BlockDamageTests.Run(Check);
             ToolTests.Run(Check);
             ForgeTests.Run(Check);
             ProfileTests.Run(Check);

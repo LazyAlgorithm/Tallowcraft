@@ -216,6 +216,45 @@ def verify() -> None:
     check("if (_tools.TryEquipSlot(kind))" in editor_src
           and "MiningTool.IronPickaxe" in tools_src,
           "Quick equip should choose crafted iron tools when available")
+    # Crack atlas uses a tiny lossless RGBA PNG with ten horizontal 16px
+    # sprites. Its alpha is sampled by the editable shader graph.
+    damage_png = (ROOT / "src/Textures/block_cracks.png").read_bytes()
+    check(damage_png[:8] == bytes.fromhex("89504e470d0a1a0a") and
+          struct.unpack_from(">II", damage_png, 16) == (160, 16) and
+          damage_png[24:26] == bytes([8, 6]),
+          "Fracture atlas must contain ten 16x16 RGBA stages")
+    damage_import = (ROOT / "src/Textures/block_cracks.png.import").read_text()
+    check(all(s in damage_import for s in
+              ("filter = nearest", "wrap = clamp", "mipmaps = 0",
+               "compression = 0", "fullResolution = 1")),
+          "Mining crack atlas must remain sharp and lossless")
+
+    shader_graph = (ROOT / "src/Shaders/block_break_damage.tsgraph").read_text()
+    shader = (ROOT / "src/Shaders/block_break_damage.tshader").read_text()
+    crack_material = (ROOT / "src/Materials/block_break_damage.tmat").read_text()
+    check("node 1 shader.output" in shader_graph
+          and 'node 2 shader.prop.float' in shader_graph
+          and "node 3 shader.custom.float" in shader_graph
+          and "link 2 0 3 1" in shader_graph
+          and "link 3 0 1 1" in shader_graph
+          and "property float damage" in shader
+          and "texture2D(mainTexture" in shader
+          and 'shader "Shaders/block_break_damage.tshader"' in crack_material
+          and 'texture "Textures/block_cracks.png"' in crack_material
+          and "blend 1" in crack_material and "unlit 1" in crack_material,
+          "Breaking overlay needs an editable graph, compiled-source shader and cutout material")
+    damage_mesh = (ROOT / "src/Scripts/WorldGeneration/BlockDamageMesh.cs").read_text()
+    preview = (ROOT / "src/Scripts/WorldGeneration/BuildPreview.cs").read_text()
+    editor_script = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
+    check("block.ContainsMicro(x,y,z)" in damage_mesh
+          and "new BlockDamageMesh" in damage_mesh
+          and "_damageRenderer.SetMesh(" in preview
+          and '_damageRenderer.SetMaterialFloat("damage", stage)' in preview
+          and "Scene.Destroy(overlay)" in preview
+          and "_editor.MiningActive" in preview
+          and "[Sync] public int MiningX" in editor_script
+          and "[Sync] public bool MiningActive" in editor_script,
+          "Block breaking cracks must respect target/shape and clean up locally")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 

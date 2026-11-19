@@ -1,0 +1,12 @@
+// Generated from block_break_damage.tsgraph (the editable Shader Graph).
+// The main texture is a 10 x 1 pixel-art crack atlas: each stage is 16 x 16.
+// damage is a stage number (0..9), sent by the local mining preview.
+property float damage = 0
+
+surface {
+    // Sample only inside one frame. Keep 0.1% inset to avoid adjacent stages
+    // even at the outer UV edge of a slab/stair face.
+    float stage = clamp(floor(damage + 0.5), 0.0, 9.0);
+    alpha = texture2D(mainTexture,
+        vec2((uv.x * 0.998 + 0.001 + stage) * 0.1, uv.y)).a;
+}

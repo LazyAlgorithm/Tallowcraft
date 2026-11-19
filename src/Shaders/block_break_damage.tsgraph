@@ -1,0 +1,6 @@
+graph "BlockBreakDamage"
+node 1 shader.output 670 130
+node 2 shader.prop.float 70 105 "damage" "0"
+node 3 shader.custom.float 360 135 "texture2D(mainTexture, vec2((uv.x * 0.998 + 0.001 + clamp(floor(a + 0.5), 0.0, 9.0)) * 0.1, uv.y)).a" "1" "1" "0 0 0" "1 1 1 1"
+link 2 0 3 1
+link 3 0 1 1

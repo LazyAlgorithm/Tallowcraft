@@ -28,6 +28,10 @@ public class BlockEditor : Script
     // Quantized to ten-percent steps to avoid flooding player snapshots.
     [Sync] public int MiningPercent = 0;
     [Sync] public int MiningType = 0;
+    [Sync] public bool MiningActive = false;
+    [Sync] public int MiningX = 0;
+    [Sync] public int MiningY = 0;
+    [Sync] public int MiningZ = 0;
 
     private static readonly string[] BlockNames =
     {
@@ -342,6 +346,7 @@ public class BlockEditor : Script
     {
         _miningActive = false;
         _miningElapsed = 0f;
+        if (MiningActive) MiningActive = false;
         if (MiningPercent != 0) MiningPercent = 0;
         if (MiningType != 0) MiningType = 0;
     }
@@ -563,6 +568,13 @@ public class BlockEditor : Script
             }
 
             _miningElapsed += MathF.Max(0f, deltaTime);
+            // The render-only crack overlay may appear only on this exact
+            // authoritative block. Looking at a different voxel must never
+            // transfer the old damage stage to it.
+            MiningX = target.X;
+            MiningY = target.Y;
+            MiningZ = target.Z;
+            MiningActive = true;
             MiningType = new BlockState(state).Type;
             MiningPercent = BlockMining.Percent(_miningElapsed, state,
                 _tools.Equipped) / 10 * 10;
