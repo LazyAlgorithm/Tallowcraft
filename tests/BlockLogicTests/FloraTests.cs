@@ -25,6 +25,7 @@ internal static class FloraTests
         }
 
         int count = 0;
+        int pineCount = 0;
         BlockPosition first = default;
         bool foundHorizontalSeam = false;
         bool foundVerticalSeam = false;
@@ -35,15 +36,29 @@ internal static class FloraTests
         for (int z = -192; z <= 192; z++)
         for (int x = -192; x <= 192; x++)
         {
-            if (!WorldFlora.TryTreeAt(x, z, seed, out int y, out int trunkHeight))
+            if (!WorldFlora.TryTreeAt(x, z, seed,
+                out int y, out int trunkHeight, out bool pine))
                 continue;
             check((long)x * x + (long)z * z >= 60 * 60,
                 "No roots may spawn inside the protected origin area");
-            check(trunkHeight >= 4 && trunkHeight <= 6,
-                "Tree trunk should be 4-6 blocks tall");
-            check(WorldBiomes.At(x, z, seed) is WorldBiomes.Biome.Woodland
-                or WorldBiomes.Biome.Meadow,
-                "Trees should only appear in meadow and woodland");
+            check(trunkHeight >= (pine ? 6 : 4) &&
+                trunkHeight <= (pine ? 8 : 6),
+                "Oak and pine trunks stay in their expected height ranges");
+            WorldBiomes.Biome biome = WorldBiomes.At(x, z, seed);
+            check(biome is WorldBiomes.Biome.Woodland or
+                WorldBiomes.Biome.Meadow or WorldBiomes.Biome.Highlands,
+                "Trees should not appear in drylands");
+            if (pine)
+            {
+                pineCount++;
+                check(biome is WorldBiomes.Biome.Highlands or
+                    WorldBiomes.Biome.Woodland,
+                    "Pines should grow in highlands or woodland");
+            }
+            else
+                check(biome is WorldBiomes.Biome.Meadow or
+                    WorldBiomes.Biome.Woodland,
+                    "Oaks should grow in meadow or woodland");
             check(ChunkGenerator.BaseBlock(x, y, z, seed) == WorldFlora.Log,
                 "Tree trunk must be returned by direct block generator");
             if (count == 0) first = new BlockPosition(x, y, z);
@@ -62,6 +77,7 @@ internal static class FloraTests
                 foundHorizontalSeam = true;
         }
         check(count > 30, "Seeded terrain should contain a useful tree population");
+        check(pineCount > 5, "Highland and woodland pines should generate");
         check(foundHorizontalSeam, "At least one tree must straddle an X/Z chunk seam");
         check(foundVerticalSeam, "At least one tree must straddle a Y chunk seam");
 
@@ -112,6 +128,6 @@ internal static class FloraTests
             replica.Get(first.X, first.Y, first.Z, seed) == 0,
             "Late joiners must receive tree edits without re-growing mined logs");
 
-        Console.WriteLine($"PASS: deterministic tree and atlas tests (treeRoots={count}, seams=XZ/Y)");
+        Console.WriteLine($"PASS: deterministic tree and atlas tests (treeRoots={count}, pineRoots={pineCount}, seams=XZ/Y)");
     }
 }
