@@ -471,9 +471,11 @@ public class BlockWorld : Script
             {
                 // A previously canceled job can be needed again if the
                 // camera moves back before it finishes. Rebuild the queue.
-                if (job.Version == VersionFor(pair.Key) &&
-                    ShouldKeep(pair.Key, cx, cy, cz))
+                if (ShouldKeep(pair.Key, cx, cy, cz))
                 {
+                    // A stale result may be from a block edit while that
+                    // key still occupied a worker slot. Requeue the current
+                    // version after the obsolete task has been removed.
                     _candidateListDirty = true;
                     _streamExhausted = false;
                 }
