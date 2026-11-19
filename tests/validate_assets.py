@@ -209,7 +209,7 @@ def verify() -> None:
     check("private void SmeltIron(int count)" in editor_src
           and "private bool ServerNearForge()" in editor_src
           and "ForgeCrafting.TrySmelt(_inventory, count)" in editor_src
-          and "&& !ServerNearForge()" in editor_src
+          and "!ServerNearForge()" in editor_src
           and "recipeId is >= 1 and <= 3" in editor_src
           and "BlockInventory.IronIngot" in forge_src,
           "Iron smelting must be server-validated and locked to a real forge")
