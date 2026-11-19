@@ -17,6 +17,7 @@ public class BlockEditor : Script
     public float EditCooldown = 0.15f;
 
     [Sync] public int PlaceType = 3;
+    [Sync] public int SelectedHotbar = 2;
     [Sync] public int PlaceShape = 0;
     [Sync] public int FacingOffset = 0;
     [Sync] public bool CreativeMode = true;
@@ -40,6 +41,15 @@ public class BlockEditor : Script
     };
     private static readonly string[] ShapeNames =
         { "Cube", "Slab", "Stair", "Half wall" };
+    private static readonly string[] ItemShort =
+        { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING" };
+    private static readonly Color[] ItemColors =
+    {
+        new(.33f,.66f,.20f), new(.48f,.30f,.19f), new(.50f,.53f,.54f),
+        new(.54f,.35f,.21f), new(.57f,.49f,.34f), new(.77f,.61f,.36f),
+        new(.25f,.27f,.30f), new(.65f,.53f,.45f), new(.25f,.58f,.23f),
+        new(.75f,.73f,.69f)
+    };
 
     private BlockWorld? _world;
     private float _cooldown;
@@ -68,6 +78,10 @@ public class BlockEditor : Script
     private float _profileSaveClock;
     private bool _profileDirty;
     private bool _localIdentityFailed;
+    private int _dragFrom = -1;
+    private int _pickedFrom = -1;
+    private bool _dragSplit;
+    private bool _pickedSplit;
 
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -113,7 +127,8 @@ public class BlockEditor : Script
         {
             ProfileLoadResult status = PlayerProfileStore.Load(folder, worldId,
                 token, out BlockInventory savedInventory, out PlayerTools savedTools,
-                out int type, out int shape, out int facing);
+                out int type, out int shape, out int facing,
+                out int savedSlot);
             if (status == ProfileLoadResult.Corrupt)
             {
                 ProfileError = true;
@@ -126,6 +141,10 @@ public class BlockEditor : Script
                 !_tools.TryLoad(savedTools.Serialize()))
                 throw new InvalidDataException("Invalid restored player profile.");
 
+            // Old profiles saved a block type rather than a real hotbar
+            // index. Prefer the matching material when upgrading them.
+            int matchingSlot = savedInventory.FindHotbarType(type);
+            SelectedHotbar = matchingSlot >= 0 ? matchingSlot : savedSlot;
             PlaceType = type;
             PlaceShape = shape;
             FacingOffset = facing;
@@ -140,7 +159,8 @@ public class BlockEditor : Script
             // could be granted again on the next reconnect.
             if (status == ProfileLoadResult.New)
                 PlayerProfileStore.Save(folder, worldId, token,
-                    _inventory, _tools, PlaceType, PlaceShape, FacingOffset);
+                    _inventory, _tools, PlaceType, PlaceShape, FacingOffset,
+                    SelectedHotbar);
             _profileDirty = false;
             ProfileReady = true;
             if (status == ProfileLoadResult.Recovered)
@@ -164,7 +184,7 @@ public class BlockEditor : Script
         {
             PlayerProfileStore.Save(_profileDirectory, _profileWorldId,
                 _profileToken, _inventory, _tools, PlaceType,
-                PlaceShape, FacingOffset);
+                PlaceShape, FacingOffset, SelectedHotbar);
             _profileDirty = false;
             _profileSaveClock = 0f;
         }
@@ -284,6 +304,14 @@ public class BlockEditor : Script
             if (tool >= 0)
                 Rpc(nameof(EquipToolQuick), tool);
         }
+        if (open)
+            HandleInventoryPointer();
+        else
+        {
+            _dragFrom = -1;
+            _pickedFrom = -1;
+        }
+
         if (!_cursorInitialized || _cursorMenuOpen != open)
         {
             // Set the input map before unlocking/locking the mouse. The engine
@@ -318,15 +346,20 @@ public class BlockEditor : Script
         // next input poll, after the engine's cursor-lock transition.
     }
 
-    /// <summary>Clients read a fully validated server inventory snapshot.</summary>
-    public int AvailableCount(int type)
+    private BlockInventory DisplayInventory()
     {
         if (InventoryState != _displaySnapshot)
         {
-            _displayInventory.TryLoad(InventoryState);
-            _displaySnapshot = InventoryState;
+            if (_displayInventory.TryLoad(InventoryState))
+                _displaySnapshot = InventoryState;
         }
-        return _displayInventory.Count(type);
+        return _displayInventory;
+    }
+
+    /// <summary>Clients read a fully validated server inventory snapshot.</summary>
+    public int AvailableCount(int type)
+    {
+        return DisplayInventory().Count(type);
     }
 
     /// <summary>Read the synchronized equipment state for the local HUD.</summary>
@@ -340,7 +373,115 @@ public class BlockEditor : Script
         return _displayTools;
     }
 
-    public bool CanPlaceSelected => CreativeMode || AvailableCount(PlaceType) > 0;
+    public bool CanPlaceSelected
+    {
+        get
+        {
+            ItemStack held = DisplayInventory().Slot(SelectedHotbar);
+            return held.Type is >= 1 and <= 9 &&
+                (CreativeMode || held.Quantity > 0);
+        }
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void MoveInventoryStack(int from, int to, bool split)
+    {
+        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        // Only the server applies inventory moves. Bad indices, empty stacks,
+        // split-swaps and forged requests leave the current data untouched.
+        bool changed = split ? _inventory.TrySplit(from, to) :
+            _inventory.TryMove(from, to);
+        if (changed)
+        {
+            InventoryState = _inventory.Serialize();
+            _profileDirty = true;
+        }
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void SelectInventoryHotbar(int slot)
+    {
+        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId) ||
+            slot is < 0 or >= BlockInventory.HotbarSlots)
+            return;
+        SelectedHotbar = slot;
+        _profileDirty = true;
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void RecoverLegacyMaterials(int type)
+    {
+        if (!Scene.IsServer || !ProfileReady || !InventoryOpen ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        if (_inventory.RetrieveReserve(type))
+        {
+            InventoryState = _inventory.Serialize();
+            _profileDirty = true;
+        }
+    }
+
+    private static bool Inside(float x, float y, float left, float top,
+        float width, float height) =>
+        x >= left && x < left + width && y >= top && y < top + height;
+
+    private static int InventorySlotAt(Vector2 pointer, float left, float top)
+    {
+        float localX = pointer.X - (left + 19);
+        float localY = pointer.Y - (top + 58);
+        if (localX < 0 || localY < 0) return -1;
+        int col = (int)(localX / 70f);
+        int row = (int)(localY / 67f);
+        if (col is < 0 or >= 9 || row is < 0 or >= 4 ||
+            localX - col * 70f >= 64f || localY - row * 67f >= 60f)
+            return -1;
+        return row * 9 + col;
+    }
+
+    private void HandleInventoryPointer()
+    {
+        const float width = 680f, height = 682f;
+        float left = MathF.Max(8f, (GUI.Width - width) * .5f);
+        float top = MathF.Max(8f, (GUI.Height - height) * .5f);
+        Vector2 pointer = Input.MousePosition;
+        int slot = InventorySlotAt(pointer, left, top);
+        bool rightDown = Input.GetMouseButtonDown(MouseButton.Right);
+        bool leftDown = Input.GetMouseButtonDown(MouseButton.Left);
+        if (slot is >= 0 and < BlockInventory.HotbarSlots &&
+            Input.GetMouseButtonDown(MouseButton.Middle))
+            Rpc(nameof(SelectInventoryHotbar), slot);
+        if (slot >= 0 && (leftDown || rightDown))
+        {
+            if (_pickedFrom >= 0)
+            {
+                if (slot != _pickedFrom)
+                    Rpc(nameof(MoveInventoryStack), _pickedFrom, slot, _pickedSplit);
+                _pickedFrom = -1;
+                _dragFrom = -1;
+            }
+            else
+            {
+                _dragFrom = slot;
+                _dragSplit = rightDown;
+            }
+        }
+        if (_dragFrom >= 0 &&
+            (Input.GetMouseButtonUp(_dragSplit ? MouseButton.Right :
+                MouseButton.Left)))
+        {
+            if (slot >= 0 && slot != _dragFrom)
+                Rpc(nameof(MoveInventoryStack), _dragFrom, slot, _dragSplit);
+            else if (slot == _dragFrom)
+            {
+                _pickedFrom = _dragFrom;
+                _pickedSplit = _dragSplit;
+            }
+            _dragFrom = -1;
+        }
+    }
 
     private void ResetMining()
     {
@@ -503,23 +644,28 @@ public class BlockEditor : Script
         int previousShape = PlaceShape;
         int previousFacing = FacingOffset;
 
+        int previousHotbar = SelectedHotbar;
         for (int i = 0; i < 6; i++)
             if (input.Pressed((InputButton)((int)InputButton.Custom1 + i)))
-                PlaceType = i + 1;
+                SelectedHotbar = i;
         if (input.Pressed(InputButton.Custom7))
-            PlaceType = PlaceType % 6 + 1;
+            SelectedHotbar = (SelectedHotbar + 1) % BlockInventory.HotbarSlots;
         if (input.Pressed(InputButton.Custom8))
-            PlaceType = (PlaceType + 4) % 6 + 1;
+            SelectedHotbar = (SelectedHotbar + BlockInventory.HotbarSlots - 1) %
+                BlockInventory.HotbarSlots;
         if (input.Pressed(InputButton.Ability1))
             PlaceShape = (PlaceShape + 1) % 4;
         if (input.Pressed(InputButton.Ability2))
             FacingOffset = (FacingOffset + 1) % 4;
 
-        PlaceType = Math.Clamp(PlaceType, 1, 6);
+        SelectedHotbar = Math.Clamp(SelectedHotbar, 0,
+            BlockInventory.HotbarSlots - 1);
+        int heldType = _inventory.Slot(SelectedHotbar).Type;
+        PlaceType = heldType is >= 1 and <= 9 ? heldType : 0;
         PlaceShape = Math.Clamp(PlaceShape, 0, 3);
         FacingOffset &= 3;
-        if (previousType != PlaceType || previousShape != PlaceShape ||
-            previousFacing != FacingOffset)
+        if (previousHotbar != SelectedHotbar || previousType != PlaceType ||
+            previousShape != PlaceShape || previousFacing != FacingOffset)
             _profileDirty = true;
 
         bool breaking = input.Held(InputButton.Fire);
@@ -581,7 +727,10 @@ public class BlockEditor : Script
             if (_miningElapsed < BlockMining.Seconds(state, _tools.Equipped))
                 return;
         }
-        else if (!CreativeMode && !_inventory.CanSpend(PlaceType))
+        else if (placing &&
+            (PlaceType is < 1 or > 9 ||
+             (!CreativeMode &&
+              _inventory.Slot(SelectedHotbar).Quantity == 0)))
             return;
 
         if (_world.TryEditFromRay(origin, direction, Math.Clamp(Reach, 1f, 8f),
@@ -602,7 +751,7 @@ public class BlockEditor : Script
                     _profileDirty = true;
                 }
             }
-            else if (!CreativeMode && _inventory.TrySpend(PlaceType))
+            else if (!CreativeMode && _inventory.TrySpendSlot(SelectedHotbar))
             {
                 InventoryState = _inventory.Serialize();
                 _profileDirty = true;
@@ -625,18 +774,18 @@ public class BlockEditor : Script
         bool canCraft = AvailableCount(a) >= countA &&
             AvailableCount(b) >= countB && life < max && (!forge || _nearForge);
 
-        GUI.Box(left + 17, y, width - 34, 46,
-            new Color(.13f, .16f, .17f, .95f));
-        GUI.Label(left + 26, y + 4,
-            $"{PlayerTools.Name(tool)}  {life}/{max}");
-        GUI.Label(left + 26, y + 26,
-            $"{countA} {(forge ? "Ingots" : "Stone")} + {countB} Planks  •  " +
-            (life > 0 ? "craft again to repair" : "craft to unlock"));
-        if (life > 0 && GUI.Button(left + width - 199, y + 9, 78, 28,
+        GUI.Box(left + 17, y, width - 34, 31,
+            new Color(.13f,.16f,.17f,.95f));
+        GUI.Label(left + 26, y + 6,
+            PlayerTools.Name(tool) + " " + life + "/" + max);
+        GUI.Label(left + 266, y + 6,
+            countA + (forge ? " ingots + " : " stone + ") +
+            countB + " planks");
+        if (life > 0 && GUI.Button(left + width - 190, y + 1, 75, 27,
                 equipped.Equipped == tool ? "Equipped" : "Equip") &&
             equipped.Equipped != tool)
             Rpc(nameof(EquipTool), i);
-        if (GUI.Button(left + width - 109, y + 9, 77, 28,
+        if (GUI.Button(left + width - 107, y + 1, 75, 27,
                 life == max ? "Full" :
                 canCraft ? life > 0 ? "Repair" : "Craft" : "No items") &&
             canCraft)
@@ -645,98 +794,131 @@ public class BlockEditor : Script
 
     private void DrawInventory()
     {
-        const float width = 528f, height = 652f;
+        const float width = 680f, height = 682f;
         float left = MathF.Max(8f, (GUI.Width - width) * .5f);
         float top = MathF.Max(8f, (GUI.Height - height) * .5f);
         GUI.Box(left, top, width, height,
-            new Color(.035f, .045f, .055f, .96f));
+            new Color(.035f,.045f,.055f,.97f));
         GUI.Label(left + 18, top + 12,
-            _forgePage ? "INVENTORY  /  FORGE" : "INVENTORY  /  CRAFTING");
-        if (GUI.Button(left + width - 244, top + 8, 135, 28,
+            _forgePage ? "INVENTORY / FORGE" : "INVENTORY / CRAFTING");
+        if (GUI.Button(left + 290, top + 8, 150, 28,
                 _forgePage ? "Crafting page" : "Forge page"))
         {
             _forgePage = !_forgePage;
-            _forgeCheckClock = 0f;
+            _forgeCheckClock = 0;
+            _pickedFrom = -1;
         }
-        if (GUI.Button(left + width - 81, top + 8, 65, 28, "Close"))
+        if (GUI.Button(left + 450, top + 8, 115, 28, "Use hands"))
+            Rpc(nameof(EquipTool), 0);
+        if (GUI.Button(left + 594, top + 8, 68, 28, "Close"))
             CloseMenuLocally();
 
-        // Ten inventory items: nine mineable block materials plus the
-        // smelted iron ingot. The ingot is never a placeable voxel.
-        for (int i = 0; i < BlockNames.Length; i++)
+        BlockInventory items = DisplayInventory();
+        GUI.Label(left + 19, top + 39,
+            "HOTBAR (top row)  /  BACKPACK (three rows)");
+        for (int slot = 0; slot < BlockInventory.SlotCount; slot++)
         {
-            int column = i % 3, row = i / 3;
-            float x = left + 17 + column * 171;
-            float y = top + 47 + row * 48;
-            GUI.Box(x, y, 158, 43,
-                new Color(.13f, .16f, .17f, .96f));
-            GUI.Label(x + 10, y + 7, BlockNames[i]);
-            GUI.Label(x + 10, y + 23,
-                $"x{AvailableCount(i + 1)} / 999");
+            int row = slot / 9, col = slot % 9;
+            float x = left + 19 + col * 70;
+            float y = top + 58 + row * 67;
+            ItemStack stack = items.Slot(slot);
+            bool selected = slot == SelectedHotbar && row == 0;
+            bool picked = slot == _pickedFrom || slot == _dragFrom;
+            GUI.Box(x, y, 64, 60,
+                picked ? new Color(.60f,.43f,.17f,.97f) :
+                selected ? new Color(.36f,.52f,.25f,.97f) :
+                row == 0 ? new Color(.21f,.26f,.27f,.98f) :
+                    new Color(.13f,.16f,.18f,.98f));
+            if (row == 0)
+                GUI.Label(x + 3, y + 2, (slot + 1).ToString());
+            if (!stack.IsEmpty && stack.Type is >= 1 and <= 10)
+            {
+                GUI.Box(x + 5, y + 21, 12, 16,
+                    ItemColors[stack.Type-1]);
+                GUI.Label(x + 19, y + 21, ItemShort[stack.Type-1]);
+                GUI.Label(x + 7, y + 39, "x" + stack.Quantity);
+            }
+        }
+
+        GUI.Label(left + 19, top + 330,
+            "Drag to move/swap   Right-drag half   Click, then click to move");
+        GUI.Label(left + 19, top + 348,
+            "Wheel: select 1-9   Middle-click hotbar: select   7/8/9: tools");
+
+        // Legacy profiles may hold more than 36 x 64 items. Show excess,
+        // keep it spendable, and allow retrieving it after making room.
+        int reserveType = 0, reserveCount = 0;
+        for (int i = 1; i <= BlockInventory.MaxType; i++)
+        {
+            if (items.Reserve(i) == 0) continue;
+            reserveType = i;
+            reserveCount += items.Reserve(i);
+        }
+        if (reserveCount > 0)
+        {
+            GUI.Label(left + 19, top + 367,
+                "Legacy reserve: " + reserveCount +
+                " items (available to craft; free slots to unpack)");
+            if (GUI.Button(left + 510, top + 363, 150, 29,
+                    "Unpack " + BlockNames[reserveType-1]))
+                Rpc(nameof(RecoverLegacyMaterials), reserveType);
         }
 
         PlayerTools equipped = DisplayTools();
         if (_forgePage)
         {
-            GUI.Label(left + 18, top + 245,
-                _nearForge ? "FORGE READY - within 3.5 m" :
-                    "PLACE A FORGE AND STAND WITHIN 3.5 m");
-            GUI.Label(left + 18, top + 272,
-                "Smelting: 1 iron ore + 1 coal = 1 iron ingot");
+            GUI.Label(left + 19, top + 394,
+                _nearForge ? "FORGE ACTIVE (within 3.5m)" :
+                    "PLACE A FORGE AND STAND WITHIN 3.5m");
+            GUI.Label(left + 19, top + 414,
+                "1 iron ore + 1 coal = 1 iron ingot");
             bool one = _nearForge && AvailableCount(8) >= 1 &&
                 AvailableCount(7) >= 1 && AvailableCount(10) < 999;
             bool five = _nearForge && AvailableCount(8) >= 5 &&
                 AvailableCount(7) >= 5 && AvailableCount(10) <= 994;
-            if (GUI.Button(left + 18, top + 302, 146, 35,
-                    one ? "Smelt one" : "Need ore / coal") && one)
+            if (GUI.Button(left + 19, top + 439, 144, 34,
+                    one ? "Smelt 1" : "Need ore / coal") && one)
                 Rpc(nameof(SmeltIron), 1);
-            if (GUI.Button(left + 176, top + 302, 146, 35,
-                    five ? "Smelt five" : "Need 5 each") && five)
+            if (GUI.Button(left + 174, top + 439, 144, 34,
+                    five ? "Smelt 5" : "Need 5 each") && five)
                 Rpc(nameof(SmeltIron), 5);
-            GUI.Label(left + 18, top + 363,
-                "IRON TOOLS  -  longer lasting and faster than stone");
+            GUI.Label(left + 19, top + 486, "IRON TOOLS");
             for (int i = 4; i <= 6; i++)
                 DrawToolRow(left, width, i,
-                    top + 387 + (i - 4) * 55, equipped, true);
-            GUI.Label(left + 18, top + 566,
-                _nearForge ? "Forge crafting and smelting enabled" :
-                    "Iron tools can only be crafted near a real forge");
+                    top + 510 + (i - 4) * 42, equipped, true);
         }
         else
         {
-            GUI.Label(left + 18, top + 245,
-                "RECIPES  (crafting spends materials)");
+            GUI.Label(left + 19, top + 394, "CRAFTING RECIPES");
             var recipes = CraftingRecipes.All;
             for (int i = 0; i < 3; i++)
             {
                 CraftingRecipe recipe = recipes[i];
-                float y = top + 269 + i * 48;
-                GUI.Box(left + 17, y, width - 34, 43,
-                    new Color(.13f, .16f, .17f, .95f));
-                string ingredients = $"{recipe.CountA} {BlockNames[recipe.InputA - 1]}";
+                float y = top + 418 + i * 43;
+                GUI.Box(left + 17, y, width - 34, 40,
+                    new Color(.13f,.16f,.17f,.95f));
+                string ingredients = recipe.CountA + " " +
+                    BlockNames[recipe.InputA - 1];
                 if (recipe.InputB != 0)
-                    ingredients += $" + {recipe.CountB} {BlockNames[recipe.InputB - 1]}";
+                    ingredients += " + " + recipe.CountB + " " +
+                        BlockNames[recipe.InputB - 1];
                 GUI.Label(left + 26, y + 5,
-                    $"{recipe.Name}: {ingredients}");
-                GUI.Label(left + 26, y + 24,
-                    $"Makes {recipe.CountOut} {BlockNames[recipe.Output - 1]}");
+                    recipe.Name + "  /  " + ingredients);
+                GUI.Label(left + 26, y + 23,
+                    "Makes " + recipe.CountOut + " " +
+                    BlockNames[recipe.Output - 1]);
                 bool available = AvailableCount(recipe.InputA) >= recipe.CountA &&
                     (recipe.InputB == 0 ||
-                     AvailableCount(recipe.InputB) >= recipe.CountB);
-                if (GUI.Button(left + width - 112, y + 7, 78, 29,
+                    AvailableCount(recipe.InputB) >= recipe.CountB);
+                if (GUI.Button(left + width - 113, y + 6, 79, 28,
                         available ? "Craft" : "Need items") && available)
                     Rpc(nameof(CraftRecipe), recipe.Id);
             }
-            GUI.Label(left + 18, top + 429, "STONE TOOLS");
+            GUI.Label(left + 19, top + 552, "STONE TOOLS");
             for (int i = 1; i <= 3; i++)
                 DrawToolRow(left, width, i,
-                    top + 450 + (i - 1) * 50, equipped, false);
+                    top + 572 + (i-1) * 34, equipped, false);
         }
-        if (GUI.Button(left + width - 204, top + 613, 172, 26,
-                equipped.Equipped == MiningTool.Hand ?
-                    "Using hands" : "Use hands"))
-            Rpc(nameof(EquipTool), 0);
-        GUI.Label(left + 18, top + 620, "TAB closes");
     }
 
     public override void OnGUI()
@@ -758,45 +940,60 @@ public class BlockEditor : Script
             return;
         }
 
-        int selected = Math.Clamp(PlaceType, 1, 6);
-        int shape = Math.Clamp(PlaceShape, 0, ShapeNames.Length - 1);
-        const float width = 63f, gap = 5f;
-        float total = 6 * width + 5 * gap;
-        float left = MathF.Max(8f, (GUI.Width - total) * 0.5f);
-        float top = MathF.Max(20f, GUI.Height - 148f);
+        BlockInventory items = DisplayInventory();
+        int active = Math.Clamp(SelectedHotbar, 0,
+            BlockInventory.HotbarSlots-1);
+        int shape = Math.Clamp(PlaceShape, 0, ShapeNames.Length-1);
+        const float slotWidth = 59f, gap = 5f;
+        float total = BlockInventory.HotbarSlots * slotWidth +
+            (BlockInventory.HotbarSlots-1) * gap;
+        float left = MathF.Max(8f, (GUI.Width - total) * .5f);
+        float top = MathF.Max(20f, GUI.Height - 146f);
 
         GUI.Box(left - 10, top - 37, total + 20, 166,
-            new Color(0.03f, 0.04f, 0.06f, 0.72f));
+            new Color(.03f,.04f,.06f,.76f));
         GUI.Label(left + 8, top - 31,
-            "TALLOWCRAFT        LMB PLACE   HOLD RMB TO MINE");
-        for (int slot = 0; slot < 6; slot++)
+            "TALLOWCRAFT     LMB PLACE    HOLD RMB MINE");
+        for (int slot = 0; slot < BlockInventory.HotbarSlots; slot++)
         {
-            float x = left + slot * (width + gap);
-            bool active = selected == slot + 1;
-            GUI.Box(x, top, width, 45, active
-                ? new Color(.33f, .45f, .22f, .95f)
-                : new Color(.13f, .15f, .18f, .95f));
-            GUI.Label(x + 6, top + 4, $"{slot + 1} {BlockNames[slot]}");
-            GUI.Label(x + 6, top + 23, CreativeMode
-                ? "FREE" : $"x{AvailableCount(slot + 1)}");
+            float x = left + slot*(slotWidth+gap);
+            bool selected = active == slot;
+            ItemStack item = items.Slot(slot);
+            GUI.Box(x, top, slotWidth, 48, selected ?
+                new Color(.37f,.51f,.22f,.97f) :
+                new Color(.13f,.15f,.18f,.95f));
+            GUI.Label(x+4, top+2, (slot+1).ToString());
+            if (!item.IsEmpty && item.Type is >= 1 and <= 10)
+            {
+                GUI.Box(x+5, top+22, 11, 12, ItemColors[item.Type-1]);
+                GUI.Label(x+18, top+21, ItemShort[item.Type-1]);
+                GUI.Label(x+7, top+37, "x"+item.Quantity);
+            }
         }
-        GUI.Label(left + 4, top + 49,
-            $"{BlockNames[selected - 1]}  •  {ShapeNames[shape]}  •  rotation {FacingOffset * 90}°");
-        GUI.Label(left + 4, top + 66,
-            "1-6 blocks   7 pick   8 axe   9 shovel   0 hand   TAB forge");
+        ItemStack held = items.Slot(active);
+        string heldName = held.IsEmpty ? "Empty" :
+            held.Type <= BlockNames.Length ? BlockNames[held.Type-1] : "Unknown";
+        GUI.Label(left + 4, top + 51,
+            heldName + "  /  " + ShapeNames[shape] +
+            "  /  rotation " + FacingOffset*90 + "°");
+        GUI.Label(left + 4, top + 67,
+            "1-6 or wheel: hotbar   7 pick   8 axe   9 shovel   0 hands");
         GUI.Label(left + 4, top + 85,
-            MiningType is >= 1 and <= 9
-                ? $"Mining {BlockNames[MiningType - 1]}: {MiningPercent}%"
-                : $"Coal {AvailableCount(7)}   Iron ore {AvailableCount(8)}   Ingots {AvailableCount(10)}");
+            MiningType is >= 1 and <= 9 ?
+                "Mining " + BlockNames[MiningType-1] + ": " + MiningPercent + "%" :
+                "Coal " + AvailableCount(7) +
+                    "   Iron ore " + AvailableCount(8) +
+                    "   Ingots " + AvailableCount(10));
         PlayerTools tools = DisplayTools();
         MiningTool equipped = tools.Equipped;
         GUI.Label(left + 4, top + 103,
-            $"Tool: {PlayerTools.Name(equipped)}" +
+            "Tool: " + PlayerTools.Name(equipped) +
             (equipped == MiningTool.Hand ? "" :
-                $"  {tools.Durability(equipped)}/{PlayerTools.MaxDurability(equipped)}"));
-        GUI.Label(left + 4, top + 121, CreativeMode
-            ? "Creative building ON  •  crafting uses materials"
-            : "Survival building ON  •  mining collects materials");
+                " " + tools.Durability(equipped) + "/" +
+                PlayerTools.MaxDurability(equipped)));
+        GUI.Label(left + 4, top + 121, CreativeMode ?
+            "Creative building ON  /  TAB: inventory" :
+            "Survival building ON  /  TAB: inventory");
         GUI.Label(GUI.Width * .5f - 4f, GUI.Height * .5f - 8f, "+");
     }
 }

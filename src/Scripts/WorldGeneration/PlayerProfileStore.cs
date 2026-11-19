@@ -108,18 +108,21 @@ public static class PlayerProfileStore
     }
 
     private static string Encode(string worldId, BlockInventory inventory,
-        PlayerTools tools, int selectedType, int selectedShape, int facing)
+        PlayerTools tools, int selectedType, int selectedShape, int facing,
+        int selectedSlot)
     {
         if (!PlayerIdentity.Valid(worldId) ||
-            selectedType is < 1 or > 6 ||
+            selectedType is < 0 or > 9 ||
             selectedShape is < 0 or > 3 ||
-            facing is < 0 or > 3)
+            facing is < 0 or > 3 ||
+            selectedSlot is < 0 or >= BlockInventory.HotbarSlots)
             throw new ArgumentException("Invalid saved player values.");
 
-        string payload = string.Join(";", "1", worldId,
+        string payload = string.Join(";", "2", worldId,
             inventory.Serialize(), tools.Serialize(),
             selectedType.ToString(Invariant),
-            selectedShape.ToString(Invariant), facing.ToString(Invariant));
+            selectedShape.ToString(Invariant), facing.ToString(Invariant),
+            selectedSlot.ToString(Invariant));
         return Convert.ToHexString(
                 SHA256.HashData(Encoding.UTF8.GetBytes(payload)))
             .ToLowerInvariant() + "\n" + payload + "\n";
@@ -127,8 +130,10 @@ public static class PlayerProfileStore
 
     private static bool TryDecode(string file, string worldId,
         out BlockInventory inventory, out PlayerTools tools,
-        out int selectedType, out int selectedShape, out int facing)
+        out int selectedType, out int selectedShape, out int facing,
+        out int selectedSlot)
     {
+        selectedSlot = 2;
         inventory = new BlockInventory();
         tools = new PlayerTools();
         selectedType = 3;
@@ -137,7 +142,7 @@ public static class PlayerProfileStore
         try
         {
             var info = new FileInfo(file);
-            if (!info.Exists || info.Length > 512)
+            if (!info.Exists || info.Length > 2048)
                 return false;
             string[] lines = File.ReadAllLines(file);
             if (lines.Length != 2 || lines[0].Length != 64)
@@ -148,7 +153,9 @@ public static class PlayerProfileStore
             if (!string.Equals(digest, lines[0], StringComparison.Ordinal))
                 return false;
             string[] fields = lines[1].Split(';');
-            if (fields.Length != 7 || fields[0] != "1" ||
+            bool legacy = fields.Length == 7 && fields[0] == "1";
+            bool current = fields.Length == 8 && fields[0] == "2";
+            if ((!legacy && !current) ||
                 fields[1] != worldId ||
                 !inventory.TryLoad(fields[2]) ||
                 !tools.TryLoad(fields[3]) ||
@@ -158,12 +165,19 @@ public static class PlayerProfileStore
                     Invariant, out int shape) ||
                 !int.TryParse(fields[6], NumberStyles.None,
                     Invariant, out int rotation) ||
-                hotbar is < 1 or > 6 || shape is < 0 or > 3 ||
+                hotbar is < 0 or > 9 || shape is < 0 or > 3 ||
                 rotation is < 0 or > 3)
+                return false;
+            int hotbarSlot = Math.Clamp(hotbar - 1, 0, 8);
+            if (current &&
+                (!int.TryParse(fields[7], NumberStyles.None,
+                    Invariant, out hotbarSlot) ||
+                hotbarSlot is < 0 or >= BlockInventory.HotbarSlots))
                 return false;
             selectedType = hotbar;
             selectedShape = shape;
             facing = rotation;
+            selectedSlot = hotbarSlot;
             return true;
         }
         catch (IOException) { return false; }
@@ -174,7 +188,14 @@ public static class PlayerProfileStore
 
     public static ProfileLoadResult Load(string folder, string worldId,
         string token, out BlockInventory inventory, out PlayerTools tools,
-        out int selectedType, out int selectedShape, out int facing)
+        out int selectedType, out int selectedShape, out int facing) =>
+        Load(folder, worldId, token, out inventory, out tools,
+            out selectedType, out selectedShape, out facing, out _);
+
+    public static ProfileLoadResult Load(string folder, string worldId,
+        string token, out BlockInventory inventory, out PlayerTools tools,
+        out int selectedType, out int selectedShape, out int facing,
+        out int selectedSlot)
     {
         if (!PlayerIdentity.Valid(worldId))
             throw new ArgumentException("Invalid world identity.");
@@ -184,6 +205,7 @@ public static class PlayerProfileStore
         selectedType = 3;
         selectedShape = 0;
         facing = 0;
+        selectedSlot = 2;
         string backup = path + ".bak";
 
         if (!File.Exists(path) && !File.Exists(backup))
@@ -192,11 +214,13 @@ public static class PlayerProfileStore
             return ProfileLoadResult.New;
         }
         if (TryDecode(path, worldId, out inventory, out tools,
-                out selectedType, out selectedShape, out facing))
+                out selectedType, out selectedShape, out facing,
+                out selectedSlot))
             return ProfileLoadResult.Loaded;
 
         if (!TryDecode(backup, worldId, out inventory, out tools,
-                out selectedType, out selectedShape, out facing))
+                out selectedType, out selectedShape, out facing,
+                out selectedSlot))
             return ProfileLoadResult.Corrupt;
 
         // Only repair the current file after validating the backup. Do not
@@ -214,11 +238,12 @@ public static class PlayerProfileStore
 
     public static void Save(string folder, string worldId, string token,
         BlockInventory inventory, PlayerTools tools,
-        int selectedType, int selectedShape, int facing)
+        int selectedType, int selectedShape, int facing,
+        int selectedSlot = 2)
     {
         string path = FileFor(folder, token);
         string encoded = Encode(worldId, inventory, tools,
-            selectedType, selectedShape, facing);
+            selectedType, selectedShape, facing, selectedSlot);
         Directory.CreateDirectory(folder);
         string pending = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

@@ -3,67 +3,195 @@ using System.Globalization;
 
 namespace WorldGeneration;
 
+/// <summary>One concrete inventory item stack. Type 1-9 are placeable blocks,
+/// type 10 is an iron ingot. Empty slots have both fields zero.</summary>
+public readonly record struct ItemStack(int Type, int Quantity)
+{
+    public bool IsEmpty => Type == 0;
+}
+
 /// <summary>
-/// Small, server-owned player material inventory. Inventory items are block
-/// TYPES (not oriented/partial block states): one successful edit awards or
-/// spends one item. The synced representation is deliberately bounded and
-/// validated before clients use it for the hotbar.
+/// Server-owned 9-slot hotbar + 27-slot backpack. New items stack to 64.
+/// Old v1/v2 profiles allowed up to 999 of each type: migration retains
+/// anything that doesn't fit in a separate per-type reserve, making all old
+/// resources spendable instead of silently dropping them.
 /// </summary>
 public sealed class BlockInventory
 {
     public const int MaxType = 10;
     public const int IronIngot = 10;
     public const int MaxPerType = 999;
-    private readonly int[] _counts = new int[MaxType + 1];
+    public const int StackLimit = 64;
+    public const int HotbarSlots = 9;
+    public const int SlotCount = 36;
 
-    public int Count(int type) =>
-        type is >= 1 and <= MaxType ? _counts[type] : 0;
+    private readonly ItemStack[] _slots = new ItemStack[SlotCount];
+    private readonly int[] _reserve = new int[MaxType + 1];
 
-    public void Clear() => Array.Clear(_counts);
+    public ItemStack Slot(int slot) =>
+        slot is >= 0 and < SlotCount ? _slots[slot] : default;
 
-    /// <summary>Starter building supplies; ores and leaves must be mined.</summary>
+    public int Reserve(int type) =>
+        type is >= 1 and <= MaxType ? _reserve[type] : 0;
+
+    public int Count(int type)
+    {
+        if (type is < 1 or > MaxType) return 0;
+        int count = _reserve[type];
+        foreach (ItemStack stack in _slots)
+            if (stack.Type == type) count += stack.Quantity;
+        return count;
+    }
+
+    public void Clear()
+    {
+        Array.Clear(_slots);
+        Array.Clear(_reserve);
+    }
+
+    /// <summary>Keep the six familiar starter materials in hotbar slots.</summary>
     public void FillStarter()
     {
         Clear();
-        _counts[1] = 32; // grass
-        _counts[2] = 64; // dirt
-        _counts[3] = 64; // stone
-        _counts[4] = 32; // logs
-        _counts[5] = 8;  // forges
-        _counts[6] = 64; // planks
+        _slots[0] = new(1, 32);
+        _slots[1] = new(2, 64);
+        _slots[2] = new(3, 64);
+        _slots[3] = new(4, 32);
+        _slots[4] = new(5, 8);
+        _slots[5] = new(6, 64);
     }
 
     public bool CanSpend(int type, int quantity = 1) =>
         type is >= 1 and <= MaxType &&
         quantity > 0 && quantity <= Count(type);
 
-    public bool TrySpend(int type, int quantity = 1)
+    private void AddUnchecked(int type, int quantity)
     {
-        if (!CanSpend(type, quantity))
+        for (int slot = 0; slot < SlotCount && quantity > 0; slot++)
+        {
+            if (_slots[slot].Type != type) continue;
+            int space = StackLimit - _slots[slot].Quantity;
+            int take = Math.Min(space, quantity);
+            if (take > 0)
+            {
+                _slots[slot] = new(type, _slots[slot].Quantity + take);
+                quantity -= take;
+            }
+        }
+        for (int slot = 0; slot < SlotCount && quantity > 0; slot++)
+        {
+            if (!_slots[slot].IsEmpty) continue;
+            int take = Math.Min(StackLimit, quantity);
+            _slots[slot] = new(type, take);
+            quantity -= take;
+        }
+        // This preserves *all* previously saved items, including profiles
+        // with ten separate stacks of 999 from the earlier counter system.
+        _reserve[type] += quantity;
+    }
+
+    /// <summary>Placing from the selected hotbar always consumes that
+    /// *physical* stack, never some unrelated backpack stack.</summary>
+    public bool TrySpendSlot(int slot, int quantity = 1)
+    {
+        if (slot is < 0 or >= HotbarSlots || quantity <= 0 ||
+            _slots[slot].IsEmpty || quantity > _slots[slot].Quantity)
             return false;
-        _counts[type] -= quantity;
+        ItemStack stack = _slots[slot];
+        int remain = stack.Quantity - quantity;
+        _slots[slot] = remain == 0 ? default : new(stack.Type, remain);
         return true;
     }
 
+    /// <summary>Harvest, crafting output and future pickups use this API.</summary>
     public bool TryCollect(int type, int quantity = 1)
     {
         if (type is < 1 or > MaxType || quantity <= 0 ||
-            quantity > MaxPerType - _counts[type])
-            return false;
-        _counts[type] += quantity;
+            quantity > MaxPerType - Count(type)) return false;
+        AddUnchecked(type, quantity);
         return true;
     }
 
+    public bool TrySpend(int type, int quantity = 1)
+    {
+        if (!CanSpend(type, quantity)) return false;
+        int reserved = Math.Min(_reserve[type], quantity);
+        _reserve[type] -= reserved;
+        quantity -= reserved;
+
+        // Spend from backpack before hotbar so selected building blocks stay
+        // visible until every other matching stack has been exhausted.
+        for (int i = SlotCount - 1; i >= 0 && quantity > 0; i--)
+        {
+            if (_slots[i].Type != type) continue;
+            int take = Math.Min(_slots[i].Quantity, quantity);
+            int remaining = _slots[i].Quantity - take;
+            _slots[i] = remaining == 0 ? default : new(type, remaining);
+            quantity -= take;
+        }
+        return quantity == 0;
+    }
+
     /// <summary>
-    /// Server-side preflight for a recipe. Covers combined ingredient costs
-    /// and resulting stack capacity before any counts are changed.
+    /// Move all or part of a physical stack, merging with a compatible stack.
+    /// 0 means all. Swaps are only allowed for full-stack moves.
     /// </summary>
+    public bool TryMove(int from, int to, int quantity = 0)
+    {
+        if (from is < 0 or >= SlotCount || to is < 0 or >= SlotCount ||
+            from == to || _slots[from].IsEmpty || quantity < 0)
+            return false;
+
+        ItemStack source = _slots[from], destination = _slots[to];
+        int moving = quantity == 0 ? source.Quantity : Math.Min(quantity, source.Quantity);
+        if (destination.IsEmpty)
+        {
+            _slots[to] = new(source.Type, moving);
+            _slots[from] = source.Quantity == moving ? default :
+                new(source.Type, source.Quantity - moving);
+            return true;
+        }
+        if (source.Type == destination.Type)
+        {
+            int count = Math.Min(moving, StackLimit - destination.Quantity);
+            if (count <= 0) return false;
+            _slots[to] = new(source.Type, destination.Quantity + count);
+            _slots[from] = source.Quantity == count ? default :
+                new(source.Type, source.Quantity - count);
+            return true;
+        }
+        if (moving != source.Quantity) return false;
+        _slots[from] = destination;
+        _slots[to] = source;
+        return true;
+    }
+
+    /// <summary>Right-drag moves half the source stack (rounded up).</summary>
+    public bool TrySplit(int from, int to) =>
+        from is >= 0 and < SlotCount && !_slots[from].IsEmpty &&
+        TryMove(from, to, (_slots[from].Quantity + 1) / 2);
+
+    /// <summary>Recover legacy excess into real slots as room becomes available.</summary>
+    public bool RetrieveReserve(int type)
+    {
+        if (type is < 1 or > MaxType || _reserve[type] == 0) return false;
+        int previous = _reserve[type];
+        _reserve[type] = 0;
+        AddUnchecked(type, previous);
+        return _reserve[type] < previous;
+    }
+
+    public int FindHotbarType(int type)
+    {
+        for (int i = 0; i < HotbarSlots; i++)
+            if (_slots[i].Type == type) return i;
+        return -1;
+    }
+
     public bool CanCraft(int recipeId)
     {
         CraftingRecipe? recipe = CraftingRecipes.Find(recipeId);
-        if (recipe == null)
-            return false;
-
+        if (recipe == null) return false;
         int requiredA = recipe.CountA +
             (recipe.InputB == recipe.InputA ? recipe.CountB : 0);
         if (!CanSpend(recipe.InputA, requiredA) ||
@@ -72,62 +200,97 @@ public sealed class BlockInventory
             return false;
 
         int outputBase = Count(recipe.Output);
-        if (recipe.Output == recipe.InputA)
-            outputBase -= recipe.CountA;
-        if (recipe.Output == recipe.InputB)
-            outputBase -= recipe.CountB;
-
-        return outputBase >= 0 &&
-            recipe.CountOut <= MaxPerType - outputBase;
+        if (recipe.Output == recipe.InputA) outputBase -= recipe.CountA;
+        if (recipe.Output == recipe.InputB) outputBase -= recipe.CountB;
+        return outputBase >= 0 && recipe.CountOut <= MaxPerType - outputBase;
     }
 
-    /// <summary>
-    /// Atomic craft: a forged recipe ID, shortage or full output stack cannot
-    /// consume even one ingredient. Call only on the authoritative server.
-    /// </summary>
     public bool TryCraft(int recipeId)
     {
-        if (!CanCraft(recipeId))
-            return false;
+        if (!CanCraft(recipeId)) return false;
         CraftingRecipe recipe = CraftingRecipes.Find(recipeId)!;
-        _counts[recipe.InputA] -= recipe.CountA;
-        if (recipe.InputB != 0)
-            _counts[recipe.InputB] -= recipe.CountB;
-        _counts[recipe.Output] += recipe.CountOut;
-        return true;
+        if (!TrySpend(recipe.InputA, recipe.CountA)) return false;
+        if (recipe.InputB != 0 && !TrySpend(recipe.InputB, recipe.CountB))
+        {
+            TryCollect(recipe.InputA, recipe.CountA);
+            return false;
+        }
+        return TryCollect(recipe.Output, recipe.CountOut);
     }
 
-    /// <summary>v2 adds smelted iron ingots; v1 saves with nine materials
-    /// remain readable, preserving inventories from existing worlds.</summary>
-    public string Serialize() =>
-        "2|" + string.Join(",", _counts[1..]);
-
     /// <summary>
-    /// Parse atomically. Invalid/stale data never partially changes inventory.
+    /// v3 lists exactly 36 real stacks (type:count or 0) and 10 reserves.
+    /// The payload stays under 700 characters, well inside the sync bridge.
     /// </summary>
-    public bool TryLoad(string? serialized)
+    public string Serialize()
     {
-        if (string.IsNullOrEmpty(serialized) || serialized.Length > 64)
-            return false;
-        bool v1 = serialized.StartsWith("1|", StringComparison.Ordinal);
-        bool v2 = serialized.StartsWith("2|", StringComparison.Ordinal);
-        if (!v1 && !v2)
-            return false;
-        string[] parts = serialized[2..].Split(',');
-        if (parts.Length != (v1 ? 9 : MaxType))
-            return false;
+        var slots = new string[SlotCount];
+        for (int i = 0; i < SlotCount; i++)
+            slots[i] = _slots[i].IsEmpty ? "0" :
+                _slots[i].Type.ToString(CultureInfo.InvariantCulture) + ":" +
+                _slots[i].Quantity.ToString(CultureInfo.InvariantCulture);
+        return "3|" + string.Join(',', slots) + "|" +
+            string.Join(',', _reserve[1..]);
+    }
 
-        var next = new int[MaxType + 1];
-        for (int type = 1; type <= parts.Length; type++)
+    public bool TryLoad(string? encoded)
+    {
+        if (string.IsNullOrEmpty(encoded) || encoded.Length > 900) return false;
+        if (encoded.StartsWith("1|", StringComparison.Ordinal) ||
+            encoded.StartsWith("2|", StringComparison.Ordinal))
         {
-            if (!int.TryParse(parts[type - 1], NumberStyles.None,
-                CultureInfo.InvariantCulture, out int count) ||
-                count < 0 || count > MaxPerType)
-                return false;
-            next[type] = count;
+            bool old = encoded[0] == '1';
+            string[] counts = encoded[2..].Split(',');
+            if (counts.Length != (old ? 9 : MaxType)) return false;
+            var parsed = new int[MaxType + 1];
+            for (int type = 1; type <= counts.Length; type++)
+                if (!int.TryParse(counts[type - 1], NumberStyles.None,
+                    CultureInfo.InvariantCulture, out parsed[type]) ||
+                    parsed[type] is < 0 or > MaxPerType)
+                    return false;
+            var staged = new BlockInventory();
+            for (int type = 1; type <= MaxType; type++)
+                if (parsed[type] != 0)
+                    staged.AddUnchecked(type, parsed[type]);
+            Array.Copy(staged._slots, _slots, SlotCount);
+            Array.Copy(staged._reserve, _reserve, MaxType + 1);
+            return true;
         }
+        if (!encoded.StartsWith("3|", StringComparison.Ordinal)) return false;
+        string[] fields = encoded.Split('|');
+        if (fields.Length != 3) return false;
+        string[] items = fields[1].Split(',');
+        string[] reserve = fields[2].Split(',');
+        if (items.Length != SlotCount || reserve.Length != MaxType)
+            return false;
 
-        Array.Copy(next, _counts, _counts.Length);
+        var next = new ItemStack[SlotCount];
+        var extras = new int[MaxType + 1];
+        var totals = new int[MaxType + 1];
+        for (int i = 0; i < SlotCount; i++)
+        {
+            if (items[i] == "0") continue;
+            string[] pair = items[i].Split(':');
+            if (pair.Length != 2 ||
+                !int.TryParse(pair[0], NumberStyles.None,
+                    CultureInfo.InvariantCulture, out int type) ||
+                !int.TryParse(pair[1], NumberStyles.None,
+                    CultureInfo.InvariantCulture, out int amount) ||
+                type is < 1 or > MaxType || amount is < 1 or > StackLimit)
+                return false;
+            next[i] = new(type, amount);
+            totals[type] += amount;
+        }
+        for (int type = 1; type <= MaxType; type++)
+        {
+            if (!int.TryParse(reserve[type - 1], NumberStyles.None,
+                CultureInfo.InvariantCulture, out extras[type]) ||
+                extras[type] is < 0 or > MaxPerType ||
+                totals[type] + extras[type] > MaxPerType)
+                return false;
+        }
+        Array.Copy(next, _slots, SlotCount);
+        Array.Copy(extras, _reserve, MaxType + 1);
         return true;
     }
 }

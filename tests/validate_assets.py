@@ -202,8 +202,9 @@ def verify() -> None:
     inventory_src = (ROOT / "src/Scripts/WorldGeneration/BlockInventory.cs").read_text()
     tools_src = (ROOT / "src/Scripts/WorldGeneration/PlayerTools.cs").read_text()
     check("public const int MaxType = 10" in inventory_src
-          and 'serialized.StartsWith("1|"' in inventory_src
-          and 'serialized.StartsWith("2|"' in inventory_src
+          and 'encoded.StartsWith("1|"' in inventory_src
+          and 'encoded.StartsWith("2|"' in inventory_src
+          and 'encoded.StartsWith("3|"' in inventory_src
           and 'sections[0] != "1" && sections[0] != "2"' in tools_src,
           "Old saved inventories and tools must migrate without resetting items")
     check("private void SmeltIron(int count)" in editor_src
@@ -255,6 +256,28 @@ def verify() -> None:
           and "[Sync] public int MiningX" in editor_script
           and "[Sync] public bool MiningActive" in editor_script,
           "Block breaking cracks must respect target/shape and clean up locally")
+    icons = (ROOT / "src/Textures/inventory_icons.png").read_bytes()
+    check(icons[:8] == bytes.fromhex("89504e470d0a1a0a") and
+          struct.unpack_from(">II", icons, 16) == (160, 64) and
+          icons[24] == 8 and icons[25] == 3,
+          "Inventory sprite atlas must provide ten crisp 32px icons")
+    icons_import = (ROOT / "src/Textures/inventory_icons.png.import").read_text()
+    check(all(value in icons_import for value in
+              ("filter = nearest", "wrap = clamp", "mipmaps = 0",
+               "compression = 0", "fullResolution = 1")),
+          "Inventory artwork must stay uncompressed and pixel-sharp")
+    check("public const int SlotCount = 36" in inventory_src
+          and "public const int StackLimit = 64" in inventory_src
+          and 'public bool TrySplit(int from, int to)' in inventory_src
+          and 'private void MoveInventoryStack(int from, int to, bool split)' in editor_src
+          and 'private void HandleInventoryPointer()' in editor_src
+          and 'TrySpendSlot(SelectedHotbar)' in editor_src,
+          "Server-owned inventory must use physical stacks and validated drag/drop")
+    profile_src = (ROOT / "src/Scripts/WorldGeneration/PlayerProfileStore.cs").read_text()
+    check('fields[0] == "1"' in profile_src
+          and 'fields[0] == "2"' in profile_src
+          and 'selectedSlot' in profile_src,
+          "Player saves must migrate and retain selected physical hotbar slots")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 
