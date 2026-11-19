@@ -37,6 +37,21 @@ internal static class ChunkSchedulingTests
             "Terrain above ground is never rejected by underground policy");
         check(!ChunkScheduling.HiddenBelowSurface(center, 12f, false),
             "Surface player layer stays visible");
+        check(ChunkScheduling.ShouldCastShadow(center, 0, 0, 0, 5),
+            "Current ground chunk casts shadows");
+        check(ChunkScheduling.ShouldCastShadow(new ChunkKey(3, 1, 4),
+            0, 0, 0, 5),
+            "Near elevated chunks cast shadows across vertical seams");
+        check(!ChunkScheduling.ShouldCastShadow(new ChunkKey(6, 0, 0),
+            0, 0, 0, 5),
+            "Far chunks do not add cascaded shadow draw calls");
+        check(!ChunkScheduling.ShouldCastShadow(new ChunkKey(0, -2, 0),
+            0, 0, 0, 5),
+            "Distant vertical sections do not cast unnecessary shadows");
+        check(ChunkScheduling.ShouldCastShadow(new ChunkKey(5, 0, 0),
+            0, 0, 0, 5),
+            "Shadow radius includes its final visible ring");
+
         Console.WriteLine("PASS: near-first surface chunk scheduling and underground section visibility");
     }
 }
