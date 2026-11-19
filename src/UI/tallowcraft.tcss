@@ -10,10 +10,11 @@
 #hud-held { font-size: 14; color: #f1e6b9 }
 #hud-tool { font-size: 14; color: #b6c8a2 }
 .slot-row { flex-direction: row; align-items: center; gap: 7 }
+.chest-row { flex-direction: row; align-items: center; gap: 3 }
 .hud-slot, .slot, .chest-slot { position: relative; background-color: #28322fee; border-width: 2; border-color: #51645b; border-radius: 5; padding: 0; align-items: center; justify-content: center }
 .hud-slot { width: 58; height: 60; background-color: #222d29f5; border-color: #5b7365 }
-.slot { width: 59; height: 61 }
-.chest-slot { width: 42; height: 53; background-color: #3a3026; border-color: #7b6547 }
+.slot { width: 58; height: 61 }
+.chest-slot { width: 39; height: 53; background-color: #3a3026; border-color: #7b6547 }
 .slot-art { position: absolute; left: 0; top: 5; width: 100%; height: 40; align-items: center; justify-content: center }
 .slot-icon { position: absolute; left: 12; top: 0; width: 34; height: 34 }
 .chest-icon { position: absolute; left: 5; top: 0; width: 30; height: 30 }
@@ -29,7 +30,7 @@
 .tabs { flex-direction: row; gap: 9; align-items: center }
 .tab { font-size: 17; padding: 13 19; background-color: #384c3f; border-radius: 7; border-width: 1; border-color: #718670; color: #f2ecd9 }
 .close { font-size: 21; padding: 10 17; background-color: #7d3a37; border-radius: 7; color: #ffefed }
-.menu-content { flex-direction: row; gap: 18; height: 565 }
+.menu-content { flex-direction: row; gap: 18; height: 558 }
 .player-column { width: 610; height: 100%; background-color: #26322b; border-radius: 9; padding: 16; gap: 10; border-width: 1; border-color: #4a604c }
 .section-heading { flex-direction: row; justify-content: space-between; height: 26 }
 .section-title { font-size: 19; color: #e9d59e }
@@ -63,7 +64,7 @@
 #notice { color: #ffe2c2; font-size: 18 }
 @media (max-height: 830) {
   .inventory-shell { height: 690; }
-  .menu-content { height: 525 }
+  .menu-content { height: 510 }
   .hud { bottom: 7 }
 }
 @media (max-width: 1150) {
