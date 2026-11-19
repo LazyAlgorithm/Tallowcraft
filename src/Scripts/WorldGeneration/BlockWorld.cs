@@ -29,6 +29,10 @@ public class BlockWorld : Script
     public int WorkerCount = 3;
     public int UploadsPerFrame = 3;
     public int VerticalRadius = 1;
+    // Drawing a distant mountain must not require distant chunk meshes to
+    // render again in the cascaded sun-shadow passes.
+    public bool LimitChunkShadows = true;
+    public int ShadowRadius = 5;
 
     // Diagnostic only: synchronous mesh and collider entry-point timings.
     // Native Jolt cooking deferred to physics frames is NOT measured here.
@@ -96,6 +100,7 @@ public class BlockWorld : Script
     private readonly Dictionary<ChunkKey, int> _versions = new();
     private readonly Dictionary<ulong, ChunkKey> _chunkObjects = new();
     private readonly HashSet<ChunkKey> _colliders = new();
+    private readonly HashSet<ChunkKey> _shadowCasters = new();
     private readonly List<ChunkKey> _scratch = new();
     // Reused candidate buffer. Find priorities cheaply first, then only
     // evaluate costly biome/tree/structure existence for slots we can queue.
@@ -289,6 +294,16 @@ public class BlockWorld : Script
         return false;
     }
 
+    private bool ShouldCastChunkShadow(ChunkKey key, int cx, int cy, int cz)
+    {
+        if (!LimitChunkShadows)
+            return true;
+        int radius = Math.Clamp(ShadowRadius, 0, Math.Clamp(RenderRadius, 1, 16));
+        long dx = (long)key.X - cx, dz = (long)key.Z - cz;
+        return Math.Abs((long)key.Y - cy) <= 1 &&
+            dx * dx + dz * dz <= (long)radius * radius;
+    }
+
     private bool ShouldHaveCollider(ChunkKey key, int cx, int cy, int cz, int margin = 0)
     {
         if (!HiddenForViewer(key) &&
@@ -333,6 +348,7 @@ public class BlockWorld : Script
 
             _chunkObjects.Remove(pair.Value.Object.Id);
             _colliders.Remove(pair.Key);
+            _shadowCasters.Remove(pair.Key);
             _scratch.Add(pair.Key);
         }
 
@@ -408,6 +424,10 @@ public class BlockWorld : Script
             MeshRenderer renderer = obj.AddComponent<MeshRenderer>();
             renderer.FlatShading = true;
             renderer.Texture = BlockTextureAtlas.Path;
+            bool castChunkShadow = ShouldCastChunkShadow(pair.Key, cx, cy, cz);
+            renderer.CastShadows = castChunkShadow;
+            if (castChunkShadow)
+                _shadowCasters.Add(pair.Key);
             long newMeshStart = ProfileStart();
             renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
             RecordChunkProfile(0, newMeshStart);
@@ -443,6 +463,16 @@ public class BlockWorld : Script
             GameObject obj = pair.Value.Object;
             if (!obj.IsValid)
                 continue;
+
+            bool shouldCastShadow = ShouldCastChunkShadow(key, cx, cy, cz);
+            if (shouldCastShadow != _shadowCasters.Contains(key))
+            {
+                pair.Value.Renderer.CastShadows = shouldCastShadow;
+                if (shouldCastShadow)
+                    _shadowCasters.Add(key);
+                else
+                    _shadowCasters.Remove(key);
+            }
 
             bool has = _colliders.Contains(key);
             if (!has && ShouldHaveCollider(key, cx, cy, cz))
@@ -800,6 +830,7 @@ public class BlockWorld : Script
         _loaded.Clear();
         _jobs.Clear();
         _colliders.Clear();
+        _shadowCasters.Clear();
         _chunkObjects.Clear();
         _versions.Clear();
     }
