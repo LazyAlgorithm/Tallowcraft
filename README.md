@@ -210,7 +210,9 @@ To store a stack, click any backpack/hotbar stack and click **Store
 selected**. To withdraw, click an occupied chest slot and choose **Take
 selected**. You can still transfer into a specific slot by clicking the
 source and then the desired destination. Use **Move half** before either
-action to split a stack. All transfers remain server-authoritative,
+action to split a stack. When the receiving slot is nearly full, taking
+from a chest transfers only the amount that fits; any remainder stays
+in the chest. The per-material inventory cap still applies. All transfers remain server-authoritative,
 share chest state between players, and use the existing persisted world
 storage; the UI cannot create or duplicate items.
 

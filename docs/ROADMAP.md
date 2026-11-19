@@ -2,6 +2,23 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Progress update — 19 November 2026
+
+The milestones below track shipped repository code separately from engine
+Play-mode verification. Since the early roadmap entries, the game has gained
+server-persisted edited sections and chest contents (world-save v4), player
+profiles, a 36-slot inventory, physical pickups, tools, iron smelting and a
+.TUI interface. Chest withdrawals now accept the available capacity of
+matching player stacks instead of failing an otherwise valid partial merge.
+Regression coverage was added, but this change has not been compiled or
+Play-tested on Linux or Windows in this session.
+
+**Next implementation priority:** persistence for loose dropped items,
+without duping on disconnect/reconnect, followed by full host/client and
+save-recovery tests. **Still blocked on engine verification:** character
+animation/occlusion, collision accuracy for partial blocks, and sustained
+high-radius performance.
+
 ## Foundation — existing prototype
 
 - [x] Deterministic 16×16×16 voxel chunks, directional streaming, Jolt chunk colliders
@@ -11,7 +28,7 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Corrected side-face grass UV orientation (tested visually in Tallow)
 - [ ] Verify all block-shape collision, orientation, seam and client-join combinations
 
-## M1 — Rigged player and movement presentation (next)
+## M1 — Rigged player and movement presentation
 
 **Goal:** replace the *visible* capsule with a conventionally modeled, skinned humanoid, **not** a block-character.
 
@@ -85,18 +102,23 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 ## M5 — Persistence and scalable multiplayer
 
-- [ ] Seeded worlds, world settings, and save/load edited chunk states across server restarts
-- [ ] Bounded, versioned chunk snapshots and ordered deltas (replace 512-edit whole-world string)
-- [ ] Ownership/permissions, block-interaction validation and late-join reconstruction
+- [x] Persist world identity, seed, sparse block edits and chest contents atomically, with previous-generation recovery (world save v4)
+- [ ] World creation/settings UI and configurable vertical bounds
+- [x] Bounded per-section snapshots, revision/hash validation, on-demand pages and ordered block deltas (no global 512-edit cap)
+- [ ] True per-recipient transport filtering (the current C# RPC bridge broadcasts replies with recipient IDs)
+- [x] Server-side block-interaction and chest proximity validation, plus late-join section reconstruction
+- [ ] Authenticated player identities and chest ownership/permissions for untrusted public servers (current profile token is a prototype bearer identity)
 - [ ] Automated multiplayer test matrix (two clients, churn, prediction/replay, reconnect)
 - [ ] Dedicated-server bandwidth, CPU and stability profiling
 
 ## M6 — Survival/crafting vertical slice
 
-- [x] Basic nine-material inventory counts, hotbar quantities, and direct collection when mining (compile/Play verification pending)
-- [x] Server-authoritative material spending, validated player inventory snapshots, optional creative/survival building toggle (compile/Play verification pending)
-- [ ] Physical item drops and pickup interactions, stack splitting, persistence and crafting UI
-- [ ] Crafting recipes, forge with sparse block-entity data, and basic tools
+- [x] 36 physical inventory slots (9 hotbar + 27 backpack), 64-stack limits, count validation and saved player profiles
+- [x] Server-authoritative placement costs and mining rewards, with optional creative/survival building toggle
+- [x] Physical item drops, pickup interactions, stack splitting and .tui crafting/inventory UI
+- [x] Crafting recipes, proximity-validated forge smelting, stone/iron tools, and 27-slot chests saved with the world
+- [x] Partial chest withdrawals into matching, nearly-full player stacks without losing remainder (pure-C# regression added; runtime verification pending)
+- [ ] Persist loose ground drops across restarts and decide despawn/expiration semantics
 - [ ] Health/damage, simple wildlife and AI, weather/day–night polish
 
 ## Verification and release gates
@@ -109,11 +131,11 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 
 ### Known prototype limitations
 
-- The world uses signed 16-block vertical layers (currently Y=-32..47); terrain below Y=0 is initially stone, and positive layers start as air until edited.
-- The current edit channel is one 20,000-character / 512-edit snapshot, not scalable chunk deltas.
-- Unedited cube-only chunks now use full-block meshing; edited chunks containing partial shapes still use half-cell meshing until the hybrid path is complete.
-- The HUD is a text hotbar (no item icons/inventory counts); authoritative selection now uses the project's explicit `Input.tinput` bindings.
-- Rigged character integration and its runtime tests are **not done** until verified.
+- The world currently uses signed 16-block vertical sections (Y=-32..47); bounds and world settings are not user-configurable yet.
+- Versioned chunk pages and deltas replace the original 512-edit global snapshot, but the RPC bridge still lacks true per-recipient filtering.
+- World edits, chest contents, and player profiles persist; loose dropped items do not yet survive restarts.
+- The .tui hotbar, inventory, crafting, and chest UI exist. Rendering, chest interaction and replicated animation still require hands-on editor/host/client verification.
+- Player identity is a local bearer token rather than authenticated multiplayer account ownership.
 
 
 ## M3 benchmark procedure

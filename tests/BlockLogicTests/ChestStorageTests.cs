@@ -49,6 +49,46 @@ internal static class ChestStorageTests
             !storage.TryRearrange(position,0,99,false),
             "Invalid chest slots cannot mutate world or player inventory");
 
+        // Withdrawing into a matching, nearly-full stack should move only
+        // what fits, rather than rejecting a valid merge or losing overflow.
+        BlockPosition mergePosition = new(12, 8, -7);
+        var mergeChest = new WorldChestStorage();
+        var sourcePlayer = new BlockInventory();
+        var destinationPlayer = new BlockInventory();
+        check(sourcePlayer.TryCollect(6, 64) &&
+            mergeChest.TryTransfer(mergePosition, sourcePlayer,
+                0, 0, true, false) && sourcePlayer.Slot(0).IsEmpty,
+            "A full stack can be deposited for partial-withdrawal tests");
+        check(destinationPlayer.TryCollect(6, 60) &&
+            mergeChest.TryTransfer(mergePosition, destinationPlayer,
+                0, 0, false, false) &&
+            destinationPlayer.Slot(0) == new ItemStack(6, 64) &&
+            mergeChest.At(mergePosition).Slot(0) == new ItemStack(6, 60),
+            "Full-stack withdrawal into a partial stack moves only free space");
+        check(destinationPlayer.TryCollect(6, 60) &&
+            mergeChest.TryTransfer(mergePosition, destinationPlayer,
+                1, 0, false, true) &&
+            destinationPlayer.Slot(1) == new ItemStack(6, 64) &&
+            mergeChest.At(mergePosition).Slot(0) == new ItemStack(6, 56),
+            "Half-stack withdrawal also obeys destination slot capacity");
+        var atLimit = new BlockInventory();
+        check(atLimit.TryCollect(6, 998) &&
+            mergeChest.TryTransfer(mergePosition, atLimit, 16, 0,
+                false, false) &&
+            atLimit.Count(6) == 999 &&
+            atLimit.Slot(16) == new ItemStack(6, 1) &&
+            mergeChest.At(mergePosition).Slot(0) == new ItemStack(6, 55),
+            "Withdrawal fills only remaining per-material inventory capacity");
+        check(!mergeChest.TryTransfer(mergePosition, atLimit, 17, 0,
+                false, false) &&
+            atLimit.Count(6) == 999 &&
+            mergeChest.At(mergePosition).Slot(0) == new ItemStack(6, 55),
+            "Inventory material cap cannot duplicate or discard chest items");
+        check(!mergeChest.TryTransfer(mergePosition, destinationPlayer,
+                0, 0, false, false) &&
+            mergeChest.At(mergePosition).Slot(0) == new ItemStack(6, 55),
+            "A completely full destination stack rejects withdrawal atomically");
+
         check(player.TryCollect(BlockInventory.Chest) &&
             player.Count(BlockInventory.Chest)==1 &&
             new BlockState(BlockState.Create(BlockInventory.Chest).Packed)
@@ -141,7 +181,7 @@ internal static class ChestStorageTests
         {
             if(Directory.Exists(root)) Directory.Delete(root,recursive:true);
         }
-        Console.WriteLine("PASS: 27-slot chests, atomic transfers, " +
+        Console.WriteLine("PASS: 27-slot chests, partial merges, atomic transfers, " +
             "oriented art and coupled world save recovery");
     }
 }

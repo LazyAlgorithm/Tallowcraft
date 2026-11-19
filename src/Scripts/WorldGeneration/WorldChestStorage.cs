@@ -101,13 +101,21 @@ public sealed class ChestContents
     }
 
     public bool TryWithdraw(int chestSlot, bool split,
+        out ChestContents next, out ItemStack taken) =>
+        TryWithdraw(chestSlot, split, BlockInventory.StackLimit,
+            out next, out taken);
+
+    // The requested half/full amount is an upper bound. A matching player
+    // stack may have fewer free slots, so only remove what will fit.
+    public bool TryWithdraw(int chestSlot, bool split, int maxQuantity,
         out ChestContents next, out ItemStack taken)
     {
         next = this;
         taken = default;
         ItemStack current = Slot(chestSlot);
-        if (current.IsEmpty) return false;
+        if (current.IsEmpty || maxQuantity <= 0) return false;
         int amount = split ? (current.Quantity + 1) / 2 : current.Quantity;
+        amount = Math.Min(amount, maxQuantity);
         taken = new(current.Type, amount);
         ItemStack[] copy = (ItemStack[])_slots.Clone();
         copy[chestSlot] = current.Quantity == amount ? default :
@@ -179,11 +187,21 @@ public sealed class WorldChestStorage
             return Replace(position, after);
         }
 
-        if (!current.TryWithdraw(chestSlot, split,
-                out ChestContents withdrawal, out ItemStack received) ||
-            !player.CanInsertIntoSlot(playerSlot, received))
+        // Withdraw only as much as the destination stack AND global
+        // per-material inventory limit can accept. Never remove excess
+        // contents from the chest or reject an otherwise valid partial merge.
+        ItemStack source = current.Slot(chestSlot);
+        ItemStack destination = player.Slot(playerSlot);
+        if (source.IsEmpty ||
+            (!destination.IsEmpty && destination.Type != source.Type))
             return false;
-        if (!player.TryInsertIntoSlot(playerSlot, received)) return false;
+        int slotCapacity = BlockInventory.StackLimit - destination.Quantity;
+        int typeCapacity = BlockInventory.MaxPerType - player.Count(source.Type);
+        int capacity = Math.Min(slotCapacity, typeCapacity);
+        if (!current.TryWithdraw(chestSlot, split, capacity,
+                out ChestContents withdrawal, out ItemStack received) ||
+            !player.TryInsertIntoSlot(playerSlot, received))
+            return false;
         return Replace(position, withdrawal);
     }
 
