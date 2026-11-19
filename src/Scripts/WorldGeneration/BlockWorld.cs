@@ -79,6 +79,7 @@ public class BlockWorld : Script
     // Reused candidate buffer. Find priorities cheaply first, then only
     // evaluate costly biome/tree/structure existence for slots we can queue.
     private readonly List<(ChunkKey Key, long Distance)> _candidates = new();
+    private readonly HashSet<ChunkKey> _candidateKeys = new();
     private readonly List<ChunkKey> _playerCenters = new();
     private readonly CancellationTokenSource _stop = new();
 
@@ -466,6 +467,7 @@ public class BlockWorld : Script
         int nearRadius = CollisionRadius();
         int vertical = Math.Clamp(VerticalRadius, 0, 2);
         _candidates.Clear();
+        _candidateKeys.Clear();
 
         void Consider(ChunkKey key)
         {
@@ -474,6 +476,8 @@ public class BlockWorld : Script
             if (_jobs.ContainsKey(key))
                 return;
             if (_loaded.TryGetValue(key, out LiveChunk? live) && !live.Dirty)
+                return;
+            if (!_candidateKeys.Add(key))
                 return;
             _candidates.Add((key,
                 ChunkScheduling.Priority(key, cx, cy, cz, nearRadius)));
@@ -513,7 +517,7 @@ public class BlockWorld : Script
                     ChunkKey key = new(center.X + dx, layer, center.Z + dz);
                     if (!_jobs.ContainsKey(key) &&
                         (!_loaded.TryGetValue(key, out LiveChunk? live) || live.Dirty) &&
-                        !_candidates.Exists(candidate => candidate.Key == key))
+                        _candidateKeys.Add(key))
                         _candidates.Add((key, ChunkScheduling.Priority(
                             key, center.X, center.Y, center.Z, nearRadius)));
                 }
