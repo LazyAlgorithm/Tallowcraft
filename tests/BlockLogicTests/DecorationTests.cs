@@ -40,8 +40,9 @@ internal static class DecorationTests
                 root.Z - 3, seed) == WorldDecorations.Stone,
                 "Ruin corner is a stone pillar");
             check(WorldDecorations.StructureAt(root.X, root.Y,
-                root.Z - 3, seed) == 0,
-                "Ruin door remains open");
+                root.Z - 3, seed) == 0 &&
+                ChunkGenerator.Height(root.X, root.Z - 3, seed) <= root.Y,
+                "Ruin entrance is not blocked by stone or terrain");
             check((long)root.X * root.X + (long)root.Z * root.Z >=
                 112L * 112L, "Ruins must stay away from the protected spawn");
 
