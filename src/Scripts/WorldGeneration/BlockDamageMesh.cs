@@ -22,9 +22,10 @@ public sealed class BlockDamageMesh
     public int FaceCount => Triangles.Length / 6;
 
     /// <summary>MiningPercent is replicated in 10% steps by the server.
-    /// -1 means hide the overlay; stages 0-9 are atlas frames.</summary>
+    /// A negative percentage hides the overlay. MiningActive decides when
+    /// to display it, so 0% is the first crack stage and 90% is the tenth.</summary>
     public static int StageForPercent(int percent) =>
-        percent <= 0 ? -1 : Math.Clamp((percent - 1) / 10, 0, 9);
+        percent < 0 ? -1 : Math.Clamp(percent / 10, 0, 9);
 
     public static BlockDamageMesh Create(BlockState block)
     {

@@ -6,12 +6,12 @@ internal static class BlockDamageTests
 {
     public static void Run(Action<bool, string> check)
     {
-        check(BlockDamageMesh.StageForPercent(0) == -1 &&
+        check(BlockDamageMesh.StageForPercent(0) == 0 &&
             BlockDamageMesh.StageForPercent(-40) == -1 &&
             BlockDamageMesh.StageForPercent(1) == 0 &&
-            BlockDamageMesh.StageForPercent(10) == 0 &&
-            BlockDamageMesh.StageForPercent(20) == 1 &&
-            BlockDamageMesh.StageForPercent(90) == 8 &&
+            BlockDamageMesh.StageForPercent(10) == 1 &&
+            BlockDamageMesh.StageForPercent(20) == 2 &&
+            BlockDamageMesh.StageForPercent(90) == 9 &&
             BlockDamageMesh.StageForPercent(100) == 9 &&
             BlockDamageMesh.StageForPercent(1000) == 9,
             "Damage stages are bounded and hide immediately on reset");
