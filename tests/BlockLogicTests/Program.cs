@@ -31,6 +31,7 @@ static class Program
             InventoryTests.Run(Check);
             InventorySlotTests.Run(Check);
             WorldDropTests.Run(Check);
+            WorldDropSaveTests.Run(Check);
             ChestStorageTests.Run(Check);
             InventoryMenuTests.Run(Check);
             SectionEditTests.Run(Check);

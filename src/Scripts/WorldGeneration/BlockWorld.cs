@@ -171,7 +171,8 @@ public class BlockWorld : Script
         {
             if (!WorldEditSave.TryLoad(SaveFolder, out string loadedId,
                     out int loadedSeed, out BlockEdits loaded,
-                    out WorldChestStorage chests, out bool recovered))
+                    out WorldChestStorage chests,
+                    out IReadOnlyList<SavedWorldDrop> drops, out bool recovered))
             {
                 _saveLoadFailed = true;
                 Console.WriteLine("Tallowcraft world save is corrupt or incomplete; " +
@@ -182,6 +183,13 @@ public class BlockWorld : Script
             Seed = loadedSeed;
             _edits = loaded;
             _chests = chests;
+            if (!WorldDrop.Restore(Scene, drops))
+            {
+                _saveLoadFailed = true;
+                Console.WriteLine("Tallowcraft could not restore saved world drops; " +
+                    "refusing to continue or overwrite this world save.");
+                return;
+            }
             RebuildSurfaceOpenings();
             if (recovered)
                 Console.WriteLine(
@@ -195,7 +203,8 @@ public class BlockWorld : Script
             try
             {
                 WorldEditSave.Save(SaveFolder, _worldId, Seed,
-                    _edits.Snapshot, _edits.Revisions, _chests.Snapshot);
+                    _edits.Snapshot, _edits.Revisions, _chests.Snapshot,
+                    WorldDrop.Capture(Scene));
             }
             catch (Exception exception)
             {
@@ -239,6 +248,13 @@ public class BlockWorld : Script
         _appliedSnapshot = EditState;
     }
 
+    // Server-owned spawn, merge, pickup and despawn events mark saves dirty.
+    // Aging/movement is also captured at intervals while live drops exist.
+    public void MarkDropsChanged()
+    {
+        if (Scene.IsServer && !_saveLoadFailed) _generation++;
+    }
+
     private void TickSaves(float deltaTime)
     {
         if (_saveTask != null && _saveTask.IsCompleted)
@@ -251,17 +267,20 @@ public class BlockWorld : Script
         }
         _saveClock += Math.Max(0f, deltaTime);
         if (_saveTask != null || _saveClock < 30f ||
-            _generation == _savedGeneration)
+            (_generation == _savedGeneration && !WorldDrop.HasLive(Scene)))
             return;
         _saveClock = 0;
         var snapshot = _edits.Snapshot;
         var revisions = _edits.Revisions;
         var chests = _chests.Snapshot;
+        // Capture physics positions on the game thread before saving.
+        IReadOnlyList<SavedWorldDrop> drops = WorldDrop.Capture(Scene);
         string folder = SaveFolder, id = _worldId;
         int seed = Seed;
         _savingGeneration = _generation;
         _saveTask = Task.Run(() =>
-            WorldEditSave.Save(folder, id, seed, snapshot, revisions, chests));
+            WorldEditSave.Save(folder, id, seed, snapshot, revisions,
+                chests, drops));
     }
 
     private void SaveNow()
@@ -272,10 +291,11 @@ public class BlockWorld : Script
         {
             _saveTask?.GetAwaiter().GetResult();
             _saveTask = null;
-            if (_generation != _savedGeneration)
+            if (_generation != _savedGeneration || WorldDrop.HasLive(Scene))
             {
                 WorldEditSave.Save(SaveFolder, _worldId, Seed,
-                    _edits.Snapshot, _edits.Revisions, _chests.Snapshot);
+                    _edits.Snapshot, _edits.Revisions, _chests.Snapshot,
+                    WorldDrop.Capture(Scene));
                 _savedGeneration = _generation;
             }
         }
@@ -304,6 +324,17 @@ public class BlockWorld : Script
                 return;
             if (Seed != _publishedSeed)
             {
+                // Complete any old async save before switching world identity
+                // in the shared default save directory.
+                try { _saveTask?.GetAwaiter().GetResult(); }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Tallowcraft previous save failed: {e}");
+                    _saveLoadFailed = true;
+                    return;
+                }
+                _saveTask = null;
+                WorldDrop.Clear(Scene);
                 // A changed seed starts a completely new world; prior edits
                 // cannot be applied against different procedural terrain.
                 _publishedSeed = Seed;

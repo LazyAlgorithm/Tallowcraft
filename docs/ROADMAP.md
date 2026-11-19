@@ -13,9 +13,10 @@ matching player stacks instead of failing an otherwise valid partial merge.
 Regression coverage was added, but this change has not been compiled or
 Play-tested on Linux or Windows in this session.
 
-**Next implementation priority:** persistence for loose dropped items,
-without duping on disconnect/reconnect, followed by full host/client and
-save-recovery tests. **Still blocked on engine verification:** character
+**Next implementation priority:** transactional consistency between world
+drops and player profiles, followed by host/client and save-recovery Play-mode
+testing. Drop snapshots now save with world-save v5, but independently saved
+player profiles can diverge during abrupt crashes. **Still blocked on engine verification:** character
 animation/occlusion, collision accuracy for partial blocks, and sustained
 high-radius performance.
 
@@ -118,7 +119,8 @@ high-radius performance.
 - [x] Physical item drops, pickup interactions, stack splitting and .tui crafting/inventory UI
 - [x] Crafting recipes, proximity-validated forge smelting, stone/iron tools, and 27-slot chests saved with the world
 - [x] Partial chest withdrawals into matching, nearly-full player stacks without losing remainder (pure-C# regression added; runtime verification pending)
-- [ ] Persist loose ground drops across restarts and decide despawn/expiration semantics
+- [x] Persist live ground drops with terrain/chest world-save v5, including age/position and corrupt-generation rollback (regression tests added; runtime testing pending)
+- [ ] Make pickup/player-profile persistence atomic with world drop changes (currently separate files can diverge after abrupt crashes)
 - [ ] Health/damage, simple wildlife and AI, weather/day–night polish
 
 ## Verification and release gates
@@ -133,7 +135,7 @@ high-radius performance.
 
 - The world currently uses signed 16-block vertical sections (Y=-32..47); bounds and world settings are not user-configurable yet.
 - Versioned chunk pages and deltas replace the original 512-edit global snapshot, but the RPC bridge still lacks true per-recipient filtering.
-- World edits, chest contents, and player profiles persist; loose dropped items do not yet survive restarts.
+- World edits, chest contents, player profiles and loose dropped items persist; drop pickup/profile changes are not yet an atomic cross-file transaction.
 - The .tui hotbar, inventory, crafting, and chest UI exist. Rendering, chest interaction and replicated animation still require hands-on editor/host/client verification.
 - Player identity is a local bearer token rather than authenticated multiplayer account ownership.
 

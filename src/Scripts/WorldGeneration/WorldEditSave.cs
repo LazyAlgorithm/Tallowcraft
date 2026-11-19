@@ -36,12 +36,21 @@ public static class WorldEditSave
 
     public static void Save(string root, string worldId, int seed,
         SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions) =>
-        Save(root, worldId, seed, edits, revisions, null);
+        Save(root, worldId, seed, edits, revisions, null, null);
 
     public static void Save(string root, string worldId, int seed,
         SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions,
-        IReadOnlyDictionary<BlockPosition, ChestContents>? chests)
+        IReadOnlyDictionary<BlockPosition, ChestContents>? chests) =>
+        Save(root, worldId, seed, edits, revisions, chests, null);
+
+    // Non-null drops commits a v5 generation; old call sites retain v3/v4.
+    public static void Save(string root, string worldId, int seed,
+        SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions,
+        IReadOnlyDictionary<BlockPosition, ChestContents>? chests,
+        IReadOnlyList<SavedWorldDrop>? drops)
     {
+        if (drops != null && chests == null)
+            throw new ArgumentException("Drop persistence requires chest state.");
         if (!Guid.TryParseExact(worldId, "N", out _))
             throw new ArgumentException("Invalid world identity.");
         Directory.CreateDirectory(root);
@@ -57,15 +66,22 @@ public static class WorldEditSave
             var manifest = new StringBuilder();
             byte[]? chestBytes = chests == null ? null :
                 ChestSaveCodec.Encode(chests);
-            manifest.Append(chestBytes == null ? "3|" : "4|")
+            byte[]? dropBytes = drops == null ? null :
+                WorldDropSaveCodec.Encode(drops);
+            manifest.Append(dropBytes != null ? "5|" :
+                    chestBytes != null ? "4|" : "3|")
                 .Append(worldId).Append('|')
                 .Append(seed.ToString(Invariant)).Append('|')
                 .Append(keys.Count.ToString(Invariant));
             if (chestBytes != null)
                 manifest.Append('|').Append(EditSectionCodec.Hash(chestBytes));
+            if (dropBytes != null)
+                manifest.Append('|').Append(EditSectionCodec.Hash(dropBytes));
             manifest.Append('\n');
             if (chestBytes != null)
                 DurableWrite(Path.Combine(staging, "chests.bin"), chestBytes);
+            if (dropBytes != null)
+                DurableWrite(Path.Combine(staging, "drops.bin"), dropBytes);
             foreach (ChunkKey key in keys)
             {
                 int revision = revisions[key];
@@ -144,9 +160,17 @@ public static class WorldEditSave
 
     public static bool TryLoad(string root, out string worldId,
         out int seed, out BlockEdits edits,
-        out WorldChestStorage chests, out bool recovered)
+        out WorldChestStorage chests, out bool recovered) =>
+        TryLoad(root, out worldId, out seed, out edits,
+            out chests, out _, out recovered);
+
+    public static bool TryLoad(string root, out string worldId,
+        out int seed, out BlockEdits edits,
+        out WorldChestStorage chests, out IReadOnlyList<SavedWorldDrop> drops,
+        out bool recovered)
     {
         chests = new WorldChestStorage();
+        drops = Array.Empty<SavedWorldDrop>();
         worldId = "";
         seed = 0;
         edits = new BlockEdits();
@@ -155,10 +179,10 @@ public static class WorldEditSave
         string current = Path.Combine(root, "current.txt");
         string previous = Path.Combine(root, "previous.txt");
         if (TryReadPointer(root, current, out worldId, out seed,
-                out edits, out chests))
+                out edits, out chests, out drops))
             return true;
         if (!TryReadPointer(root, previous, out worldId, out seed,
-                out edits, out chests))
+                out edits, out chests, out drops))
             return false;
 
         recovered = true;
@@ -179,12 +203,13 @@ public static class WorldEditSave
 
     private static bool TryReadPointer(string root, string pointer,
         out string worldId, out int seed, out BlockEdits edits,
-        out WorldChestStorage chests)
+        out WorldChestStorage chests, out IReadOnlyList<SavedWorldDrop> drops)
     {
         worldId = "";
         seed = 0;
         edits = new BlockEdits();
         chests = new WorldChestStorage();
+        drops = Array.Empty<SavedWorldDrop>();
         try
         {
             string generation = File.ReadAllText(pointer).Trim();
@@ -197,7 +222,8 @@ public static class WorldEditSave
             string[] header = lines[0].Split('|');
             bool v3 = header.Length == 4 && header[0] == "3";
             bool v4 = header.Length == 5 && header[0] == "4";
-            if ((!v3 && !v4) ||
+            bool v5 = header.Length == 6 && header[0] == "5";
+            if ((!v3 && !v4 && !v5) ||
                 !Guid.TryParseExact(header[1], "N", out _) ||
                 !int.TryParse(header[2], NumberStyles.Integer,
                     Invariant, out int parsedSeed) ||
@@ -238,7 +264,7 @@ public static class WorldEditSave
             }
 
             var loadedChests = new WorldChestStorage();
-            if (v4)
+            if (v4 || v5)
             {
                 byte[] bytes = File.ReadAllBytes(
                     Path.Combine(folder, "chests.bin"));
@@ -257,10 +283,25 @@ public static class WorldEditSave
                         return false;
                 loadedChests.Restore(chestEntries);
             }
+            IReadOnlyList<SavedWorldDrop> loadedDrops =
+                Array.Empty<SavedWorldDrop>();
+            if (v5)
+            {
+                byte[] bytes = File.ReadAllBytes(
+                    Path.Combine(folder, "drops.bin"));
+                if (bytes.Length > WorldDropSaveCodec.MaxBytes ||
+                    header[5].Length != 64 ||
+                    !string.Equals(EditSectionCodec.Hash(bytes), header[5],
+                        StringComparison.Ordinal) ||
+                    !WorldDropSaveCodec.TryDecode(bytes, out var decoded))
+                    return false;
+                loadedDrops = decoded;
+            }
             worldId = header[1];
             seed = parsedSeed;
             edits = restored;
             chests = loadedChests;
+            drops = loadedDrops;
             return true;
         }
         catch (IOException) { return false; }

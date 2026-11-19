@@ -17,7 +17,7 @@ public sealed class WorldDrop : Script
     public const int MaxPerDrop = BlockInventory.StackLimit;
     public const int MaxActive = 256;
     public const float PickupDelay = .5f;
-    public const float DespawnAfter = 300f;
+    public const float DespawnAfter = WorldDropSaveCodec.MaxAgeSeconds;
 
     [Sync] public int ItemType = 0;
     [Sync] public int Quantity = 0;
@@ -31,13 +31,98 @@ public sealed class WorldDrop : Script
     private float _age;
     private bool _registered;
 
-    public override void Start()
+    public override void Start() => Register();
+
+    private void Register()
     {
-        if (Scene.IsServer && !_registered)
+        if (!Scene.IsServer || _registered) return;
+        Active.Add(this);
+        _registered = true;
+    }
+
+    private static void MarkDropSaveDirty(Scene scene)
+    {
+        if (!scene.IsServer) return;
+        scene.Find("BlockWorld")?.GetComponent<BlockWorld>()?.MarkDropsChanged();
+    }
+
+    /// <summary>Capture a stable snapshot on the main game thread; the save
+    /// worker never touches networked objects or Jolt transforms.</summary>
+    public static IReadOnlyList<SavedWorldDrop> Capture(Scene scene)
+    {
+        var result = new List<SavedWorldDrop>();
+        if (!scene.IsServer) return result;
+        foreach (WorldDrop drop in Active)
         {
-            Active.Add(this);
-            _registered = true;
+            if (!drop.GameObject.IsValid ||
+                drop.Scene.SessionId != scene.SessionId ||
+                drop.Quantity <= 0 || drop._age >= DespawnAfter)
+                continue;
+            var saved = new SavedWorldDrop(drop.ItemType, drop.Quantity,
+                drop.Transform.Position, drop._age);
+            if (!WorldDropSaveCodec.IsValid(saved))
+                throw new InvalidOperationException("Cannot save invalid world drop.");
+            result.Add(saved);
         }
+        return result;
+    }
+
+    public static bool HasLive(Scene scene)
+    {
+        if (!scene.IsServer) return false;
+        foreach (WorldDrop drop in Active)
+            if (drop.GameObject.IsValid &&
+                drop.Scene.SessionId == scene.SessionId &&
+                drop.Quantity > 0 && drop._age < DespawnAfter)
+                return true;
+        return false;
+    }
+
+    /// <summary>Restore one-to-one from saved records; do not merge saved
+    /// stacks, and refuse to load into a scene that already contains drops.</summary>
+    public static bool Restore(Scene scene, IReadOnlyList<SavedWorldDrop> drops)
+    {
+        if (!scene.IsServer || HasLive(scene) ||
+            drops.Count > MaxActive) return false;
+        foreach (SavedWorldDrop saved in drops)
+        {
+            if (!WorldDropSaveCodec.IsValid(saved))
+            {
+                Clear(scene);
+                return false;
+            }
+            GameObject? spawned = Prefab.Instantiate(scene,
+                "Prefabs/WorldDrop.tprefab", saved.Position,
+                Quaternion.Identity);
+            if (spawned is not { IsValid: true } item)
+            {
+                Clear(scene);
+                return false;
+            }
+            WorldDrop? script = item.GetComponent<WorldDrop>();
+            if (script == null)
+            {
+                if (scene.IsNetworked) scene.Despawn(item);
+                else item.Destroy();
+                Clear(scene);
+                return false;
+            }
+            script.ItemType = saved.ItemType;
+            script.Quantity = saved.Quantity;
+            script._age = saved.Age;
+            script.Register();
+        }
+        return true;
+    }
+
+    /// <summary>Delete transient item actors when switching world seeds or
+    /// rolling back a failed restore.</summary>
+    public static void Clear(Scene scene)
+    {
+        foreach (WorldDrop drop in new List<WorldDrop>(Active))
+            if (drop.GameObject.IsValid &&
+                drop.Scene.SessionId == scene.SessionId)
+                drop.RemoveDrop();
     }
 
     /// <summary>
@@ -73,6 +158,7 @@ public sealed class WorldDrop : Script
                     other.Transform.Position) > 1.25f * 1.25f)
                 continue;
             other.Quantity += quantity;
+            MarkDropSaveDirty(scene);
             return true;
         }
         if (count >= MaxActive)
@@ -92,6 +178,8 @@ public sealed class WorldDrop : Script
 
         script.ItemType = type;
         script.Quantity = quantity;
+        script.Register();
+        MarkDropSaveDirty(scene);
         return true;
     }
 
@@ -226,6 +314,7 @@ public sealed class WorldDrop : Script
         if (!Scene.IsServer)
             return;
         Quantity = 0;
+        MarkDropSaveDirty(Scene);
         if (Scene.IsNetworked)
             Scene.Despawn(GameObject);
         else

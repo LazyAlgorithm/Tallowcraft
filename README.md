@@ -102,12 +102,22 @@ merge to stacks of 64; drops despawn after five minutes, and a bounded
 prefab load prevents a spawn, resources are credited directly rather than
 lost, subject to the existing per-type 999-item cap.
 
-**Known limit:** dropped items aren't yet persisted across server restarts.
-Pick up valuable resources before shutting down. The next storage/chest
-milestone should persist world containers; a later pass can save loose
-items with the appropriate chunk.
+**Ground drop persistence:** active server-owned drops now save with the
+same atomic world generation as voxel edits and chest contents (world save v5).
+Item type, quantity, position and remaining five-minute lifetime restore after
+restart. Offline time does not count against the despawn timer, and physics
+velocity is reset when an item loads. A corrupt drops file causes the entire
+world to roll back to the previous validated generation. A normal quit saves
+the current drop state; automatic checkpoints occur every 30 seconds while
+drops exist.
 
-### Chests and world save v4
+**Crash consistency limit:** player inventories save separately from the
+world. A crash between an item pickup and the respective player/world saves
+can still duplicate or lose a recently collected item after recovery.
+Truly atomic player/drop transactions require a shared transaction journal
+or a unified player+world checkpoint before public multiplayer deployment.
+
+### Chests and world save v4 (supported by v5)
 
 - Craft **Storage chest** with 8 planks in the Craft tab (recipe 6). Move
   it to the hotbar and place it. Chest blocks are cube-shaped with four

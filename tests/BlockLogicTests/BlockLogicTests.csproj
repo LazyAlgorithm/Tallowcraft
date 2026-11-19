@@ -16,6 +16,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/WorldEditSave.cs" Link="WorldEditSave.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockInventory.cs" Link="BlockInventory.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldChestStorage.cs" Link="WorldChestStorage.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WorldDropSave.cs" Link="WorldDropSave.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChestFrontMesh.cs" Link="ChestFrontMesh.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/DroppedItemMesh.cs" Link="DroppedItemMesh.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockDropMesh.cs" Link="BlockDropMesh.cs" />
