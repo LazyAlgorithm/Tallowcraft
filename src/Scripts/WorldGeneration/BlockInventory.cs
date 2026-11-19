@@ -54,7 +54,7 @@ public sealed class BlockInventory
     }
 
     public string Serialize() =>
-        "1|" + string.Join(',', _counts[1..]);
+        "1|" + string.Join(",", _counts[1..]);
 
     /// <summary>
     /// Parse atomically. Invalid/stale data never partially changes inventory.
