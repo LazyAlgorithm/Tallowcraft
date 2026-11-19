@@ -28,6 +28,7 @@ static class Program
             FloraTests.Run(Check);
             DecorationTests.Run(Check);
             ChunkSchedulingTests.Run(Check);
+            InventoryTests.Run(Check);
             HybridMeshTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
