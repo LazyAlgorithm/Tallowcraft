@@ -1,0 +1,29 @@
+object 1 parent 0 active 1 name "WorldDrop"
+transform 0 0 0 0 0 0 1 1 1 1
+component Tallow.NetworkIdentity enabled 1
+component Tallow.BoxCollider enabled 1
+field size 0.32 0.35 0.32
+field center 0 0 0
+component Tallow.Rigidbody enabled 1
+field mass 0.20
+field useGravity 1
+field gravityScale 1
+field friction 0.8
+field bounciness 0.18
+field linearDamping 0.25
+field angularDamping 1
+field freezeRotation 1
+field allowSleeping 1
+field debris 1
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:plane"
+field material "Materials/item_drop.tmat"
+field texture "Textures/inventory_icons.png"
+field castShadows 0
+field unlit 1
+field backFaceCulling 0
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "WorldGeneration.WorldDrop"
+field fieldOverrides ""
+field referenceNames ""
+field referenceTargets 0

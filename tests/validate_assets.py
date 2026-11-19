@@ -278,6 +278,28 @@ def verify() -> None:
           and 'fields[0] == "2"' in profile_src
           and 'selectedSlot' in profile_src,
           "Player saves must migrate and retain selected physical hotbar slots")
+    drop_prefab = (ROOT / "src/Prefabs/WorldDrop.tprefab").read_text()
+    drop_script = (ROOT / "src/Scripts/WorldGeneration/WorldDrop.cs").read_text()
+    drop_mesh = (ROOT / "src/Scripts/WorldGeneration/DroppedItemMesh.cs").read_text()
+    drop_mat = (ROOT / "src/Materials/item_drop.tmat").read_text()
+    check("component Tallow.NetworkIdentity enabled 1" in drop_prefab
+          and "component Tallow.Rigidbody enabled 1" in drop_prefab
+          and "component Tallow.BoxCollider enabled 1" in drop_prefab
+          and 'field scriptType "WorldGeneration.WorldDrop"' in drop_prefab
+          and 'field material "Materials/item_drop.tmat"' in drop_prefab
+          and 'texture "Textures/inventory_icons.png"' in drop_mat
+          and "doubleSided 1" in drop_mat and "blend 1" in drop_mat,
+          "Pickups need a networked, Jolt-simulated textured prefab")
+    check('public const int MaxActive = 256' in drop_script
+          and 'public const float DespawnAfter = 300f' in drop_script
+          and 'private bool TryPickup(GameObject? gameObject)' in drop_script
+          and 'inventory.TryReceiveWorldDrop(ItemType, Quantity)' in drop_script
+          and 'public static bool TrySpawn(Scene scene' in drop_script
+          and 'if (!WorldDrop.TrySpawn(Scene, material, droppedAt))' in editor_src
+          and 'Scene.Despawn(GameObject)' in drop_script
+          and 'DroppedItemMesh.ForType(ItemType)' in drop_script
+          and 'Vector3.DistanceSquared' in drop_mesh,
+          "Server mining drops must replicate, merge, expire and collect safely")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
           f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
 

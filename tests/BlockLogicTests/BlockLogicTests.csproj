@@ -15,6 +15,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/EditSectionTransfer.cs" Link="EditSectionTransfer.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldEditSave.cs" Link="WorldEditSave.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockInventory.cs" Link="BlockInventory.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/DroppedItemMesh.cs" Link="DroppedItemMesh.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/InventoryMenuState.cs" Link="InventoryMenuState.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/CraftingRecipes.cs" Link="CraftingRecipes.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ForgeCrafting.cs" Link="ForgeCrafting.cs" />

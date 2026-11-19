@@ -30,6 +30,7 @@ static class Program
             ChunkSchedulingTests.Run(Check);
             InventoryTests.Run(Check);
             InventorySlotTests.Run(Check);
+            WorldDropTests.Run(Check);
             InventoryMenuTests.Run(Check);
             SectionEditTests.Run(Check);
             MiningTests.Run(Check);

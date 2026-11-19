@@ -618,6 +618,24 @@ public class BlockEditor : Script
             page, cachedRevision, cachedHash);
     }
 
+    /// <summary>
+    /// Only a live, server-owned drop may call this. Successful collection
+    /// updates the authoritative inventory snapshot and persistent profile.
+    /// An invalid item, full material cap or uninitialized profile rejects
+    /// the pickup without deleting the drop.
+    /// </summary>
+    internal bool TryReceiveWorldDrop(int type, int quantity)
+    {
+        if (!Scene.IsServer || !ProfileReady ||
+            type is < 1 or > BlockInventory.MaxType ||
+            quantity is < 1 or > BlockInventory.StackLimit ||
+            !_inventory.TryCollect(type, quantity))
+            return false;
+        InventoryState = _inventory.Serialize();
+        _profileDirty = true;
+        return true;
+    }
+
     public override void Update(TickInput input, float deltaTime)
     {
         if (!Scene.IsServer)
@@ -739,12 +757,16 @@ public class BlockEditor : Script
         {
             if (breaking)
             {
-                // Mining adds directly to the same inventory backing the HUD.
-                if (_inventory.TryCollect(new BlockState(previous).Type))
-                {
-                    InventoryState = _inventory.Serialize();
-                    _profileDirty = true;
-                }
+                // Minecraft-style collectible: a server-owned networked
+                // drop falls from the mined voxel. On spawn failure (e.g.
+                // temporary entity cap), award directly instead of losing it.
+                int material = new BlockState(previous).Type;
+                Vector3 droppedAt = new(
+                    _miningPosition.X + .5f,
+                    _miningPosition.Y + .55f,
+                    _miningPosition.Z + .5f);
+                if (!WorldDrop.TrySpawn(Scene, material, droppedAt))
+                    TryReceiveWorldDrop(material, 1);
                 if (_tools.OnBlockMined())
                 {
                     ToolState = _tools.Serialize();
