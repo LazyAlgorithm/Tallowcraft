@@ -299,9 +299,7 @@ public class BlockWorld : Script
         if (!LimitChunkShadows)
             return true;
         int radius = Math.Clamp(ShadowRadius, 0, Math.Clamp(RenderRadius, 1, 16));
-        long dx = (long)key.X - cx, dz = (long)key.Z - cz;
-        return Math.Abs((long)key.Y - cy) <= 1 &&
-            dx * dx + dz * dz <= (long)radius * radius;
+        return ChunkScheduling.ShouldCastShadow(key, cx, cy, cz, radius);
     }
 
     private bool ShouldHaveCollider(ChunkKey key, int cx, int cy, int cz, int margin = 0)
