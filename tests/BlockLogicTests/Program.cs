@@ -26,6 +26,7 @@ static class Program
             GeologyTests.Run(Check);
             BiomeTests.Run(Check);
             FloraTests.Run(Check);
+            DecorationTests.Run(Check);
             HybridMeshTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
