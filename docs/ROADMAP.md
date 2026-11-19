@@ -257,3 +257,24 @@ Tallowcraft now limits its **voxel chunk** shadow submissions with `LimitChunkSh
 This may significantly reduce shadow-pass draw calls when viewing a wide mountain landscape at `RenderRadius=16`, but it does not replace LODs or GPU/CPU frame profiling, nor does it change how many mesh GameObjects exist. `ChunkSchedulingTests` covers the caster-distance boundaries. Try the same viewpoint at radius 16 with `LimitChunkShadows = true` and false, then separately toggle directional-light `Cast Shadows` to distinguish GPU shadow workload from main-thread streaming. Editor/engine frame timings will establish whether vertex processing, draw calls or CPU object updates are the remaining bottleneck.
 
 The `Camera.OcclusionCulling` setting was intentionally left off, since heightmap terrain and exposed mountain ridges are a poor match for the CPU occlusion buffer compared to enclosed caves or structures.
+
+## Sustained FPS investigation — live chunk overhead (wide-radius mountain views)
+
+User reported that framerate starts high when turning and then worsens as generated chunks accumulate, while disabling distant terrain shadows did not help. This indicates that persistent per-frame streaming management and/or the number of live meshes/renderers are stronger candidates than shadow-map submission. Read-only engine inspection confirmed view-frustum culling exists; the game camera's CPU occlusion culling remains off.
+
+Tallowcraft-side optimizations:
+- `BlockWorld.LocalUpdate` no longer performs full `UnloadDistant`, `UpdateColliders`, and `MaintainBlockCache` scans every rendered frame. Unload is triggered by viewer chunk/directional footprint changes; collider/cache scans run on player position/visibility transitions, remote-player center movement, or streaming setting changes. Small camera movements below the directional threshold avoid unnecessary work.
+- `StartNearestJobs` now builds and sorts a single queue of candidate chunk sections per footprint/edit change, then consumes it across subsequent frames; it does not rebuild the whole radius² queue every time a job finishes. Dirty edits invalidate the queue and stale jobs are correctly re-enqueued after an obsolete task clears.
+- Completed zero-triangle meshes no longer create GameObjects, MeshRenderers or colliders; the zero-surface section's version is cached until it exits the stream footprint or becomes dirty. Empty-section cache is also invalidated on world seed change.
+- Once the candidate queue is exhausted and no generation jobs remain, the streamer avoids repeated candidate enumeration while stationary.
+- Optional `[Tallowcraft stream profile]` reports now include `live_meshes`, `empty_sections` and `colliders` alongside queue-to-upload latency. Profiles are user-controllable as before.
+- `ChunkSchedulingTests` now includes a zero-triangle upper-sky-section regression and a positive-surface-section regression.
+
+No Tallow Engine changes were made; the same 16×16×16 block section system, world generation, voxel edit format and rendering/shader backend remain intact. These changes have not been tested in a running Tallow process in this assistant session.
+
+```bash
+cd ~/TallowProjects/Tallowcraft && git pull --ff-only origin main
+dotnet run --project tests/BlockLogicTests -c Release -- --bench
+```
+
+After the automated tests, revisit the same mountain viewpoint at `RenderRadius=16`. Allow chunks to finish loading, rotate and stand still. Compare *steady* FPS as well as initial loading hitches. If steady FPS still falls with higher `live_meshes`, next targets are mesh vertex count, per-chunk draw submissions, actual camera visibility, distant LODs and chunk batching. Shadows have already been deprioritized by the user's A/B result. Test multiplayer and mining edits as well, since chunk state and collider streaming remain authoritative.
