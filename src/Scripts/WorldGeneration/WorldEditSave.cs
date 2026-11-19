@@ -28,7 +28,9 @@ public static class WorldEditSave
         using var stream = new FileStream(path, FileMode.CreateNew,
             FileAccess.Write, FileShare.None);
         stream.Write(data);
-        stream.Flush(flushToDisk: true);
+        // The web virtual filesystem may not expose a physical fsync.
+        try { stream.Flush(flushToDisk: true); }
+        catch (PlatformNotSupportedException) { stream.Flush(); }
     }
 
     public static void Save(string root, string worldId, int seed,
@@ -69,9 +71,26 @@ public static class WorldEditSave
                 Encoding.UTF8.GetBytes(manifest.ToString()));
             Directory.Move(staging, target);
             string pointer = Path.Combine(root, "current.txt");
+            string previous = File.Exists(pointer)
+                ? File.ReadAllText(pointer).Trim() : "";
             string pending = Path.Combine(root, generation + ".pointer.tmp");
             DurableWrite(pending, Encoding.ASCII.GetBytes(generation));
             File.Move(pending, pointer, overwrite: true);
+
+            // Keep the previous committed generation as one recovery backup.
+            // Remove older complete generations only AFTER the new pointer is
+            // committed. Never delete an unfinished staging directory.
+            string generations = Path.Combine(root, "generations");
+            foreach (string dir in Directory.EnumerateDirectories(generations))
+            {
+                string name = Path.GetFileName(dir);
+                if (name == generation || name == previous ||
+                    name.EndsWith(".tmp", StringComparison.Ordinal))
+                    continue;
+                try { Directory.Delete(dir, recursive: true); }
+                catch (IOException) { /* cleanup is best effort */ }
+                catch (UnauthorizedAccessException) { /* keep backup */ }
+            }
         }
         catch
         {
