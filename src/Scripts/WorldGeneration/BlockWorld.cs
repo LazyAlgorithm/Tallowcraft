@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,7 +12,8 @@ namespace WorldGeneration;
 
 /// <summary>
 /// Locally streams chunk meshes. Only the server edits voxels; the scene's
-/// NetworkIdentity replicates a bounded, atomic edit snapshot to every peer.
+/// NetworkIdentity publishes only the world seed and identity. Edited
+/// sections are requested on demand, paged, cached and kept current by deltas.
 /// Generated chunk GameObjects are deliberately local/transient, never network objects.
 /// </summary>
 public class BlockWorld : Script
@@ -92,11 +95,25 @@ public class BlockWorld : Script
         _streamLatencyMax = 0;
     }
 
-    // Empty on newly connected clients until the authoritative snapshot arrives.
-    // Includes world seed; the two cannot disagree while joining.
+    // Metadata only. No voxel list is ever sent in a [Sync] field.
+    // "3|seed|worldId" arrives automatically for late joiners.
     [Sync] public string EditState = "";
 
-    private readonly BlockEdits _edits = new();
+    private BlockEdits _edits = new();
+    private string _worldId = "";
+    private bool _saveLoadFailed;
+    private Task? _saveTask;
+    private float _saveClock;
+    private int _generation;
+    private int _savedGeneration;
+    private int _savingGeneration;
+
+    private readonly HashSet<ChunkKey> _clientReady = new();
+    private readonly Dictionary<ChunkKey, EditSectionTransfer> _transfers = new();
+    private string SaveFolder => Path.Combine(
+        GamePaths.PlayerData, "tallowcraft", "worlds", "default");
+    private string CacheFolder => Path.Combine(
+        GamePaths.PlayerData, "tallowcraft", "chunk-cache");
     private readonly Dictionary<ChunkKey, LiveChunk> _loaded = new();
     private readonly Dictionary<ChunkKey, ChunkJob> _jobs = new();
     // Successful zero-surface jobs do not need a GameObject or GPU buffers.
@@ -137,11 +154,124 @@ public class BlockWorld : Script
 
     public override void Start()
     {
-        if (Scene.IsServer)
+        if (!Scene.IsServer)
+            return;
+
+        if (WorldEditSave.HasSave(SaveFolder))
         {
-            _publishedSeed = Seed;
-            EditState = _edits.Serialize(Seed);
+            if (!WorldEditSave.TryLoad(SaveFolder, out string loadedId,
+                    out int loadedSeed, out BlockEdits loaded))
+            {
+                _saveLoadFailed = true;
+                Console.WriteLine("Tallowcraft world save is corrupt or incomplete; " +
+                    "refusing to replace it with an empty world.");
+                return;
+            }
+            _worldId = loadedId;
+            Seed = loadedSeed;
+            _edits = loaded;
+            RebuildSurfaceOpenings();
+            Console.WriteLine($"Tallowcraft restored {_edits.Count} modified voxels.");
         }
+        else
+        {
+            _worldId = WorldEditSave.NewWorldId();
+            try
+            {
+                WorldEditSave.Save(SaveFolder, _worldId, Seed,
+                    _edits.Snapshot, _edits.Revisions);
+            }
+            catch (Exception exception)
+            {
+                _saveLoadFailed = true;
+                Console.WriteLine($"Unable to initialize world save: {exception}");
+                return;
+            }
+        }
+        _publishedSeed = Seed;
+        EditState = WorldMetadata();
+    }
+
+    private string WorldMetadata() =>
+        "3|" + Seed.ToString(CultureInfo.InvariantCulture) + "|" + _worldId;
+
+    private void ApplyWorldMetadata()
+    {
+        if (EditState == _appliedSnapshot || EditState == _rejectedSnapshot)
+            return;
+        string[] pieces = EditState.Split('|');
+        if (pieces.Length != 3 || pieces[0] != "3" ||
+            !int.TryParse(pieces[1], NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out int seed) ||
+            !Guid.TryParseExact(pieces[2], "N", out _))
+        {
+            _rejectedSnapshot = EditState;
+            Console.WriteLine("Rejected invalid Tallowcraft world metadata.");
+            return;
+        }
+
+        if (_worldId != pieces[2] || Seed != seed)
+        {
+            _edits = new BlockEdits();
+            _clientReady.Clear();
+            _transfers.Clear();
+            Seed = seed;
+            _worldId = pieces[2];
+            RebuildSurfaceOpenings();
+            MarkAllDirty();
+        }
+        _appliedSnapshot = EditState;
+    }
+
+    private void TickSaves(float deltaTime)
+    {
+        if (_saveTask != null && _saveTask.IsCompleted)
+        {
+            if (_saveTask.IsFaulted)
+                Console.WriteLine($"Tallowcraft save failed: {_saveTask.Exception}");
+            else
+                _savedGeneration = _savingGeneration;
+            _saveTask = null;
+        }
+        _saveClock += Math.Max(0f, deltaTime);
+        if (_saveTask != null || _saveClock < 30f ||
+            _generation == _savedGeneration)
+            return;
+        _saveClock = 0;
+        var snapshot = _edits.Snapshot;
+        var revisions = _edits.Revisions;
+        string folder = SaveFolder, id = _worldId;
+        int seed = Seed;
+        _savingGeneration = _generation;
+        _saveTask = Task.Run(() =>
+            WorldEditSave.Save(folder, id, seed, snapshot, revisions));
+    }
+
+    private void SaveNow()
+    {
+        if (_saveLoadFailed || _worldId.Length == 0)
+            return;
+        try
+        {
+            _saveTask?.GetAwaiter().GetResult();
+            _saveTask = null;
+            if (_generation != _savedGeneration)
+            {
+                WorldEditSave.Save(SaveFolder, _worldId, Seed,
+                    _edits.Snapshot, _edits.Revisions);
+                _savedGeneration = _generation;
+            }
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine($"Tallowcraft save failed: {exception}");
+        }
+    }
+
+    public override void OnSaving()
+    {
+        if (Scene.IsServer)
+            SaveNow();
     }
 
     // Rendering, chunk jobs and synchronized snapshots are local per machine,
@@ -149,23 +279,32 @@ public class BlockWorld : Script
     // networked Update callback. Never run streaming during prediction replay.
     public override void LocalUpdate(float deltaTime)
     {
-        // Never generate a client's base terrain before getting the server's
-        // seed AND modified blocks in one authoritative snapshot.
+        // A client must have the authoritative seed before generating any
+        // chunks, then must validate each requested section before meshing.
         if (Scene.IsServer)
         {
-            if (Seed != _publishedSeed || EditState.Length == 0)
+            if (_saveLoadFailed)
+                return;
+            if (Seed != _publishedSeed)
             {
+                // A changed seed starts a completely new world; prior edits
+                // cannot be applied against different procedural terrain.
                 _publishedSeed = Seed;
-                EditState = _edits.Serialize(Seed);
+                _worldId = WorldEditSave.NewWorldId();
+                _edits = new BlockEdits();
+                _generation++;
+                EditState = WorldMetadata();
+                _exposedBelow.Clear();
                 MarkAllDirty();
             }
+            TickSaves(deltaTime);
         }
         else
         {
             if (EditState.Length == 0)
                 return;
-            ApplyIncomingSnapshot();
-            if (_appliedSnapshot.Length == 0)
+            ApplyWorldMetadata();
+            if (_appliedSnapshot != EditState)
                 return;
         }
 
@@ -203,6 +342,8 @@ public class BlockWorld : Script
         }
         if (!_streamExhausted)
             StartNearestJobs(cx, cy, cz);
+        if (!Scene.IsServer)
+            RequestWaitingSections(deltaTime);
     }
 
     private bool StreamStateChanged(int cx, int cy, int cz)
@@ -321,6 +462,28 @@ public class BlockWorld : Script
                     ChunkGenerator.FloorDiv(edit.Key.X, ChunkGenerator.Size),
                     -1,
                     ChunkGenerator.FloorDiv(edit.Key.Z, ChunkGenerator.Size)));
+    }
+
+    // Only the one surface section changed on a block edit needs rescanning.
+    private void UpdateSurfaceOpening(BlockPosition position)
+    {
+        if (position.Y != 0)
+            return;
+        ChunkKey below = new(
+            ChunkGenerator.FloorDiv(position.X, ChunkGenerator.Size), -1,
+            ChunkGenerator.FloorDiv(position.Z, ChunkGenerator.Size));
+        ChunkKey surface = new(below.X, 0, below.Z);
+        bool open = false;
+        foreach (var edit in _edits.InSection(surface))
+            if (edit.Key.Y == 0 && edit.Value == 0)
+            {
+                open = true;
+                break;
+            }
+        if (open)
+            _exposedBelow.Add(below);
+        else
+            _exposedBelow.Remove(below);
     }
 
     private int CollisionRadius() =>
@@ -671,26 +834,151 @@ public class BlockWorld : Script
         if (localZ == size - 1) MarkDirty(new ChunkKey(x, y, z + 1));
     }
 
-    private void ApplyIncomingSnapshot()
+    private bool EnsureSectionReady(ChunkKey key)
     {
-        if (EditState == _appliedSnapshot || EditState == _rejectedSnapshot)
+        if (_clientReady.Contains(key))
+            return true;
+        if (_transfers.ContainsKey(key))
+            return false;
+
+        var transfer = new EditSectionTransfer(key);
+        if (WorldEditCache.TryRead(CacheFolder, _worldId, key, Seed,
+                out int revision, out string checksum, out var cached))
+        {
+            transfer.CacheRevision = revision;
+            transfer.CacheHash = checksum;
+            transfer.Cached = cached;
+        }
+        _transfers.Add(key, transfer);
+        return false;
+    }
+
+    private void RequestWaitingSections(float deltaTime)
+    {
+        if (_transfers.Count == 0)
+            return;
+        GameObject player = Viewer();
+        BlockEditor? editor = player.IsValid ? player.GetComponent<BlockEditor>() : null;
+        if (editor == null)
             return;
 
-        int previousSeed = Seed;
-        if (!_edits.TryLoad(EditState, out int newSeed, out List<BlockPosition> changed))
+        int sent = 0;
+        foreach (var pair in _transfers)
         {
-            _rejectedSnapshot = EditState;
-            Console.WriteLine("Rejected invalid Tallowcraft world snapshot.");
+            if (sent >= 2)
+                break;
+            EditSectionTransfer transfer = pair.Value;
+            transfer.RetrySeconds -= Math.Max(0f, deltaTime);
+            if (transfer.RetrySeconds > 0f)
+                continue;
+            transfer.RetrySeconds = 0.6f;
+            editor.RequestWorldSection(transfer.Key, transfer.NextPage,
+                transfer.NextPage == 0 ? transfer.CacheRevision : -1,
+                transfer.NextPage == 0 ? transfer.CacheHash : "");
+            sent++;
+        }
+    }
+
+    // A request arrives on the player's owned NetworkIdentity, which
+    // authenticates RpcSender. Bound requests to the player's actual location.
+    public void SendSectionPage(int clientId, ChunkKey key, int page,
+        int clientRevision, string clientHash)
+    {
+        if (!Scene.IsServer || _saveLoadFailed ||
+            key.Y < ChunkGenerator.MinChunkY || key.Y > ChunkGenerator.MaxChunkY ||
+            page < 0 || page >= 64)
+            return;
+
+        GameObject? player = Network.PlayerObject(Scene, clientId);
+        if (player is not { } p || !p.IsValid)
+            return;
+        Vector3 pos = p.Transform.Position;
+        int centerX = ChunkGenerator.FloorDiv((int)MathF.Floor(pos.X), 16);
+        int centerY = ChunkGenerator.FloorDiv((int)MathF.Floor(pos.Y), 16);
+        int centerZ = ChunkGenerator.FloorDiv((int)MathF.Floor(pos.Z), 16);
+        if (Math.Abs((long)key.X - centerX) > 18 ||
+            Math.Abs((long)key.Z - centerZ) > 18 ||
+            Math.Abs((long)key.Y - centerY) > 3)
+            return;
+
+        int revision = _edits.Revision(key);
+        byte[] bytes = EditSectionCodec.Encode(_edits.InSection(key));
+        string hash = EditSectionCodec.Hash(bytes);
+        if (page == 0 && clientRevision == revision && clientHash == hash)
+        {
+            Rpc(nameof(ReceiveSectionPage), clientId, key.X, key.Y, key.Z,
+                revision, 0, -1, hash, "");
             return;
         }
+        int pages = EditSectionCodec.Pages(bytes.Length);
+        if (page >= pages)
+            return;
+        Rpc(nameof(ReceiveSectionPage), clientId, key.X, key.Y, key.Z,
+            revision, page, pages, hash, EditSectionCodec.Page(bytes, page));
+    }
 
-        Seed = newSeed;
-        if (newSeed != previousSeed)
-            MarkAllDirty();
+    [Rpc(RpcTarget.Everyone)]
+    private void ReceiveSectionPage(int clientId, int x, int y, int z,
+        int revision, int page, int pages, string checksum, string payload)
+    {
+        if (Scene.IsServer || !Scene.IsNetworked ||
+            Scene.LocalClientId != clientId || _appliedSnapshot != EditState)
+            return;
+        ChunkKey key = new(x, y, z);
+        if (!_transfers.TryGetValue(key, out var transfer))
+            return;
+        int result = transfer.Receive(revision, page, pages,
+            checksum, payload, Seed, out var entries);
+        if (result != 2 || entries == null)
+            return;
+
+        List<BlockPosition> changed;
+        try { changed = _edits.ReplaceSection(key, entries, revision, Seed); }
+        catch (ArgumentException) { transfer.Reset(); return; }
+
+        _clientReady.Add(key);
+        _transfers.Remove(key);
         foreach (BlockPosition position in changed)
+        {
             MarkBlockDirty(position);
-        RebuildSurfaceOpenings();
-        _appliedSnapshot = EditState;
+            UpdateSurfaceOpening(position);
+        }
+        // Even a section with no edited blocks may now be generated.
+        MarkDirty(key);
+        try
+        {
+            if (transfer.CompletedBytes != null)
+                WorldEditCache.Write(CacheFolder, _worldId, key,
+                    revision, transfer.CompletedBytes);
+        }
+        catch (IOException exception)
+        {
+            Console.WriteLine($"Tallowcraft client cache unavailable: {exception.Message}");
+        }
+    }
+
+    [Rpc(RpcTarget.Everyone)]
+    private void ReceiveSectionDelta(int x, int y, int z,
+        int revision, int localIndex, int state)
+    {
+        if (Scene.IsServer || !Scene.IsNetworked ||
+            _appliedSnapshot != EditState || localIndex < 0 ||
+            localIndex >= 4096 || state < 0 || state > ushort.MaxValue)
+            return;
+        ChunkKey key = new(x, y, z);
+        if (!_clientReady.Contains(key))
+            return; // A pending baseline includes this edit.
+        BlockPosition position = EditSectionCodec.Position(key, localIndex);
+        if (!_edits.ApplyDelta(key, revision, position, (ushort)state, Seed))
+        {
+            // Revision gap or malformed delta: do not mesh from stale state.
+            _clientReady.Remove(key);
+            _transfers.Remove(key);
+            EnsureSectionReady(key);
+            return;
+        }
+        MarkBlockDirty(position);
+        UpdateSurfaceOpening(position);
     }
 
     private void StartNearestJobs(int cx, int cy, int cz)
@@ -782,6 +1070,8 @@ public class BlockWorld : Script
                 (_emptyChunks.TryGetValue(key, out int emptyVersion) &&
                     emptyVersion == VersionFor(key)))
                 continue;
+            if (!Scene.IsServer && !EnsureSectionReady(key))
+                continue;
             if (!_loaded.TryGetValue(key, out LiveChunk? live))
             {
                 if (!ChunkGenerator.HasPotentialBlocks(key, seed, snapshot))
@@ -790,9 +1080,8 @@ public class BlockWorld : Script
             else if (!live.Dirty)
                 continue;
 
-            // Neighboring edit state must be authorized before meshing:
-            // otherwise a changed block on a chunk seam could render as its
-            // original terrain until that neighboring chunk is visited.
+            // A neighboring edited block can change exposed border faces.
+            // Require the six face-neighbor baselines before generating.
             if (!Scene.IsServer)
             {
                 bool neighborsReady = true;
@@ -947,7 +1236,7 @@ public class BlockWorld : Script
     {
         previousState = 0;
         replacementState = 0;
-        if (!Scene.IsServer ||
+        if (!Scene.IsServer || _saveLoadFailed ||
             (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))) ||
             !TryQueryFromRay(origin, direction, reach, actingPlayer,
                 out BlockPosition remove, out BlockPosition adjacent,
@@ -978,14 +1267,19 @@ public class BlockWorld : Script
         previousState = previous;
         replacementState = replacement;
         MarkBlockDirty(target);
-        if (target.Y == 0)
-            RebuildSurfaceOpenings();
-        EditState = _edits.Serialize(Seed);
+        UpdateSurfaceOpening(target);
+        _generation++;
+        ChunkKey section = SectionedEditSnapshot.SectionOf(target);
+        Rpc(nameof(ReceiveSectionDelta), section.X, section.Y, section.Z,
+            _edits.Revision(section), (int)EditSectionCodec.Index(target),
+            (int)replacement);
         return true;
     }
 
     public override void OnDestroy()
     {
+        if (Scene.IsServer)
+            SaveNow();
         _stop.Cancel();
         foreach (ChunkJob job in _jobs.Values)
             job.Cancellation.Cancel();
