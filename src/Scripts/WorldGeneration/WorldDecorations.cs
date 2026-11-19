@@ -171,7 +171,7 @@ public static class WorldDecorations
     public static ushort StructureAt(int x, int y, int z, int seed)
     {
         if (y < 0 || y > ChunkGenerator.MaxWorldY ||
-            !BeyondSpawn(x, z, SpawnClear - RuinRadius))
+            !BeyondSpawn(x, z, SpawnClear - RuinRadius * 2))
             return 0;
         int cellX = ChunkGenerator.FloorDiv(x, RuinCell);
         int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
