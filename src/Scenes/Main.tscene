@@ -10,7 +10,7 @@ env fogDensity 0.004
 env exposure 1
 env bloom 0
 env bloomThreshold 1
-env shadowDistance 120
+env shadowDistance 80
 object 1 parent 0 active 1 name "Main Camera"
 transform 0 3 -9 0.104528464 0 0 0.9945219 1 1 1
 component Tallow.Camera enabled 1
