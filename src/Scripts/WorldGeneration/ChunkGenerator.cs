@@ -104,7 +104,8 @@ public static class ChunkGenerator
                 if (Height(key.X * Size + x, key.Z * Size + z, seed) >
                     key.Y * Size)
                     return true;
-        if (WorldFlora.HasBlocksInChunk(key, seed))
+        if (WorldFlora.HasBlocksInChunk(key, seed) ||
+            WorldDecorations.HasBlocksInChunk(key, seed))
             return true;
         foreach (var edit in edits)
             if (edit.Value != 0 &&
@@ -136,8 +137,17 @@ public static class ChunkGenerator
             return WorldGeology.IsCave(worldX, y, worldZ, seed)
                 ? (ushort)0 : WorldGeology.OreAt(worldX, y, worldZ, seed);
         int height = Height(worldX, worldZ, seed);
+        // Structures override surface blocks and trees; shrubs occupy only
+        // natural air, after trees. These priorities match CreateBlocks.
+        ushort structure = WorldDecorations.StructureAt(worldX, y, worldZ, seed);
+        if (structure != 0)
+            return structure;
         if (y >= height)
-            return WorldFlora.BlockAt(worldX, y, worldZ, seed);
+        {
+            ushort tree = WorldFlora.BlockAt(worldX, y, worldZ, seed);
+            return tree != 0 ? tree :
+                WorldDecorations.BushAt(worldX, y, worldZ, seed);
+        }
         WorldBiomes.Biome biome = WorldBiomes.At(worldX, worldZ, seed);
         if (y == height - 1)
             return biome == WorldBiomes.Biome.Highlands ? (ushort)3
@@ -189,6 +199,7 @@ public static class ChunkGenerator
         // Decorate each chunk from world-space anchors before edits overwrite
         // blocks. Neighboring mesh halo queries use the identical BaseBlock.
         WorldFlora.DecorateChunk(key, seed, blocks);
+        WorldDecorations.DecorateChunk(key, seed, blocks);
 
         // Copy-on-write edit dictionaries are immutable for worker lifetimes.
         foreach (var pair in edits)
