@@ -908,8 +908,21 @@ public class BlockWorld : Script
 
     /// <summary>Server-authoritative edit using the same target as preview.</summary>
     public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach,
-        bool breaking, GameObject actingPlayer, ushort placeState)
+        bool breaking, GameObject actingPlayer, ushort placeState) =>
+        TryEditFromRay(origin, direction, reach, breaking, actingPlayer,
+            placeState, out _, out _);
+
+    /// <summary>
+    /// Authoritative block transaction. Return the actual previous and next
+    /// voxel states only after a successful edit, so a player's inventory can
+    /// be credited or debited exactly once without a second raycast.
+    /// </summary>
+    public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach,
+        bool breaking, GameObject actingPlayer, ushort placeState,
+        out ushort previousState, out ushort replacementState)
     {
+        previousState = 0;
+        replacementState = 0;
         if (!Scene.IsServer ||
             (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))) ||
             !TryQueryFromRay(origin, direction, reach, actingPlayer,
@@ -923,8 +936,6 @@ public class BlockWorld : Script
         {
             target = remove;
             replacement = 0;
-            if (BlockAt(target) == 0)
-                return false;
         }
         else
         {
@@ -934,9 +945,14 @@ public class BlockWorld : Script
                 return false;
         }
 
+        ushort previous = BlockAt(target);
+        if (breaking && previous == 0)
+            return false;
         if (!_edits.Set(target, replacement, Seed))
             return false;
 
+        previousState = previous;
+        replacementState = replacement;
         MarkBlockDirty(target);
         if (target.Y == 0)
             RebuildSurfaceOpenings();
