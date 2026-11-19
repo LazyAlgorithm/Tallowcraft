@@ -247,3 +247,13 @@ dotnet run --project tests/BlockLogicTests -c Release -- --bench
 ```
 
 In Play mode, compare how quickly ground appears beneath the player, check walking and turning around the edge of the 6-chunk radius, dig from the surface through Y=0 into caves, and verify that the underground loads when exposed. For multiplayer, check both host and client moving independently and editing shafts. Send stream-profile logs to quantify residual queue-to-upload delays. Native Jolt cooking and GPU transfer remain outside these numbers.
+
+## High-radius mountain performance: game-only shadow cutoff
+
+A read-only inspection of Tallow's `feature/csharp-gameplay` renderer confirmed **camera frustum culling is implemented** in `Engine/src/Render/RenderView.bf`. The game scene's camera has `occlusionCulling 0`; this separately controlled feature is *disabled*, and enabling it in an open mountain scene can cost CPU while hiding very little. The renderer also gathers shadow-casting meshes within the sun-shadow range even if they are outside the camera's main-view frustum.
+
+Tallowcraft now limits its **voxel chunk** shadow submissions with `LimitChunkShadows = true` and `ShadowRadius = 5` (horizontal distance in 16-block chunks, one layer vertically). This is recalculated as the player moves and changed only for renderers entering/leaving the shadow ring. Meshes beyond this radius still draw normally when in view, but do not generate costly cascaded shadow renders. This setting can be disabled in the BlockWorld Inspector for A/B comparison. The scene's `shadowDistance` has also been lowered from 120 to 80 world units. No Tallow Engine source or render internals were modified.
+
+This may significantly reduce shadow-pass draw calls when viewing a wide mountain landscape at `RenderRadius=16`, but it does not replace LODs or GPU/CPU frame profiling, nor does it change how many mesh GameObjects exist. `ChunkSchedulingTests` covers the caster-distance boundaries. Try the same viewpoint at radius 16 with `LimitChunkShadows = true` and false, then separately toggle directional-light `Cast Shadows` to distinguish GPU shadow workload from main-thread streaming. Editor/engine frame timings will establish whether vertex processing, draw calls or CPU object updates are the remaining bottleneck.
+
+The `Camera.OcclusionCulling` setting was intentionally left off, since heightmap terrain and exposed mountain ridges are a poor match for the CPU occlusion buffer compared to enclosed caves or structures.
