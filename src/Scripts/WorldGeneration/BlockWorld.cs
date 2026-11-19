@@ -34,6 +34,11 @@ public class BlockWorld : Script
     // Native Jolt cooking deferred to physics frames is NOT measured here.
     public bool ProfileChunkColliders = true;
     public int ProfileReportEvery = 32;
+    public bool ProfileStreaming = true;
+    public int StreamReportEvery = 64;
+    private int _streamUploads;
+    private double _streamLatencyTotal;
+    private double _streamLatencyMax;
     private readonly int[] _profileCounts = new int[4];
     private readonly double[] _profileMilliseconds = new double[4];
     private readonly double[] _profileMaximum = new double[4];
@@ -64,6 +69,22 @@ public class BlockWorld : Script
     }
 
     private long ProfileStart() => ProfileChunkColliders ? Stopwatch.GetTimestamp() : 0;
+
+    private void RecordStreamLatency(ChunkJob job)
+    {
+        if (!ProfileStreaming) return;
+        double elapsed = Stopwatch.GetElapsedTime(job.EnqueuedAt).TotalMilliseconds;
+        _streamLatencyTotal += elapsed;
+        _streamLatencyMax = Math.Max(_streamLatencyMax, elapsed);
+        if (++_streamUploads < Math.Max(1, StreamReportEvery)) return;
+        Console.WriteLine(
+            $"[Tallowcraft stream profile] uploads={_streamUploads} " +
+            $"queue_to_upload_avg_ms={_streamLatencyTotal / _streamUploads:F1} " +
+            $"max_ms={_streamLatencyMax:F1}");
+        _streamUploads = 0;
+        _streamLatencyTotal = 0;
+        _streamLatencyMax = 0;
+    }
 
     // Empty on newly connected clients until the authoritative snapshot arrives.
     // Includes world seed; the two cannot disagree while joining.
@@ -142,6 +163,7 @@ public class BlockWorld : Script
         int cz = ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z), ChunkGenerator.Size);
 
         GatherCollisionCenters(cx, cy, cz);
+        CancelObsoleteJobs(cx, cy, cz);
         UnloadDistant(cx, cy, cz);
         UploadFinished(cx, cy, cz);
         UpdateColliders(cx, cy, cz);
@@ -283,6 +305,18 @@ public class BlockWorld : Script
         return false;
     }
 
+    private void CancelObsoleteJobs(int cx, int cy, int cz)
+    {
+        foreach (var pair in _jobs)
+        {
+            if (pair.Value.Task.IsCompleted ||
+                (pair.Value.Version == VersionFor(pair.Key) &&
+                 ShouldKeep(pair.Key, cx, cy, cz)))
+                continue;
+            pair.Value.Cancellation.Cancel();
+        }
+    }
+
     private void UnloadDistant(int cx, int cy, int cz)
     {
         _scratch.Clear();
@@ -322,6 +356,7 @@ public class BlockWorld : Script
 
             processed++;
             _scratch.Add(pair.Key);
+            job.Cancellation.Dispose();
 
             if (job.Task.IsFaulted)
             {
@@ -335,6 +370,7 @@ public class BlockWorld : Script
                 continue;
 
             ChunkMesh data = job.Task.Result;
+            RecordStreamLatency(job);
 
             if (_loaded.TryGetValue(pair.Key, out LiveChunk? live))
             {
@@ -581,7 +617,6 @@ public class BlockWorld : Script
 
         var snapshot = _edits.Snapshot;
         int seed = Seed;
-        CancellationToken token = _stop.Token;
         foreach (var candidate in _candidates)
         {
             if (_jobs.Count >= workers) break;
@@ -599,9 +634,13 @@ public class BlockWorld : Script
                 continue;
 
             int version = VersionFor(key);
+            CancellationTokenSource cancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+            CancellationToken token = cancellation.Token;
+            long enqueuedAt = Stopwatch.GetTimestamp();
             Task<ChunkMesh> task = Task.Run(
                 () => ChunkGenerator.GenerateMesh(key, seed, snapshot, token), token);
-            _jobs.Add(key, new ChunkJob(task, version));
+            _jobs.Add(key, new ChunkJob(task, version, cancellation, enqueuedAt));
         }
     }
 
@@ -748,6 +787,8 @@ public class BlockWorld : Script
     public override void OnDestroy()
     {
         _stop.Cancel();
+        foreach (ChunkJob job in _jobs.Values)
+            job.Cancellation.Cancel();
         foreach (LiveChunk chunk in _loaded.Values)
         {
             if (!chunk.Object.IsValid)
