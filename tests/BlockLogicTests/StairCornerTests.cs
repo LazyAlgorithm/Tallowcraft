@@ -91,8 +91,8 @@ internal static class StairCornerTests
                 StairCornerResolver.Choose(stair, default, left,
                     parallel, default) == StairCorner.Straight,
                 "Inner corner must not extend into a continuous stair row");
-            check(StairCornerResolver.Choose(stair, right, left,
-                    parallel, default) == StairCorner.InnerRight,
+            check(StairCornerResolver.Choose(stair, right, right,
+                    parallel, default) == StairCorner.InnerLeft,
                 "Suppressed outer corner may still form an inner corner");
             check(StairCornerResolver.Choose(stair, right, default,
                     oppositeLayer, default) == StairCorner.OuterLeft,
