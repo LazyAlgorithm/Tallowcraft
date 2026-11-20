@@ -2019,10 +2019,21 @@ public class BlockWorld : Script
         BlockPlacement.TryPlan(hit, adjacent, hitNormal,
             new BlockState(BlockAt(hit)), selected, out target, out replacement);
 
+    private BlockState GeometryAt(BlockPosition position, BlockState raw)
+    {
+        if (raw.Shape != BlockShape.Stair) return raw;
+        var (fx, fz) = StairCornerResolver.Forward(raw.Facing);
+        BlockState front = new(BlockAt(new BlockPosition(
+            position.X + fx, position.Y, position.Z + fz)));
+        BlockState behind = new(BlockAt(new BlockPosition(
+            position.X - fx, position.Y, position.Z - fz)));
+        return raw.WithCorner(StairCornerResolver.Choose(raw, front, behind));
+    }
+
     /// <summary>
-    /// Validate a proposed state change against the voxel contents and nearby
-    /// physics bodies. Check only each newly-filled half-cell, with a small
-    /// gap to avoid false overlaps with terrain in neighboring cells.
+    /// Validate proposed geometry against nearby physics. Resolve stair
+    /// corners from neighboring authoritative blocks before testing the
+    /// newly occupied half-cells, matching HybridChunkMesher's collider.
     /// </summary>
     public bool CanPlaceAt(BlockPosition position, ushort replacement)
     {
@@ -2033,11 +2044,12 @@ public class BlockWorld : Script
         if (!BlockPlacement.CanReplace(previous, replacement))
             return false;
 
+        BlockState geometry = GeometryAt(position, new BlockState(replacement));
         for (int y = 0; y < 2; y++)
             for (int z = 0; z < 2; z++)
                 for (int x = 0; x < 2; x++)
                 {
-                    if (!BlockPlacement.AddsMicro(previous, replacement, x, y, z))
+                    if (!BlockPlacement.AddsMicro(previous, geometry.Packed, x, y, z))
                         continue;
 
                     Vector3 center = new(position.X + (x == 0 ? 0.25f : 0.75f),
