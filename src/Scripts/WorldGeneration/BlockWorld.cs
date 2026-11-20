@@ -177,6 +177,10 @@ public class BlockWorld : Script
     private int _nextCandidate;
     private bool _candidateListDirty = true;
     private readonly List<ChunkKey> _playerCenters = new();
+    // Short-lived authorized destination reservations. They are separate
+    // from visual LOD; every reserved area uses normal 16³ meshes/colliders.
+    private readonly Dictionary<int, ChunkKey> _returnCenters = new();
+    private ChunkKey? _localReturnCenter;
     private readonly List<float> _playerHeights = new();
     // Y=0 air edits expose the negative-Y layer from the surface.
     private readonly HashSet<ChunkKey> _exposedBelow = new();
@@ -756,6 +760,103 @@ public class BlockWorld : Script
             Scene.Find("Main Camera") ?? GameObject;
     }
 
+    /// <summary>
+    /// Server-owned preloading region for an authenticated return request.
+    /// The new center is considered for ordinary authoritative collision
+    /// generation even when nobody is standing near it yet.
+    /// </summary>
+    public void BeginServerReturnPreload(int ownerId, Vector3 destination)
+    {
+        if (!Scene.IsServer) return;
+        _returnCenters[ownerId] = ReturnCenter(destination);
+        _streamStateKnown = false;
+        _candidateListDirty = true;
+        _streamExhausted = false;
+    }
+
+    public void EndServerReturnPreload(int ownerId)
+    {
+        if (!Scene.IsServer || !_returnCenters.Remove(ownerId)) return;
+        _streamStateKnown = false;
+        _candidateListDirty = true;
+        _streamExhausted = false;
+    }
+
+    public void BeginLocalReturnPreload(Vector3 destination)
+    {
+        if (Scene.IsServer) return; // host uses the server reservation
+        _localReturnCenter = ReturnCenter(destination);
+        _streamStateKnown = false;
+        _candidateListDirty = true;
+        _streamExhausted = false;
+    }
+
+    public void EndLocalReturnPreload()
+    {
+        if (_localReturnCenter == null) return;
+        _localReturnCenter = null;
+        _streamStateKnown = false;
+        _candidateListDirty = true;
+        _streamExhausted = false;
+    }
+
+    private static ChunkKey ReturnCenter(Vector3 position) =>
+        new(ChunkGenerator.FloorDiv((int)MathF.Floor(position.X),
+                ChunkGenerator.Size),
+            Math.Clamp(ChunkGenerator.FloorDiv((int)MathF.Floor(position.Y),
+                    ChunkGenerator.Size), ChunkGenerator.MinChunkY,
+                ChunkGenerator.MaxChunkY),
+            ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z),
+                ChunkGenerator.Size));
+
+    private static bool InReturnRing(ChunkKey key, ChunkKey center, int extra = 0) =>
+        key.Y >= ChunkGenerator.MinChunkY &&
+        key.Y <= ChunkGenerator.MaxChunkY &&
+        Math.Abs((long)key.Y - center.Y) <= 1 + extra &&
+        Math.Abs((long)key.X - center.X) <= 1 + extra &&
+        Math.Abs((long)key.Z - center.Z) <= 1 + extra;
+
+    private bool IsReturnPreload(ChunkKey key)
+    {
+        if (_localReturnCenter is ChunkKey local && InReturnRing(key, local))
+            return true;
+        if (Scene.IsServer)
+            foreach (ChunkKey center in _returnCenters.Values)
+                if (InReturnRing(key, center))
+                    return true;
+        return false;
+    }
+
+    /// <summary>
+    /// The teleport destination is ready only after every nonempty 16³
+    /// surface/adjacent section is resident with an up-to-date collider.
+    /// Coarse quadtree tiles cannot satisfy this condition.
+    /// </summary>
+    public bool ReturnAreaReady(Vector3 destination)
+    {
+        ChunkKey center = ReturnCenter(destination);
+        var snapshot = _edits.Snapshot;
+        for (int y = Math.Max(center.Y - 1, ChunkGenerator.MinChunkY);
+             y <= Math.Min(center.Y + 1, ChunkGenerator.MaxChunkY); y++)
+        for (int z = center.Z - 1; z <= center.Z + 1; z++)
+        for (int x = center.X - 1; x <= center.X + 1; x++)
+        {
+            ChunkKey key = new(x, y, z);
+            if (!ChunkGenerator.HasPotentialBlocks(key, Seed, snapshot))
+                continue;
+            if (_emptyChunks.TryGetValue(key, out int emptyVersion) &&
+                emptyVersion == VersionFor(key))
+                continue;
+            if (!_loaded.TryGetValue(key, out LiveChunk? loaded) ||
+                !loaded.Object.IsValid || loaded.Dirty ||
+                !_colliders.Contains(key) || _jobs.ContainsKey(key))
+                return false;
+            if (!Scene.IsServer && !_clientReady.Contains(key))
+                return false;
+        }
+        return true;
+    }
+
     private void GatherCollisionCenters(int cx, int cy, int cz)
     {
         _playerCenters.Clear();
@@ -773,6 +874,14 @@ public class BlockWorld : Script
             _playerCenters.Add(new ChunkKey(cx, cy, cz));
             _playerHeights.Add(_viewerWorldY);
         }
+        if (Scene.IsServer)
+            foreach (ChunkKey reserved in _returnCenters.Values)
+            {
+                _playerCenters.Add(reserved);
+                // Keep underground generated even below the ordinary 5m
+                // camera cutoff while the destination is being prepared.
+                _playerHeights.Add(reserved.Y * ChunkGenerator.Size);
+            }
     }
 
     private void AddPlayerCenter(GameObject? player)
@@ -843,6 +952,7 @@ public class BlockWorld : Script
 
     private bool ShouldStream(ChunkKey key, int cx, int cy, int cz, int extra = 0)
     {
+        if (IsReturnPreload(key)) return true;
         // The quadtree's LOD0 leaves own the full-resolution camera footprint.
         // Collider sections for remote players are scheduled separately.
         if (QuadtreeLodEnabled &&
@@ -876,6 +986,7 @@ public class BlockWorld : Script
 
     private bool ShouldKeep(ChunkKey key, int cx, int cy, int cz, int margin = 0)
     {
+        if (IsReturnPreload(key)) return true;
         if (ShouldStream(key, cx, cy, cz, margin))
             return true;
         // Do not discard existing full-detail meshes before their coarse
@@ -910,6 +1021,7 @@ public class BlockWorld : Script
 
     private bool ShouldHaveCollider(ChunkKey key, int cx, int cy, int cz, int margin = 0)
     {
+        if (IsReturnPreload(key)) return true;
         if (!HiddenForViewer(key) &&
             Near(key, cx, cy, cz, CollisionRadius() + margin))
             return true;
@@ -1310,9 +1422,13 @@ public class BlockWorld : Script
         int centerX = ChunkGenerator.FloorDiv((int)MathF.Floor(pos.X), 16);
         int centerY = ChunkGenerator.FloorDiv((int)MathF.Floor(pos.Y), 16);
         int centerZ = ChunkGenerator.FloorDiv((int)MathF.Floor(pos.Z), 16);
-        if (Math.Abs((long)key.X - centerX) > 18 ||
-            Math.Abs((long)key.Z - centerZ) > 18 ||
-            Math.Abs((long)key.Y - centerY) > 3)
+        bool nearPlayer = Math.Abs((long)key.X - centerX) <= 18 &&
+            Math.Abs((long)key.Z - centerZ) <= 18 &&
+            Math.Abs((long)key.Y - centerY) <= 3;
+        bool reserved = _returnCenters.TryGetValue(clientId,
+            out ChunkKey destination) &&
+            InReturnRing(key, destination, 2);
+        if (!nearPlayer && !reserved)
             return;
 
         int revision = _edits.Revision(key);
@@ -1417,6 +1533,8 @@ public class BlockWorld : Script
                     : 20);
             int nearRadius = CollisionRadius();
             int vertical = Math.Clamp(VerticalRadius, 0, 2);
+            if (Scene.IsServer && _returnCenters.Count != 0)
+                vertical = Math.Max(vertical, 1);
             _candidates.Clear();
             _candidateKeys.Clear();
             _nextCandidate = 0;
@@ -1451,6 +1569,20 @@ public class BlockWorld : Script
                 }
             }
 
+            // A remote client also requests full 16³ sections near its
+            // reserved spawn destination before acknowledging teleport.
+            if (!Scene.IsServer && _localReturnCenter is ChunkKey returnCenter)
+                for (int dy = -1; dy <= 1; dy++)
+                for (int dz = -1; dz <= 1; dz++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    ChunkKey key = new(returnCenter.X + dx,
+                        returnCenter.Y + dy, returnCenter.Z + dz);
+                    if (key.Y >= ChunkGenerator.MinChunkY &&
+                        key.Y <= ChunkGenerator.MaxChunkY)
+                        Consider(key, returnCenter.X, returnCenter.Y, returnCenter.Z);
+                }
+
             // Dedicated servers and hosts additionally require colliders
             // near every remote player, regardless of this camera's view.
             if (Scene.IsServer)
@@ -1469,7 +1601,8 @@ public class BlockWorld : Script
                                 (long)nearRadius * nearRadius)
                             continue;
                         ChunkKey key = new(center.X + dx, layer, center.Z + dz);
-                        if (!HiddenForPlayer(key, remoteHeight))
+                        if (IsReturnPreload(key) ||
+                            !HiddenForPlayer(key, remoteHeight))
                             Consider(key, center.X, center.Y, center.Z);
                     }
                 }
@@ -2071,5 +2204,7 @@ public class BlockWorld : Script
         _shadowCasters.Clear();
         _chunkObjects.Clear();
         _versions.Clear();
+        _returnCenters.Clear();
+        _localReturnCenter = null;
     }
 }
