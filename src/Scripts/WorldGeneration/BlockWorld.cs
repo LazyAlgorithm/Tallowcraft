@@ -2073,6 +2073,11 @@ public class BlockWorld : Script
         BlockPlacement.TryPlan(hit, adjacent, hitNormal,
             new BlockState(BlockAt(hit)), selected, out target, out replacement);
 
+    /// <summary>Presentation and collision share the same derived stair shape.
+    /// The result is transient and must not be saved to world-edit data.</summary>
+    public BlockState ResolveVisualShape(BlockPosition position, BlockState raw) =>
+        GeometryAt(position, raw);
+
     private BlockState GeometryAt(BlockPosition position, BlockState raw)
     {
         if (raw.Shape != BlockShape.Stair) return raw;
