@@ -92,7 +92,8 @@ public class FirstPersonCharacter : Script
         // unlocking the pointer must never let UI clicks move the player.
         var editor = GameObject.GetComponent<BlockEditor>();
         bool browsingInventory = editor?.IsInventoryVisible == true ||
-            editor?.UiGameMenuVisible == true;
+            editor?.UiGameMenuVisible == true ||
+            editor?.ReturnToSpawnLocked == true;
         if (GetCharacterController() is { } controller)
         {
             // Only the authoritative server relocates new player instances.
