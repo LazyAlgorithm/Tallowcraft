@@ -62,41 +62,69 @@ internal static class StairCornerTests
                 (facing + 1) & 3, isUpper == 0);
             BlockState unrelated = BlockState.Create(6, BlockShape.Slab);
             check(StairCornerResolver.Choose(stair, right, default) ==
-                    StairCorner.OuterLeft &&
-                StairCornerResolver.Choose(stair, left, default) ==
-                    StairCorner.OuterRight,
-                "Perpendicular front stairs make outward left/right corners");
-            check(StairCornerResolver.Choose(stair, default, right) ==
                     StairCorner.InnerLeft &&
-                StairCornerResolver.Choose(stair, default, left) ==
+                StairCornerResolver.Choose(stair, left, default) ==
                     StairCorner.InnerRight,
-                "Perpendicular rear stairs make inward left/right corners");
+                "Lower-side perpendicular stairs make inner corners");
+            check(StairCornerResolver.Choose(stair, default, right) ==
+                    StairCorner.OuterLeft &&
+                StairCornerResolver.Choose(stair, default, left) ==
+                    StairCorner.OuterRight,
+                "Raised-side perpendicular stairs make outer corners");
             check(StairCornerResolver.Choose(stair, parallel, default) ==
                     StairCorner.Straight &&
                 StairCornerResolver.Choose(stair, oppositeLayer, unrelated) ==
                     StairCorner.Straight,
                 "Parallel, different-height and non-stair neighbors never bend stairs");
             check(StairCornerResolver.Choose(stair, right, left) ==
-                    StairCorner.OuterLeft,
-                "Front stair takes precedence in an ambiguous corner");
+                    StairCorner.OuterRight,
+                "Raised-side corner takes precedence when both ends turn");
             // A perpendicular neighbor does not make a corner if a
             // same-facing stair continues along the exposed side.
-            check(StairCornerResolver.Choose(stair, right, default,
+            check(StairCornerResolver.Choose(stair, default, right,
                     parallel, default) == StairCorner.Straight &&
-                StairCornerResolver.Choose(stair, left, default,
+                StairCornerResolver.Choose(stair, default, left,
                     default, parallel) == StairCorner.Straight,
                 "Outer corner must not cut out a continuous stair row");
-            check(StairCornerResolver.Choose(stair, default, right,
+            check(StairCornerResolver.Choose(stair, right, default,
                     default, parallel) == StairCorner.Straight &&
-                StairCornerResolver.Choose(stair, default, left,
+                StairCornerResolver.Choose(stair, left, default,
                     parallel, default) == StairCorner.Straight,
                 "Inner corner must not extend into a continuous stair row");
             check(StairCornerResolver.Choose(stair, right, right,
                     parallel, default) == StairCorner.InnerLeft,
                 "Suppressed outer corner may still form an inner corner");
-            check(StairCornerResolver.Choose(stair, right, default,
+            check(StairCornerResolver.Choose(stair, default, right,
                     oppositeLayer, default) == StairCorner.OuterLeft,
                 "Opposite-half side stair does not block a valid corner");
+            // A turn must be geometrically continuous across the joining
+            // voxel face, not just return the correct Corner enum name.
+            // The older front/back inversion put a solid step where a
+            // quarter step belonged, leaving visible holes in L turns.
+            int stepY = isUpper == 1 ? 0 : 1;
+            BlockState outer = stair.WithCorner(
+                StairCornerResolver.Choose(stair, default, right));
+            BlockState inner = stair.WithCorner(
+                StairCornerResolver.Choose(stair, right, default));
+            var (dx, dz) = StairCornerResolver.Forward(facing);
+            for (int side = 0; side < 2; side++)
+            {
+                int cxBack = dx != 0 ? (dx > 0 ? 0 : 1) : side;
+                int czBack = dz != 0 ? (dz > 0 ? 0 : 1) : side;
+                int nxFront = dx != 0 ? (dx > 0 ? 1 : 0) : side;
+                int nzFront = dz != 0 ? (dz > 0 ? 1 : 0) : side;
+                check(outer.ContainsMicro(cxBack, stepY, czBack) ==
+                      right.ContainsMicro(nxFront, stepY, nzFront),
+                    "Outer raised step matches perpendicular raised-side neighbor");
+
+                int cxFront = dx != 0 ? (dx > 0 ? 1 : 0) : side;
+                int czFront = dz != 0 ? (dz > 0 ? 1 : 0) : side;
+                int nxBack = dx != 0 ? (dx > 0 ? 0 : 1) : side;
+                int nzBack = dz != 0 ? (dz > 0 ? 0 : 1) : side;
+                check(inner.ContainsMicro(cxFront, stepY, czFront) ==
+                      right.ContainsMicro(nxBack, stepY, nzBack),
+                    "Inner raised step matches perpendicular lower-side neighbor");
+            }
             check(Count(stair) == 6, "Straight stair occupies six microcells");
 
             foreach (StairCorner corner in Enum.GetValues<StairCorner>())
