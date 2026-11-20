@@ -2,6 +2,12 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## HUD compass and stair-building follow-up — 20 November 2026
+
+**Committed to main, not locally playtested.** Removed the misaligned compass arrow controls and replaced the coarse 15° image marker bins with 61 positions at 3° intervals. Tallow's current public .tui element API does not support setting image pixel positions, so markers still quantize rather than interpolate continuously; the cardinal tick labels remain at 15°. The compass runs from `BlockEditor.LocalUpdate` via `TallowcraftUI.Refresh` and only changes UI elements when their labels or marker bins change.
+
+Stair rendering now checks side neighbors before selecting an inner/outer corner, retaining straight runs when a perpendicular stair would otherwise cut out the geometry. Meshing, collision shape selection and the visual placement/mining overlay share the corner rules. No block storage schema or engine APIs were changed. Test straight rows, L turns, inside/outside corners, reversed stairs, positive/negative chunk boundaries, and slab stacking in Linux play mode; the standalone .NET logic tests were updated, but a .NET SDK is unavailable in this working environment.
+
 ## Quadtree terrain streaming milestone — 20 November 2026
 
 **Follow-up visual pass:** In response to distant terrain appearing smooth and treeless, coarse terrain is now generated as flat-topped, voxel-style plateaus with only exposed vertical step faces. Each tile batches its own deterministic seeded WorldFlora tree roots into the same single atlas mesh: simplified oak canopy boxes and one to three tiered pine crowns depending on LOD. This adds no tree GameObjects, physics bodies, or per-tree draw calls. Mining the base of a procedural tree suppresses its distant proxy via edit snapshots, and frame telemetry tracks tree counts. New C# regressions cover stepped geometry and deterministic edited-away tree proxies. Compiling and playtesting this follow-up remains outstanding.
