@@ -195,6 +195,7 @@ public class BlockWorld : Script
     private bool _streamStateKnown;
     private bool _streamExhausted;
     private bool _collisionRescan;
+    private bool _immediateTerrainReady;
     private bool _lastViewerBelowSurface;
     private int _lastStreamSettings;
     private string _appliedSnapshot = "";
@@ -727,6 +728,8 @@ public class BlockWorld : Script
                 }
 
         _collisionRescan = collisionChanged;
+        if (collisionChanged)
+            _immediateTerrainReady = false;
         bool changed = collisionChanged ||
             Vector2.Dot(_lastStreamForward, _lastForward) < 0.997f;
         if (!changed) return false;
@@ -1310,6 +1313,7 @@ public class BlockWorld : Script
 
     private void MarkDirty(ChunkKey key)
     {
+        _immediateTerrainReady = false;
         _streamExhausted = false;
         _candidateListDirty = true;
         _emptyChunks.Remove(key);
@@ -1518,11 +1522,55 @@ public class BlockWorld : Script
         UpdateSurfaceOpening(position);
     }
 
+    /// <summary>
+    /// Do not let noncolliding distant scenery take over the worker pool
+    /// before the spawn/viewer's immediate 3x3 section ring is in place.
+    /// Successful readiness is cached until camera-center movement, a
+    /// changed world snapshot or a dirtied section invalidates it.
+    /// </summary>
+    private bool ImmediateTerrainReady(int cx, int cy, int cz)
+    {
+        if (_immediateTerrainReady)
+            return true;
+        var edits = _edits.Snapshot;
+        int minY = Math.Max(ChunkGenerator.MinChunkY, cy - 1);
+        int maxY = Math.Min(ChunkGenerator.MaxChunkY, Math.Max(0, cy + 1));
+        for (int y = minY; y <= maxY; y++)
+        for (int z = cz - 1; z <= cz + 1; z++)
+        for (int x = cx - 1; x <= cx + 1; x++)
+        {
+            ChunkKey key = new(x, y, z);
+            if (!ShouldStream(key, cx, cy, cz) ||
+                !ChunkGenerator.HasPotentialBlocks(key, Seed, edits))
+                continue;
+            if (_emptyChunks.TryGetValue(key, out int empty) &&
+                empty == VersionFor(key))
+                continue;
+            if (!_loaded.TryGetValue(key, out LiveChunk? live) ||
+                !live.Object.IsValid || live.Dirty ||
+                _jobs.ContainsKey(key) ||
+                (!Scene.IsServer && !_clientReady.Contains(key)))
+                return false;
+        }
+        _immediateTerrainReady = true;
+        return true;
+    }
+
     private void StartNearestJobs(int cx, int cy, int cz)
     {
         int workers = Math.Clamp(WorkerCount, 1, Math.Max(1, Environment.ProcessorCount));
         if (_jobs.Count + _distantJobs.Count >= workers)
             return;
+        // Once the immediate terrain is present, leave a small quota for
+        // far scenery so its LOD transition can progress, but let nearby
+        // work fill every slot during initial terrain generation.
+        bool farOutstanding = QuadtreeLodEnabled &&
+            (_distantQueueDirty || _nextDistant < _distantQueue.Count);
+        int reservedFar = farOutstanding
+            ? ChunkScheduling.DistantWorkerLimit(workers,
+                ImmediateTerrainReady(cx, cy, cz), _streamExhausted)
+            : 0;
+        int nearLimit = workers - reservedFar;
 
         if (_candidateListDirty)
         {
@@ -1622,7 +1670,8 @@ public class BlockWorld : Script
         var snapshot = _edits.Snapshot;
         int seed = Seed;
         int searchedThisFrame = 0;
-        while (_jobs.Count + _distantJobs.Count < workers &&
+        while (_jobs.Count < nearLimit &&
+            _jobs.Count + _distantJobs.Count < workers &&
             _nextCandidate < _candidates.Count)
         {
             // A newly joining client must not enqueue hundreds of requests or
@@ -1893,7 +1942,11 @@ public class BlockWorld : Script
 
             var edits = _edits.Snapshot;
             int seed = Seed;
-            while (_jobs.Count + _distantJobs.Count < workers &&
+            int farLimit = ChunkScheduling.DistantWorkerLimit(workers,
+                ImmediateTerrainReady(cx, cy, cz),
+                _streamExhausted && _jobs.Count == 0);
+            while (_distantJobs.Count < farLimit &&
+                _jobs.Count + _distantJobs.Count < workers &&
                 _nextDistant < _distantQueue.Count)
             {
                 TerrainTileKey key = _distantQueue[_nextDistant++];
@@ -1927,6 +1980,7 @@ public class BlockWorld : Script
 
     private void ResetDistantTerrain()
     {
+        _immediateTerrainReady = false;
         foreach (var job in _distantJobs.Values)
         {
             job.Cancel.Cancel();
