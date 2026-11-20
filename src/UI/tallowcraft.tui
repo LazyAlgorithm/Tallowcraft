@@ -3,6 +3,7 @@
      dynamic image-src setter. Grid coordinates are authored explicitly,
      so native .tui click events handle every slot. -->
 <panel id="screen">
+  <panel id="fps-counter" class="fps-counter"><text id="fps-value">FPS --</text></panel>
   <text id="crosshair">+</text>
   <panel id="hud" class="hud">
     <panel class="hud-title"><text id="hud-name">TALLOWCRAFT</text><text id="hud-status"></text></panel>
@@ -11,6 +12,27 @@
   </panel>
   <panel id="notice-panel" class="notice"><text id="notice">Loading your saved inventory...</text></panel>
   <panel id="overlay" class="overlay">
+    <panel id="game-menu" class="game-menu">
+      <text class="game-menu-kicker">A BLOCK WORLD TO MAKE YOUR OWN</text>
+      <text class="game-menu-title">TALLOWCRAFT</text>
+      <text id="game-menu-subtitle" class="game-menu-subtitle">Explore, build, and shape your world.</text>
+      <panel id="game-menu-actions" class="game-menu-actions">
+        <button id="play-game" class="game-menu-button" onclick="OnPlay">Play world</button>
+        <button id="resume-game" class="game-menu-button" onclick="OnResume">Resume game</button>
+        <button id="open-settings" class="game-menu-button-secondary" onclick="OnSettings">World settings</button>
+        <button id="quit-game" class="game-menu-button-quit" onclick="OnQuit">Quit game</button>
+      </panel>
+      <panel id="world-settings" class="world-settings">
+        <text class="settings-title">WORLD SETTINGS</text>
+        <text class="settings-help">Changes apply immediately.</text>
+        <button id="view-setting" class="setting-button" onclick="OnViewDistance">View distance: Balanced</button>
+        <button id="height-setting" class="setting-button" onclick="OnWorldHeight">Vertical range: Balanced</button>
+        <button id="shadow-setting" class="setting-button" onclick="OnShadows">Block shadows: On</button>
+        <text class="settings-help">Higher settings may reduce FPS.</text>
+        <button id="back-settings" class="game-menu-button-secondary" onclick="OnSettings">Back</button>
+      </panel>
+      <text class="game-menu-footer">ESC pauses  •  TAB opens inventory</text>
+    </panel>
     <panel id="inventory-panel" class="inventory-shell">
       <panel class="menu-header">
         <panel class="heading"><text class="eyebrow">TALLOWCRAFT / SURVIVAL</text><text class="menu-title">Inventory</text></panel>

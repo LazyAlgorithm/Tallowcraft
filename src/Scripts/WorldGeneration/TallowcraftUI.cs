@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Tallow;
 
 namespace WorldGeneration;
@@ -23,6 +24,7 @@ public sealed class TallowcraftUI : Script
     private string _toolSnapshot = "";
     private bool _readyBefore;
     private bool _menuBefore;
+    private bool _gameMenuBefore;
     private bool _chestBefore;
     private string _chestMessageBefore = "";
     // The Storage tab may be clicked before the server acknowledges
@@ -34,6 +36,12 @@ public sealed class TallowcraftUI : Script
     private string _page = "craft";
     private float _refreshClock;
     private bool _initialized;
+    private bool _settingsLoaded;
+    private int _viewChoice = 1;
+    private int _heightChoice = 1;
+    private bool _shadows = true;
+    private float _fpsSeconds;
+    private int _fpsFrames;
     // Avoid hundreds of native Find/Visible calls whenever one stack count
     // changes. Each slot initializes once, then switches only its old/new art.
     private readonly bool[] _slotDrawn = new bool[72];
@@ -43,6 +51,69 @@ public sealed class TallowcraftUI : Script
     public void Bind(BlockEditor owner) => _owner = owner;
 
     private UIDocument Document => GetComponent<UIDocument>();
+
+    private string SettingsPath => Path.Combine(GamePaths.PlayerData,
+        "world-display-settings.txt");
+
+    private void LoadSettings()
+    {
+        if (_settingsLoaded) return;
+        _settingsLoaded = true;
+        try
+        {
+            string[] lines = File.ReadAllLines(SettingsPath);
+            if (lines.Length >= 3 &&
+                int.TryParse(lines[0], out int view) &&
+                int.TryParse(lines[1], out int height) &&
+                bool.TryParse(lines[2], out bool shadows))
+            {
+                _viewChoice = Math.Clamp(view, 0, 2);
+                _heightChoice = Math.Clamp(height, 0, 2);
+                _shadows = shadows;
+            }
+        }
+        catch (FileNotFoundException) { }
+        catch (Exception e) { Console.WriteLine($"Tallowcraft settings: {e.Message}"); }
+        ApplySettings();
+    }
+
+    private void ApplySettings()
+    {
+        var world = Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (world is not null)
+        {
+            int[] distance = { 4, 6, 9 };
+            world.RenderRadius = distance[_viewChoice];
+            world.SideRadius = new[] { 3, 4, 6 }[_viewChoice];
+            world.BehindRadius = new[] { 2, 2, 4 }[_viewChoice];
+            world.VerticalRadius = _heightChoice;
+            world.ChunkShadowsEnabled = _shadows;
+        }
+        string[] choices = { "Near", "Balanced", "Far" };
+        Text("view-setting", "View distance: " + choices[_viewChoice]);
+        Text("height-setting", "Vertical range: " + choices[_heightChoice]);
+        Text("shadow-setting", "Block shadows: " + (_shadows ? "On" : "Off"));
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            Directory.CreateDirectory(GamePaths.PlayerData);
+            File.WriteAllLines(SettingsPath, new[] {
+                _viewChoice.ToString(), _heightChoice.ToString(),
+                _shadows.ToString() });
+        }
+        catch (Exception e) { Console.WriteLine($"Tallowcraft settings: {e.Message}"); }
+    }
+
+    public void OnPlay() => _owner?.UiStartGame();
+    public void OnResume() => _owner?.UiResumeGame();
+    public void OnSettings() => _owner?.UiToggleSettings();
+    public void OnQuit() => _owner?.UiQuitGame();
+    public void OnViewDistance() { _viewChoice = (_viewChoice + 1) % 3; ApplySettings(); SaveSettings(); }
+    public void OnWorldHeight() { _heightChoice = (_heightChoice + 1) % 3; ApplySettings(); SaveSettings(); }
+    public void OnShadows() { _shadows = !_shadows; ApplySettings(); SaveSettings(); }
 
     private void Text(string id, string value)
     {
@@ -225,18 +296,42 @@ public sealed class TallowcraftUI : Script
             Document.Find("overlay") is null)
             return;
 
-        bool open = editor.IsInventoryVisible;
-        if (!_initialized || open != _menuBefore)
+        LoadSettings();
+        if (!editor.UiGameMenuVisible)
         {
-            Visible("overlay", open);
-            Visible("hud", !open);
-            Visible("crosshair", !open);
+            _fpsSeconds += MathF.Max(0f, Time.UnscaledDeltaTime);
+            _fpsFrames++;
+            if (_fpsSeconds >= .5f)
+            {
+                Text("fps-value", $"FPS {MathF.Round(_fpsFrames / _fpsSeconds)}");
+                _fpsSeconds = 0f;
+                _fpsFrames = 0;
+            }
+        }
+        Visible("fps-counter", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
+        Visible("game-menu", editor.UiGameMenuVisible);
+        Visible("inventory-panel", editor.IsInventoryVisible);
+        Visible("game-menu-actions", editor.UiGameMenuVisible && !editor.UiSettingsOpen);
+        Visible("world-settings", editor.UiGameMenuVisible && editor.UiSettingsOpen);
+        Visible("play-game", editor.UiMainMenu);
+        Visible("resume-game", editor.UiPaused);
+        Text("game-menu-subtitle", editor.UiPaused ? "Game menu" :
+            "Explore, build, and shape your world.");
+
+        bool open = editor.IsInventoryVisible;
+        if (!_initialized || open != _menuBefore ||
+            _gameMenuBefore != editor.UiGameMenuVisible)
+        {
+            Visible("overlay", open || editor.UiGameMenuVisible);
+            Visible("hud", !open && !editor.UiGameMenuVisible);
+            Visible("crosshair", !open && !editor.UiGameMenuVisible);
             if (!open)
             {
                 _source = -1;
                 _chestOpenRequested = false;
             }
             _menuBefore = open;
+            _gameMenuBefore = editor.UiGameMenuVisible;
         }
 
         if (!_initialized || _readyBefore != editor.ProfileReady)

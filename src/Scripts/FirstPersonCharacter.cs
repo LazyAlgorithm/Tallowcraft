@@ -76,7 +76,7 @@ public class FirstPersonCharacter : Script
         _eyeTransitionTime = CrouchTransitionSeconds;
         if (ControlsCamera)
         {
-            Cursor.Locked = true;
+            Cursor.Locked = false;
             _camera = Scene.Find(CameraName);
         }
         UpdateLocalModelVisibility();
@@ -90,8 +90,9 @@ public class FirstPersonCharacter : Script
 
         // The replicated inventory menu also blocks movement on the server;
         // unlocking the pointer must never let UI clicks move the player.
-        bool browsingInventory =
-            GameObject.GetComponent<BlockEditor>()?.IsInventoryVisible == true;
+        var editor = GameObject.GetComponent<BlockEditor>();
+        bool browsingInventory = editor?.IsInventoryVisible == true ||
+            editor?.UiGameMenuVisible == true;
         if (GetCharacterController() is { } controller)
         {
             // Only the authoritative server relocates new player instances.
@@ -157,7 +158,7 @@ public class FirstPersonCharacter : Script
         if (_camera is not { IsValid: true })
         {
             _camera = Scene.Find(CameraName);
-            Cursor.Locked = true;
+            Cursor.Locked = !browsingInventory;
         }
 
         if (_camera is { } camera && camera.IsValid)

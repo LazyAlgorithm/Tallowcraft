@@ -82,6 +82,7 @@ public class BlockEditor : Script
     private float _miningElapsed;
     private bool _cursorInitialized;
     private bool _cursorMenuOpen;
+    private bool _cursorGameMenuOpen;
     private readonly InventoryMenuState _menu = new();
     private string _profileToken = "";
     private string _profileWorldId = "";
@@ -90,6 +91,9 @@ public class BlockEditor : Script
     private float _profileSaveClock;
     private bool _profileDirty;
     private bool _localIdentityFailed;
+    private bool _mainMenu = true;
+    private bool _paused;
+    private bool _settingsOpen;
 
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -97,6 +101,15 @@ public class BlockEditor : Script
     /// <summary>Client-side menu focus changes immediately, without waiting
     /// for replicated server state. The server still authorizes all actions.</summary>
     public bool IsInventoryVisible => IsLocal ? _menu.Open : InventoryOpen;
+    internal bool UiMainMenu => _mainMenu;
+    internal bool UiPaused => _paused;
+    internal bool UiSettingsOpen => _settingsOpen;
+    public bool UiGameMenuVisible => IsLocal && (_mainMenu || _paused);
+
+    internal void UiStartGame() { _mainMenu = false; _settingsOpen = false; }
+    internal void UiResumeGame() { _paused = false; _settingsOpen = false; }
+    internal void UiToggleSettings() => _settingsOpen = !_settingsOpen;
+    internal void UiQuitGame() => Application.Quit();
 
     public override void Start()
     {
@@ -313,12 +326,19 @@ public class BlockEditor : Script
         // the menu closes. Disable the whole local Player map instead: this
         // stops look, movement, mining and placement at the input source.
         // Menu/Cancel and direct Tab input remain available while it is off.
-        bool menuPressed = Input.GetKeyDown(KeyCode.Tab) ||
+        if (!_mainMenu && !_menu.Open &&
+            (Input.GetKeyDown(KeyCode.Escape) || InputActions.Pressed("Menu/Cancel")))
+        {
+            _paused = !_paused;
+            _settingsOpen = false;
+        }
+
+        bool menuPressed = !_mainMenu && !_paused && (Input.GetKeyDown(KeyCode.Tab) ||
             InputActions.Pressed("Menu/Inventory") ||
-            (_menu.Open && InputActions.Pressed("Menu/Cancel"));
-        bool menuHeld = Input.GetKey(KeyCode.Tab) ||
+            (_menu.Open && InputActions.Pressed("Menu/Cancel")));
+        bool menuHeld = !_mainMenu && !_paused && (Input.GetKey(KeyCode.Tab) ||
             InputActions.Held("Menu/Inventory") ||
-            (_menu.Open && InputActions.Held("Menu/Cancel"));
+            (_menu.Open && InputActions.Held("Menu/Cancel")));
         if (_menu.Update(InventoryOpen, menuPressed, menuHeld,
                 deltaTime, out bool requestedOpen))
             Rpc(nameof(SetInventoryOpen), requestedOpen);
@@ -337,7 +357,7 @@ public class BlockEditor : Script
                         position => _world.BlockAt(position));
             }
         }
-        if (!open)
+        if (!open && !_mainMenu && !_paused)
         {
             // E is interaction-only: the Player/Use action no longer
             // binds this key. Interacting requests the nearby chest on the
@@ -358,13 +378,15 @@ public class BlockEditor : Script
         }
         _ui?.Refresh();
 
-        if (!_cursorInitialized || _cursorMenuOpen != open)
+        if (!_cursorInitialized || _cursorMenuOpen != open ||
+            _cursorGameMenuOpen != UiGameMenuVisible)
         {
             // Set the input map before unlocking/locking the mouse. The engine
             // clears relative mouse motion when changing cursor-lock mode.
-            InputActions.SetMapEnabled("Player", !open);
-            Cursor.Locked = !open;
+            InputActions.SetMapEnabled("Player", !open && !_mainMenu && !_paused);
+            Cursor.Locked = !open && !_mainMenu && !_paused;
             _cursorMenuOpen = open;
+            _cursorGameMenuOpen = UiGameMenuVisible;
             _cursorInitialized = true;
         }
     }

@@ -35,6 +35,7 @@ public class BlockWorld : Script
     // Drawing a distant mountain must not require distant chunk meshes to
     // render again in the cascaded sun-shadow passes.
     public bool LimitChunkShadows = true;
+    public bool ChunkShadowsEnabled = true;
     public int ShadowRadius = 5;
 
     // Diagnostic only: synchronous mesh and collider entry-point timings.
@@ -612,7 +613,7 @@ public class BlockWorld : Script
     {
         int settings = HashCode.Combine(RenderRadius, SideRadius, BehindRadius,
             EditableRadius, KeepMargin, VerticalRadius, ShadowRadius,
-            LimitChunkShadows);
+            HashCode.Combine(LimitChunkShadows, ChunkShadowsEnabled));
         ChunkKey center = new(cx, cy, cz);
         bool belowSurface = _viewerWorldY < 5f;
         // Only rescan the directional mesh footprint when orientation changes
@@ -796,6 +797,8 @@ public class BlockWorld : Script
 
     private bool ShouldCastChunkShadow(ChunkKey key, int cx, int cy, int cz)
     {
+        if (!ChunkShadowsEnabled)
+            return false;
         if (!LimitChunkShadows)
             return true;
         int radius = Math.Clamp(ShadowRadius, 0, Math.Clamp(RenderRadius, 1, 16));

@@ -189,7 +189,7 @@ def verify() -> None:
     check("action Inventory button\nbind key Tab\nbind pad West" in actions,
           "Menu must accept Tab/West while Player actions are disabled")
     menu_script = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
-    check('InputActions.SetMapEnabled("Player", !open)' in menu_script
+    check('InputActions.SetMapEnabled("Player", !open && !_mainMenu && !_paused)' in menu_script
           and 'InputActions.Pressed("Menu/Inventory")' in menu_script
           and "private void SetInventoryOpen(bool open)" in menu_script,
           "Menu focus must disable look input and use the server-authorized state RPC")
@@ -304,7 +304,8 @@ def verify() -> None:
     ids = [x.attrib["id"] for x in ui.iter() if "id" in x.attrib]
     check(len(ids) == len(set(ids)) and
           all(x in ids for x in ("overlay","hud","page_craft",
-              "page_forge","page_chest","chest-stack","notice")),
+              "page_forge","page_chest","chest-stack","notice",
+              "game-menu","world-settings","fps-counter")),
           "The new UI must have unique, usable element IDs")
     for icon in icon_files:
         png = ROOT / ("src/Textures/UI/" + icon + ".png")
@@ -383,7 +384,7 @@ def verify() -> None:
           "TallowcraftUI controller = view.AddComponent<TallowcraftUI>()"
               in editor_src and
           "UI/tallowcraft.tui" in editor_src and
-          "#overlay" in ui_style and ".slot-icon" in ui_style,
+          ".overlay" in ui_style and ".slot-icon" in ui_style,
           "Editor .tui must be mounted locally and replace the old C# GUI")
     profile_src = (ROOT / "src/Scripts/WorldGeneration/PlayerProfileStore.cs").read_text()
     check('fields[0] == "1"' in profile_src
