@@ -39,6 +39,7 @@ static class Program
             ChestStorageTests.Run(Check);
             InventoryMenuTests.Run(Check);
             WorldWaypointTests.Run(Check);
+            BlockPickerTests.Run(Check);
             SectionEditTests.Run(Check);
             MiningTests.Run(Check);
             BlockDamageTests.Run(Check);

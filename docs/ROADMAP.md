@@ -44,9 +44,15 @@ coordinates, compass direction and distance), plus an optional,
 owner-validated Return to Spawn command. It does not require death or
 remove player inventory. Markers do not authorize arbitrary teleportation.
 
-**Next implementation priority:** verify the new .tui navigation and
-server-teleport behavior in host/client Play mode, expand useful building
-materials and decorative shapes, and improve world-generation variety.
+**Current implementation:** a server-authorized pick-block tool copies a
+targeted voxel's block type, shape, absolute facing and upper-half. It
+selects an existing hotbar stack, swaps a matching backpack stack, or adds
+a single item only in Creative mode when an empty slot exists. The local
+mesh preview mirrors the selected state without changing terrain.
+
+**Next implementation priority:** verify waypoint navigation, optional
+spawn return and pick-block in host/client Play mode, then expand useful
+building materials and decorative shapes, and improve world-generation variety.
 Profile the incremental save and section-streaming paths before increasing
 world scale. Full public multiplayer authentication is out of scope.
 **Still blocked on engine verification:** character
@@ -160,7 +166,7 @@ high-radius performance.
 - [x] Redo-log direct-credit mining fallback with pre-edit world checkpoint, mined voxel replay and tool durability; rollback on full inventory or pre-journal error (pure-C# regression added; runtime verification pending)
 - [ ] Extend equivalent crash safety to placement spending, crafting, smelting and other independent inventory mutations
 - [ ] Optional ambient day/night and decorative world polish (no mandatory survival mechanics)
-- [ ] Expand construction materials, block shapes and builder-friendly placement tools
+- [ ] Expand construction materials, block shapes and builder-friendly placement tools beyond basic pick-block
 - [ ] Add more explorable ruins, natural decorations, and distinct biome landmarks
 
 ## M7 — Exploration and navigation (peaceful sandbox)
@@ -170,11 +176,35 @@ high-radius performance.
 - [x] Optional manual Return to Spawn from pause menu; server validates ownership, computes safe ground height and uses the native character teleport without dropping inventory (host/client Play mode pending)
 - [ ] In-world waypoint indicators and optional map overview
 - [ ] Expand peaceful exploration with distinctive structures, collectables and additional decorative materials
-- [ ] Builder tools such as pick-block, fill/replace selections or structure templates
+- [x] Middle-click pick-block: server-side target raycast and owner authorization, survival inventory safety, Creative-only single-block grant, backpack-to-hotbar swap, exact slab/stair shape/facing/upper copying with matching client preview and status HUD (pure C# regression tests added; Play mode pending)
+- [ ] Advanced builder tools: fill/replace selections, mirror placement, and reusable structure templates
 
 **Design direction:** peaceful sandbox, exploration and building. Health,
 hunger, hostile enemies and combat progression are intentionally not
 required; do not implement them unless priorities change.
+
+### M7 — Pick-block builder shortcut (20 November 2026)
+
+Middle-click while playing sends the camera's look vector to the server.
+Only the server resolves the hit voxel (with the normal reach and physics
+checks). The server uses `BlockPicker.TryPick` to select the material:
+a matching hotbar stack wins; otherwise a matching backpack stack swaps
+into the active slot. Survival never materializes items. In Creative, a
+new material receives just one item, and only if there is an empty slot;
+existing inventory stacks are not lost even when the hotbar is full.
+Validation failures produce short HUD feedback.
+
+A picked block copies exact facing, half-height and shape for subsequent
+placement; F rotates the absolute orientation and crouch inverts the
+selected upper/lower variant. Switching hotbar slots resets these
+temporary pick modifiers. `BuildPreview` now uses the same pure state
+calculator as server placement; debug wireframes are hidden while paused.
+Tests cover swap/stack integrity, Creative grant, full inventory,
+malformed state rejection, absolute facing and upper/lower control.
+
+**Pending:** full Linux C# test runner, editor Play-mode placement and
+two-client RPC behavior. The temporary absolute-facing/upper-mode flags
+are synchronized during play but not persisted in profile saves.
 
 ## Verification and release gates
 

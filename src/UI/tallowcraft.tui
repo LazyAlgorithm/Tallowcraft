@@ -7,6 +7,7 @@
   <panel id="navigation-hud" class="navigation-hud">
     <text id="hud-coordinates" class="nav-coordinates">XYZ --, --, --</text>
     <text id="hud-waypoint" class="nav-target">Pause > Waypoints</text>
+    <text id="hud-pick-feedback" class="nav-feedback"></text>
   </panel>
   <text id="crosshair">+</text>
   <panel id="hud" class="hud">

@@ -495,7 +495,12 @@ public sealed class TallowcraftUI : Script
         string heldName = held.Type is >= 1 and <= BlockInventory.MaxType ?
             Images[held.Type].Replace('_',' ') : "Empty";
         Text("hud-held",
-            $"{heldName}   /   {(BlockShape)editor.PlaceShape}   /   {editor.FacingOffset*90} deg");
+            $"{heldName}   /   {(BlockShape)editor.PlaceShape}   /   " +
+            (editor.PickedAbsoluteFacing ?
+                $"Facing {editor.FacingOffset*90} deg (copied)" :
+                $"Rotate +{editor.FacingOffset*90} deg") +
+            (editor.PickedUpper ? "   /   Upper" : ""));
+        Text("hud-pick-feedback", editor.PickFeedback);
         var tool = editor.UiTools.Equipped;
         Text("hud-tool", tool == MiningTool.Hand ? "Hands" :
             $"{PlayerTools.Name(tool)}   {editor.UiTools.Durability(tool)}/" +

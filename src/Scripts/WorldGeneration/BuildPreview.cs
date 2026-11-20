@@ -125,6 +125,7 @@ public class BuildPreview : Script
         if (_camera is not { IsValid: true })
             _camera = Scene.Find("Main Camera");
         if (_world == null || _editor == null || _editor.IsInventoryVisible ||
+            _editor.UiGameMenuVisible ||
             _camera is not { IsValid: true } camera)
         {
             HideDamage();
@@ -142,14 +143,14 @@ public class BuildPreview : Script
             return;
         }
 
-        int facing = (BlockState.FacingTowardPlayer(look) +
-            _editor.FacingOffset) & 3;
         // Only the presentation samples a raw key. Gameplay itself uses
         // TickInput.Crouch on the server, including for networked clients.
-        bool upper = Input.GetKey(KeyCode.LeftControl) ||
+        bool crouching = Input.GetKey(KeyCode.LeftControl) ||
             Input.GetKey(KeyCode.RightControl);
-        _selected = BlockState.Create(_editor.PlaceType,
-            (BlockShape)Math.Clamp(_editor.PlaceShape, 0, 3), facing, upper);
+        _selected = BlockPicker.SelectedState(_editor.PlaceType,
+            Math.Clamp(_editor.PlaceShape, 0, 3), _editor.FacingOffset,
+            _editor.PickedAbsoluteFacing, _editor.PickedUpper, crouching,
+            BlockState.FacingTowardPlayer(look));
         bool planned = _world.TryPlanPlacement(_remove, adjacent,
             hitNormal, _selected, out _place, out ushort replacement);
         _placeState = planned ? new BlockState(replacement) : _selected;

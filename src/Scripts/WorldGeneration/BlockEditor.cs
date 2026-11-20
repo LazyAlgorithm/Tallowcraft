@@ -21,6 +21,11 @@ public class BlockEditor : Script
     [Sync] public int SelectedHotbar = 2;
     [Sync] public int PlaceShape = 0;
     [Sync] public int FacingOffset = 0;
+    // Pick-block locks the sampled absolute block facing and slab/stair
+    // half while the picked hotbar selection remains active.
+    [Sync] public bool PickedAbsoluteFacing = false;
+    [Sync] public bool PickedUpper = false;
+    [Sync] public string PickFeedback = "";
     [Sync] public bool CreativeMode = true;
     [Sync] public string InventoryState = "";
     [Sync] public string ToolState = "";
@@ -63,6 +68,8 @@ public class BlockEditor : Script
     private BlockWorld? _world;
     private float _cooldown;
     private float _craftCooldown;
+    private float _pickCooldown;
+    private float _pickFeedbackSeconds;
     private float _chunkRequestCooldown;
     private float _forgeCheckClock;
     private bool _nearForge;
@@ -390,6 +397,17 @@ public class BlockEditor : Script
         }
         if (!open && !_mainMenu && !_paused)
         {
+            // Middle-click reads only the local camera direction, not an
+            // untrusted client block coordinate. The server raycasts its
+            // own authoritative world at the owner's character position.
+            if (ProfileReady && Input.GetMouseButtonDown(MouseButton.Middle) &&
+                Scene.Find("Main Camera") is { IsValid: true } camera)
+            {
+                Vector3 direction = camera.Transform.Forward;
+                Rpc(nameof(PickBlockAtCrosshair),
+                    direction.X, direction.Y, direction.Z);
+            }
+
             // E is interaction-only: the Player/Use action no longer
             // binds this key. Interacting requests the nearby chest on the
             // server, which atomically opens both the chest and menu when
@@ -485,6 +503,63 @@ public class BlockEditor : Script
     internal void UiCloseChest() =>
         Rpc(nameof(CloseChest));
     internal void UiCloseMenu() => CloseMenuLocally();
+
+    /// <summary>Server-authoritative middle-click. The packet contains a
+    /// look direction only, never a target block position or inventory state.
+    /// The server raycasts locally, validates the target and applies only
+    /// the pure inventory picker rules. No terrain is modified.</summary>
+    [Rpc(RpcTarget.Server)]
+    private void PickBlockAtCrosshair(float lookX, float lookY, float lookZ)
+    {
+        if (!Scene.IsServer || !ProfileReady || InventoryOpen ||
+            _pickCooldown > 0f ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        _pickCooldown = .18f;
+        Vector3 look = new(lookX, lookY, lookZ);
+        if (!float.IsFinite(lookX) || !float.IsFinite(lookY) ||
+            !float.IsFinite(lookZ) || look.LengthSquared() < .25f ||
+            look.LengthSquared() > 4f)
+            return;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world == null || _world.PersistenceLocked)
+            return;
+        Vector3 origin = Transform.Position + Vector3.UnitY * EyeHeight;
+        if (!_world.TryQueryFromRay(origin, look,
+                Math.Clamp(Reach, 1f, 8f), GameObject,
+                out BlockPosition target, out _))
+        {
+            PickFeedback = "Pick block: aim at a nearby block";
+            _pickFeedbackSeconds = 2.5f;
+            return;
+        }
+
+        ushort packed = _world.BlockAt(target);
+        if (!BlockPicker.TryPick(_inventory, packed, SelectedHotbar,
+                CreativeMode, out int selected, out bool changed))
+        {
+            PickFeedback = CreativeMode ?
+                "Pick block: no free inventory slot" :
+                "Pick block: material not in inventory";
+            _pickFeedbackSeconds = 2.5f;
+            return;
+        }
+
+        BlockState copied = new(packed);
+        SelectedHotbar = selected;
+        PlaceType = copied.Type;
+        PlaceShape = (int)copied.Shape;
+        FacingOffset = copied.Facing;
+        PickedAbsoluteFacing = true;
+        PickedUpper = copied.Upper;
+        if (changed)
+            InventoryState = _inventory.Serialize();
+        _profileDirty = true;
+        PickFeedback = $"Copied {BlockNames[copied.Type - 1]} " +
+            $"{ShapeNames[(int)copied.Shape]} (facing {copied.Facing * 90} deg)" +
+            (copied.Upper ? " upper" : "");
+        _pickFeedbackSeconds = 2.5f;
+    }
 
     /// <summary>Clients read a fully validated server inventory snapshot.</summary>
     public int AvailableCount(int type)
@@ -969,6 +1044,13 @@ public class BlockEditor : Script
 
         _cooldown = MathF.Max(0f, _cooldown - deltaTime);
         _returnToSpawnCooldown = MathF.Max(0f, _returnToSpawnCooldown - deltaTime);
+        _pickCooldown = MathF.Max(0f, _pickCooldown - deltaTime);
+        if (_pickFeedbackSeconds > 0f)
+        {
+            _pickFeedbackSeconds = MathF.Max(0f,
+                _pickFeedbackSeconds - deltaTime);
+            if (_pickFeedbackSeconds <= 0f) PickFeedback = "";
+        }
         _craftCooldown = MathF.Max(0f, _craftCooldown - deltaTime);
         _chunkRequestCooldown = MathF.Max(0f, _chunkRequestCooldown - deltaTime);
 
@@ -996,12 +1078,26 @@ public class BlockEditor : Script
             SelectedHotbar = (SelectedHotbar + BlockInventory.HotbarSlots - 1) %
                 BlockInventory.HotbarSlots;
         if (input.Pressed(InputButton.Ability1))
+        {
             PlaceShape = (PlaceShape + 1) % 4;
+            // Q changes the building shape intentionally; it resets the
+            // copied upper half. Hold crouch for an upper variant.
+            PickedUpper = false;
+        }
         if (input.Pressed(InputButton.Ability2))
             FacingOffset = (FacingOffset + 1) % 4;
 
         SelectedHotbar = Math.Clamp(SelectedHotbar, 0,
             BlockInventory.HotbarSlots - 1);
+        if (previousHotbar != SelectedHotbar)
+        {
+            // Manual hotbar changes restore the normal player-relative
+            // rotation and crouch-to-place-upper behavior. Do not treat
+            // a copied world-axis facing as a relative rotation offset.
+            if (PickedAbsoluteFacing) FacingOffset = 0;
+            PickedAbsoluteFacing = false;
+            PickedUpper = false;
+        }
         int heldType = _inventory.Slot(SelectedHotbar).Type;
         PlaceType = heldType is >= 1 and <= BlockInventory.Chest ?
             heldType : 0;
@@ -1028,9 +1124,10 @@ public class BlockEditor : Script
 
         Vector3 origin = Transform.Position + Vector3.UnitY * EyeHeight;
         Vector3 direction = Vector3.Transform(Vector3.UnitZ, input.LookRotation);
-        int facing = (BlockState.FacingTowardPlayer(direction) + FacingOffset) & 3;
-        BlockState selected = BlockState.Create(PlaceType,
-            (BlockShape)PlaceShape, facing, input.Crouch);
+        BlockState selected = BlockPicker.SelectedState(
+            PlaceType, PlaceShape, FacingOffset, PickedAbsoluteFacing,
+            PickedUpper, input.Crouch,
+            BlockState.FacingTowardPlayer(direction));
 
         if (breaking)
         {

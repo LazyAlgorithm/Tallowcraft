@@ -31,6 +31,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/PlayerProfileStore.cs" Link="PlayerProfileStore.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockState.cs" Link="BlockState.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockPlacement.cs" Link="BlockPlacement.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/BlockPicker.cs" Link="BlockPicker.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockTextureAtlas.cs" Link="BlockTextureAtlas.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkKey.cs" Link="ChunkKey.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkMesh.cs" Link="ChunkMesh.cs" />

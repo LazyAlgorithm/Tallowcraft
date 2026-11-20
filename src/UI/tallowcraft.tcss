@@ -6,6 +6,7 @@
 .navigation-hud { position: absolute; top: 18; left: 22; width: 330; gap: 3; padding: 8 12; background-color: #121916dc; border-radius: 7; border-width: 1; border-color: #b8c59455 }
 .nav-coordinates { font-size: 15; color: #f3e3ad }
 .nav-target { font-size: 13; color: #c1d3c1 }
+.nav-feedback { font-size: 13; color: #e0bd7f; white-space: normal }
 .game-menu { width: 520; background-color: #1d2724fa; border-width: 2; border-color: #8aa077; border-radius: 16; padding: 30; gap: 16; align-items: center }
 .game-menu-kicker { font-size: 14; color: #dfb978 }
 .game-menu-title { font-size: 46; color: #f5e5b1 }
