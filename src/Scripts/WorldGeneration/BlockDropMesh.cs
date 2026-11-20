@@ -19,7 +19,7 @@ public sealed class BlockDropMesh
     /// <summary>All actual blocks are cubes; coal/iron ore are rendered as
     /// collectible billboards rather than tiny stone cubes.</summary>
     public static bool IsCube(int type) =>
-        type is 1 or 2 or 3 or 4 or 5 or 6 or 9 or 11;
+        type is 1 or 2 or 3 or 4 or 5 or 6 or 9 or 11 or 12 or 13 or 14 or 15;
 
     public static BlockDropMesh ForType(int type)
     {
