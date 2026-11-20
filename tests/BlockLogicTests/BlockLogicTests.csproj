@@ -14,6 +14,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/EditSectionCodec.cs" Link="EditSectionCodec.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/EditSectionTransfer.cs" Link="EditSectionTransfer.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldEditSave.cs" Link="WorldEditSave.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WorldSaveV6.cs" Link="WorldSaveV6.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockInventory.cs" Link="BlockInventory.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldChestStorage.cs" Link="WorldChestStorage.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldDropSave.cs" Link="WorldDropSave.cs" />

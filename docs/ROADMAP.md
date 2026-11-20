@@ -32,10 +32,15 @@ before the edit preserves earlier unsaved work, and the receipt records the
 removed voxel, credited item and current tool state. Failed rewards restore
 the block and tool durability; pending journals lock saves until recovery.
 
-**Next implementation priority:** compile and verify all three transaction
-paths in Linux/Windows Play mode, replace per-transaction full snapshots with
-compact/batched writes, and extend crash consistency to placement spending,
-crafting and smelting. Full public multiplayer authentication is out of scope.
+**Current implementation:** world-save v6 now writes small generation manifests
+that reference content-addressed immutable voxel/chest/drop blobs. Untouched
+procedural chunks are still seed-generated, and identical edited section
+revisions are reused without re-encoding or rewriting their contents.
+Shared blob garbage collection runs conservatively every 32 checkpoints.
+
+**Next implementation priority:** compile and verify the persistence suite in
+Linux/Windows Play mode, profile manifest and fsync costs, and extend
+transactional consistency to placement spending, crafting and smelting. Full public multiplayer authentication is out of scope.
 **Still blocked on engine verification:** character
 animation/occlusion, collision accuracy for partial blocks, and sustained
 high-radius performance.
@@ -124,6 +129,7 @@ high-radius performance.
 ## M5 — Persistence and scalable multiplayer
 
 - [x] Persist world identity, seed, sparse block edits and chest contents atomically, with previous-generation recovery (world save v4)
+- [x] Incremental world-save v6 manifests, immutable SHA-256 section/chest/drop objects, unchanged-revision reuse, legacy v3–v5 loads and bounded-conservative object reclamation (regression tests added; Play-mode testing pending)
 - [ ] World creation/settings UI and configurable vertical bounds
 - [x] Bounded per-section snapshots, revision/hash validation, on-demand pages and ordered block deltas (no global 512-edit cap)
 - [ ] True per-recipient transport filtering (the current C# RPC bridge broadcasts replies with recipient IDs)
@@ -141,7 +147,7 @@ high-radius performance.
 - [x] Partial chest withdrawals into matching, nearly-full player stacks without losing remainder (pure-C# regression added; runtime verification pending)
 - [x] Persist live ground drops with terrain/chest world-save v5, including age/position and corrupt-generation rollback (regression tests added; runtime testing pending)
 - [x] Redo-log physical drop pickups across world/player saves; recover both post-pickup states after abrupt crashes (unit tests added; Play-mode verification pending)
-- [ ] Batch pickup journal/checkpoint writes without degrading large-world performance; current transactional path saves the world synchronously
+- [ ] Batch pickup journal/checkpoint writes to avoid synchronous per-pickup manifest/fsync overhead; v6 already reuses immutable voxel data instead of rewriting all sections
 - [x] Redo-log chest-to-player transfers, including empty-chest withdrawals and crash recovery from both save directions (unit tests added; runtime testing pending)
 - [x] Redo-log direct-credit mining fallback with pre-edit world checkpoint, mined voxel replay and tool durability; rollback on full inventory or pre-journal error (pure-C# regression added; runtime verification pending)
 - [ ] Extend equivalent crash safety to placement spending, crafting, smelting and other independent inventory mutations
@@ -181,6 +187,41 @@ resetting inventory. Recovery is repeatable across subsequent restarts, and
 new unit tests simulate interruption before either save, after only the world
 write, after only the player write, and after both writes but before receipt
 deletion. They also test checksum tampering and duplicate pending pickups.
+
+### M5: incremental world-save v6 — November 19, 2026
+
+New saves no longer copy the entire set of edited-section files into each
+generation. The manifest still records every edited section's coordinates,
+revision and SHA-256 digest, but v6 references immutable, content-addressed
+blobs under `objects/sections/`. Chests and loose drops likewise use
+`objects/chests/` and `objects/drops/`. When a save sees unchanged
+section revisions, it reuses the prior checksum without re-encoding the
+voxel payload or rewriting section files. A changed section writes at
+most one additional immutable blob, even for large sparse worlds.
+
+The manifest is staged, flushed and promoted with the same `current.txt`
+and `previous.txt` pointers as legacy saves. v3/v4/v5 loaders remain
+available and existing world data migrates on the next v6 checkpoint.
+Blob paths require canonical lowercase checksums, and loading validates
+each object against its recorded digest. The object store is pruned
+conservatively every 32 saves: only objects unreferenced by any retained
+generation are removed; invalid manifests or unfinished staging disable
+reclamation. This avoids indefinite file growth without pruning a
+rollback target.
+
+The pure-C# test runner now checks identical saves with zero new blobs,
+one-section edits with one new section blob, chest-only and drop-only
+changes, previous-generation rollback on a corrupted new object, and
+safe orphan cleanup.
+
+**Limitations:** v6 still writes the manifest containing every edited
+section on each checkpoint, and redo-logged pickups still synchronously
+flush a manifest and player profile. Immutable blob sharing also means
+corruption of a common blob referenced by both current and previous
+generations can invalidate both, unlike separate full copies.
+There is no persisted cache of unmodified, procedurally generated chunks,
+and there is no persistent cache of meshes or colliders. Full Play-mode
+testing and profiling are required before claiming a speedup.
 
 ### M6: direct-credit mining fallback — November 19, 2026
 

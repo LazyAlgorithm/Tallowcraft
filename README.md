@@ -103,8 +103,9 @@ prefab load prevents a spawn, a journaled direct-inventory reward is used,
 subject to the existing per-type 999-item cap. If the player has no capacity,
 the mined block is restored instead of silently consuming its resources.
 
-**Ground drop persistence:** active server-owned drops now save with the
-same atomic world generation as voxel edits and chest contents (world save v5).
+**Ground drop persistence:** active server-owned drops save with the same
+atomic world generation as voxel edits and chest contents. New saves use
+incremental world-save v6 (older v3/v4/v5 saves are still readable).
 Item type, quantity, position and remaining five-minute lifetime restore after
 restart. Offline time does not count against the despawn timer, and physics
 velocity is reset when an item loads. A corrupt drops file causes the entire
@@ -142,13 +143,28 @@ player cannot receive the reward, or a save fails before a receipt exists,
 the block and tool durability are restored in the same tick. A failure after
 a receipt exists locks world writes until restart recovery.
 
-**Known limits:** physical pickups, chest transfers and direct-credit fallback
-still synchronously write full world generations, which may hitch on large
-worlds (the mining fallback first writes a pre-edit checkpoint). Linux/Windows
-host/client tests and disk-failure injection have not yet been run. Other
-independent inventory mutations (crafting, smelting, placement spending and
-regular tool wear) and authenticated public multiplayer accounts are not
-covered by these redo transactions.
+**Incremental world saves:** v6 stores only modified voxel sections,
+not fully generated terrain. Each edited 16x16x16 section is encoded into
+an immutable, SHA-256-addressed blob. A new committed generation writes a
+small manifest referencing unchanged section blobs and stores new blobs
+only for changed sections/chests/ground drops. Existing world seeds still
+regenerate untouched terrain; meshes and colliders are reconstructed
+on demand. The usual current/previous generation pointers and checksummed
+rollback remain. The first v6 save migrates an older v3–v5 world, without
+discarding its previous save. Orphan blobs are cleaned conservatively
+after groups of checkpoints, never while unfinished staging exists.
+
+**Known limits:** physical pickups, chest transfers and direct-credit
+fallback still synchronously write a full world *manifest* and player
+profile, which may hitch on worlds with very many edited sections
+(the mining fallback also checkpoints the pre-edit manifest). Their
+unchanged voxel data is no longer duplicated on disk. Blob checksums are
+validated when loading, but sharing immutable blobs means that corruption
+of a blob referenced by both generations can affect both rollback copies.
+Linux/Windows host/client tests and disk-failure injection have not been
+run. Other inventory operations (crafting, smelting, placement spending
+and tool wear) and authenticated multiplayer accounts are not covered by
+these redo transactions.
 
 ### Chests and world save v4 (supported by v5)
 

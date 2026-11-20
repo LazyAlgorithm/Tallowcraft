@@ -43,16 +43,38 @@ public static class WorldEditSave
         IReadOnlyDictionary<BlockPosition, ChestContents>? chests) =>
         Save(root, worldId, seed, edits, revisions, chests, null);
 
-    // Non-null drops commits a v5 generation; old call sites retain v3/v4.
+    // Non-null drops now write incremental v6 manifests and reusable
+    // content-addressed objects; v3/v4 legacy call sites remain readable.
     public static void Save(string root, string worldId, int seed,
         SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions,
         IReadOnlyDictionary<BlockPosition, ChestContents>? chests,
-        IReadOnlyList<SavedWorldDrop>? drops)
+        IReadOnlyList<SavedWorldDrop>? drops) =>
+        SaveCore(root, worldId, seed, edits, revisions, chests, drops,
+            incremental: true);
+
+    // Used only to verify older on-disk v5 saves still load after migration.
+    internal static void SaveLegacyV5(string root, string worldId, int seed,
+        SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions,
+        IReadOnlyDictionary<BlockPosition, ChestContents> chests,
+        IReadOnlyList<SavedWorldDrop> drops) =>
+        SaveCore(root, worldId, seed, edits, revisions, chests, drops,
+            incremental: false);
+
+    private static void SaveCore(string root, string worldId, int seed,
+        SectionedEditSnapshot edits, IReadOnlyDictionary<ChunkKey, int> revisions,
+        IReadOnlyDictionary<BlockPosition, ChestContents>? chests,
+        IReadOnlyList<SavedWorldDrop>? drops, bool incremental)
     {
         if (drops != null && chests == null)
             throw new ArgumentException("Drop persistence requires chest state.");
         if (!Guid.TryParseExact(worldId, "N", out _))
             throw new ArgumentException("Invalid world identity.");
+        if (incremental && drops != null)
+        {
+            WorldSaveV6.Save(root, worldId, seed, edits, revisions,
+                chests!, drops);
+            return;
+        }
         Directory.CreateDirectory(root);
         string generation = NewWorldId();
         string staging = Path.Combine(root, "generations", generation + ".tmp");
@@ -99,6 +121,22 @@ public static class WorldEditSave
 
             DurableWrite(Path.Combine(staging, "manifest.txt"),
                 Encoding.UTF8.GetBytes(manifest.ToString()));
+            PublishGeneration(root, generation, staging, target);
+        }
+        catch
+        {
+            if (Directory.Exists(staging))
+                Directory.Delete(staging, recursive: true);
+            throw;
+        }
+    }
+
+    // Shared by legacy and content-addressed world saves. The world is
+    // visible only after its staging manifest is complete and its pointer
+    // is atomically promoted; previous.txt remains a rollback target.
+    internal static void PublishGeneration(string root, string generation,
+        string staging, string target)
+    {
             Directory.Move(staging, target);
             string pointer = Path.Combine(root, "current.txt");
             string previous = File.Exists(pointer)
@@ -133,13 +171,6 @@ public static class WorldEditSave
                 catch (IOException) { /* cleanup is best effort */ }
                 catch (UnauthorizedAccessException) { /* keep backup */ }
             }
-        }
-        catch
-        {
-            if (Directory.Exists(staging))
-                Directory.Delete(staging, recursive: true);
-            throw;
-        }
     }
 
     /// <summary>
@@ -220,6 +251,9 @@ public static class WorldEditSave
             if (lines.Length < 1)
                 return false;
             string[] header = lines[0].Split('|');
+            if (header.Length == 6 && header[0] == "6")
+                return WorldSaveV6.TryLoad(root, lines, out worldId,
+                    out seed, out edits, out chests, out drops);
             bool v3 = header.Length == 4 && header[0] == "3";
             bool v4 = header.Length == 5 && header[0] == "4";
             bool v5 = header.Length == 6 && header[0] == "5";

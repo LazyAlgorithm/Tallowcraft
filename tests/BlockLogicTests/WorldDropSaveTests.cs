@@ -63,8 +63,8 @@ internal static class WorldDropSaveTests
                 v4.Count == 0,
                 "v4 world saves load without invented drops");
 
-            WorldEditSave.Save(root, worldId, seed, edits.Snapshot,
-                edits.Revisions, chests.Snapshot, original);
+            WorldEditSave.SaveLegacyV5(root, worldId, seed,
+                edits.Snapshot, edits.Revisions, chests.Snapshot, original);
             check(WorldEditSave.TryLoad(root, out string restoredId,
                     out int restoredSeed, out BlockEdits world,
                     out WorldChestStorage storage,
@@ -88,8 +88,13 @@ internal static class WorldDropSaveTests
                 "A saved pickup stays absent from the current generation");
             string current = File.ReadAllText(
                 Path.Combine(root, "current.txt")).Trim();
-            File.WriteAllBytes(Path.Combine(root, "generations",
-                current, "drops.bin"), new byte[] { 1, 2, 3, 4 });
+            string manifest = File.ReadAllLines(Path.Combine(
+                root, "generations", current, "manifest.txt"))[0];
+            string[] header = manifest.Split('|');
+            check(header.Length == 6 && header[0] == "6",
+                "The current world save uses incremental manifest v6");
+            File.WriteAllBytes(WorldSaveV6.BlobPath(root, "drops",
+                header[5]), new byte[] { 1, 2, 3, 4 });
             check(WorldEditSave.TryLoad(root, out _, out _, out _,
                     out _, out IReadOnlyList<SavedWorldDrop> rolledBack,
                     out bool fallback) &&
@@ -103,6 +108,6 @@ internal static class WorldDropSaveTests
                 Directory.Delete(root, recursive: true);
         }
         Console.WriteLine("PASS: bounded drop codec, v3/v4 loading, " +
-            "world save v5 and atomic corruption rollback");
+            "legacy v5 restore, incremental v6 migration and corruption rollback");
     }
 }

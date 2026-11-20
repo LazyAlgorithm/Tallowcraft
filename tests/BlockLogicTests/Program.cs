@@ -32,6 +32,7 @@ static class Program
             InventorySlotTests.Run(Check);
             WorldDropTests.Run(Check);
             WorldDropSaveTests.Run(Check);
+            IncrementalWorldSaveTests.Run(Check);
             PickupTransactionTests.Run(Check);
             ChestTransactionTests.Run(Check);
             MiningFallbackTransactionTests.Run(Check);
