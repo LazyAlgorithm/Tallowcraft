@@ -74,21 +74,25 @@ internal static class WaypointCompassTests
             WaypointCompass.Heading(0, 1) == 180 &&
             WaypointCompass.Heading(-1, 0) == 270,
             "Compass uses north=-Z east=+X world axes");
+        check(WaypointCompass.MarkerSlots == 61 &&
+            WaypointCompass.Slots == 13 &&
+            WaypointCompass.MarkerDegreesPerSlot == 3f,
+            "Marker positions have five times the granularity of cardinal ticks");
         Vector3 origin = new(-100, 4, -120);
         check(WaypointCompass.Slot(origin, -Vector3.UnitZ,
-            origin - Vector3.UnitZ * 100) == 6,
+            origin - Vector3.UnitZ * 100) == WaypointCompass.MarkerSlots / 2,
             "Northward waypoint centers in a northward camera");
         check(WaypointCompass.Slot(origin, -Vector3.UnitZ,
             origin + Vector3.UnitX * 100) == 0,
             "Facing -Z, eastward waypoint is screen-left in Tallow's +Z camera convention");
         check(WaypointCompass.Slot(origin, -Vector3.UnitZ,
-            origin - Vector3.UnitX * 100) == 12,
+            origin - Vector3.UnitX * 100) == WaypointCompass.MarkerSlots - 1,
             "Facing -Z, westward waypoint is screen-right in Tallow's +Z camera convention");
         check(WaypointCompass.Slot(origin, -Vector3.UnitZ,
             origin + Vector3.UnitZ * 100) == -1,
             "Waypoints behind the player are excluded from forward ribbon");
         check(WaypointCompass.Slot(origin, Vector3.UnitX,
-            origin - Vector3.UnitZ * 100) == 12,
+            origin - Vector3.UnitZ * 100) == WaypointCompass.MarkerSlots - 1,
             "Compass headings rotate relative to the camera");
         check(WaypointCompass.TickLabel(-Vector3.UnitZ, 6) == "N" &&
             WaypointCompass.TickLabel(Vector3.UnitX, 6) == "E",
@@ -101,9 +105,9 @@ internal static class WaypointCompassTests
             Quaternion.CreateFromAxisAngle(Vector3.UnitY, turn));
         Vector3 cameraTurnLeft = Vector3.Transform(Vector3.UnitZ,
             Quaternion.CreateFromAxisAngle(Vector3.UnitY, -turn));
-        check(WaypointCompass.Slot(origin, Vector3.UnitZ, fixedWaypoint) == 6 &&
-            WaypointCompass.Slot(origin, cameraTurnRight, fixedWaypoint) == 5 &&
-            WaypointCompass.Slot(origin, cameraTurnLeft, fixedWaypoint) == 7,
+        check(WaypointCompass.Slot(origin, Vector3.UnitZ, fixedWaypoint) == 30 &&
+            WaypointCompass.Slot(origin, cameraTurnRight, fixedWaypoint) == 25 &&
+            WaypointCompass.Slot(origin, cameraTurnLeft, fixedWaypoint) == 35,
             "Stationary waypoint moves opposite to right/left camera turns");
         check(WaypointCompass.TickLabel(Vector3.UnitZ, 0) == "W" &&
             WaypointCompass.TickLabel(Vector3.UnitZ, 6) == "S" &&
@@ -120,12 +124,12 @@ internal static class WaypointCompassTests
             Vector3 left = new(-forward.Z, 0f, forward.X);
             Vector3 right = -left;
             check(WaypointCompass.Slot(origin, forward,
-                    origin + forward * 75f) == 6,
+                    origin + forward * 75f) == WaypointCompass.MarkerSlots / 2,
                 "Waypoints ahead stay in the center as the camera turns");
             check(WaypointCompass.Slot(origin, forward,
                     origin + left * 75f) == 0 &&
                 WaypointCompass.Slot(origin, forward,
-                    origin + right * 75f) == 12,
+                    origin + right * 75f) == WaypointCompass.MarkerSlots - 1,
                 "Compass left/right markers align with camera yaw");
             check(WaypointCompass.Slot(origin, forward,
                     origin - forward * 75f) == -1,
