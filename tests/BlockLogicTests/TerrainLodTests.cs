@@ -69,23 +69,28 @@ internal static class TerrainLodTests
         ChunkMesh neighbor = DistantTerrainMesher.Generate(right, seed,
             blocks.Snapshot, CancellationToken.None);
         int cells = DistantTerrainMesher.CellsPerAxis;
-        check(before.Vertices.Length == (cells * cells + 4 * cells) * 4 &&
-            before.Triangles.Length == (cells * cells + 4 * cells) * 6,
-            "Coarse meshes use constant geometry independent of terrain volume");
+        // Each terrain column is a flat-topped square, and exposed step
+        // faces can add geometry without requiring a full voxel mesh.
+        check(before.Vertices.Length >= cells * cells * 4 &&
+            before.Vertices.Length % 4 == 0 &&
+            before.Triangles.Length == before.Vertices.Length / 4 * 6,
+            "Coarse geometry should be a compact batched quad mesh");
         check(before.Blocks.Length == 0,
             "LOD meshes must not store authoritative chunk voxel buffers");
-        for (int z = 0; z < cells; z++)
-        {
-            int leftQuad = ((z * cells) + cells - 1) * 4;
-            int rightQuad = (z * cells) * 4;
-            check(before.Vertices[leftQuad + 3].Y ==
-                neighbor.Vertices[rightQuad].Y &&
-                before.Vertices[leftQuad + 2].Y ==
-                neighbor.Vertices[rightQuad + 1].Y,
-                "Equal-LOD tile edges must meet without a height crack");
-        }
+        foreach (ChunkMesh mesh in new[] { before, neighbor })
+            for (int i = 0; i < mesh.Vertices.Length; i += 4)
+                if (mesh.Normals[i] == Vector3.UnitY ||
+                    mesh.Normals[i] == -Vector3.UnitY)
+                    check(mesh.Vertices[i].Y == mesh.Vertices[i + 1].Y &&
+                        mesh.Vertices[i].Y == mesh.Vertices[i + 2].Y &&
+                        mesh.Vertices[i].Y == mesh.Vertices[i + 3].Y,
+                        "Horizontal distant block faces must be flat, never sloped");
+        check(before.Vertices[0].Y == before.Vertices[1].Y &&
+            before.Vertices[0].Y == before.Vertices[2].Y,
+            "Distant terrain must not interpolate a slope between samples");
 
-        var edited = new BlockPosition(-32, 42, -32);
+        // First coarse cell (-32..-31 in each axis) samples (-31,-31).
+        var edited = new BlockPosition(-31, 42, -31);
         check(blocks.Set(edited, BlockState.Create(3).Packed, seed),
             "Edit above terrain should be a persistent voxel change");
         ChunkMesh after = DistantTerrainMesher.Generate(left, seed,
@@ -99,6 +104,49 @@ internal static class TerrainLodTests
             after.Triangles.SequenceEqual(repeated.Triangles),
             "Same world seed and edit snapshot must generate identical LOD mesh");
 
+        // One deterministic 8m flora cell should produce only one compact
+        // tree proxy, and mining its root should remove that distant tree.
+        bool foundTree = false;
+        for (int cellZ = 10; cellZ < 28 && !foundTree; cellZ++)
+        for (int cellX = 10; cellX < 28 && !foundTree; cellX++)
+        {
+            if (!WorldFlora.TryTreeRootInCell(cellX, cellZ, seed,
+                out int treeX, out int treeZ, out int groundY,
+                out int trunkHeight, out bool pine))
+                continue;
+            check(WorldFlora.TryTreeAt(treeX, treeZ, seed,
+                    out int sameGround, out int sameHeight, out bool samePine) &&
+                sameGround == groundY && sameHeight == trunkHeight &&
+                samePine == pine,
+                "Far tree roots must match full-detail WorldFlora generation");
+
+            var treeTile = TerrainTileKey.At(
+                ChunkGenerator.FloorDiv(treeX, ChunkGenerator.Size),
+                ChunkGenerator.FloorDiv(treeZ, ChunkGenerator.Size), 3);
+            var treeEdits = new BlockEdits();
+            ChunkMesh trees = DistantTerrainMesher.Generate(treeTile, seed,
+                treeEdits.Snapshot, CancellationToken.None);
+            ChunkMesh terrainOnly = DistantTerrainMesher.Generate(treeTile, seed,
+                treeEdits.Snapshot, CancellationToken.None, includeTrees: false);
+            check(trees.DistantTreeCount > 0 &&
+                trees.Vertices.Length > terrainOnly.Vertices.Length &&
+                terrainOnly.DistantTreeCount == 0,
+                "Distant LOD meshes must batch procedural trees with terrain");
+            check(treeEdits.Set(new BlockPosition(treeX, groundY, treeZ), 0, seed),
+                "Mining a deterministic natural tree trunk must be a valid edit");
+            ChunkMesh mined = DistantTerrainMesher.Generate(treeTile, seed,
+                treeEdits.Snapshot, CancellationToken.None);
+            check(mined.DistantTreeCount == trees.DistantTreeCount - 1,
+                "Mining a tree root should invalidate its distant proxy");
+            ChunkMesh repeatedTrees = DistantTerrainMesher.Generate(treeTile, seed,
+                treeEdits.Snapshot, CancellationToken.None);
+            check(mined.Vertices.SequenceEqual(repeatedTrees.Vertices) &&
+                mined.Triangles.SequenceEqual(repeatedTrees.Triangles),
+                "Seeded distant trees must generate deterministically");
+            foundTree = true;
+        }
+        check(foundTree, "Regression region should contain a seeded tree");
+
         using var stop = new CancellationTokenSource();
         stop.Cancel();
         bool cancelled = false;
@@ -108,7 +156,7 @@ internal static class TerrainLodTests
         }
         catch (OperationCanceledException) { cancelled = true; }
         check(cancelled, "Distant terrain jobs must obey cancellation tokens");
-        Console.WriteLine("PASS: signed quadtree coverage, LOD stability, seams, edits, and cancellation");
+        Console.WriteLine("PASS: signed quadtree coverage, stepped block terrain, tree LOD, edits, and cancellation");
     }
 
     public static void Benchmark()
