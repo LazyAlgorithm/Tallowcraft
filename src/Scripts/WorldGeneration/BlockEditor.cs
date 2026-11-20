@@ -51,18 +51,21 @@ public class BlockEditor : Script
     private static readonly string[] BlockNames =
     {
         "Grass", "Dirt", "Stone", "Log", "Forge", "Planks",
-        "Coal", "Iron", "Leaves", "Iron ingots", "Chest"
+        "Coal", "Iron", "Leaves", "Iron ingots", "Chest",
+        "Cobblestone", "Stone bricks", "Mossy stone", "Dark timber"
     };
     private static readonly string[] ShapeNames =
         { "Cube", "Slab", "Stair", "Half wall" };
     private static readonly string[] ItemShort =
-        { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING", "CHT" };
+        { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING", "CHT", "COB", "BRK", "MOS", "TMB" };
     private static readonly Color[] ItemColors =
     {
         new(.33f,.66f,.20f), new(.48f,.30f,.19f), new(.50f,.53f,.54f),
         new(.54f,.35f,.21f), new(.57f,.49f,.34f), new(.77f,.61f,.36f),
         new(.25f,.27f,.30f), new(.65f,.53f,.45f), new(.25f,.58f,.23f),
-        new(.75f,.73f,.69f), new(.61f,.38f,.19f)
+        new(.75f,.73f,.69f), new(.61f,.38f,.19f),
+        new(.48f,.50f,.53f), new(.58f,.59f,.60f),
+        new(.27f,.50f,.31f), new(.49f,.31f,.19f)
     };
 
     private BlockWorld? _world;
@@ -741,7 +744,7 @@ public class BlockEditor : Script
         get
         {
             ItemStack held = DisplayInventory().Slot(SelectedHotbar);
-            return held.Type is >= 1 and <= BlockInventory.Chest &&
+            return held.Type is >= 1 and <= BlockInventory.MaxType &&
                 held.Type != BlockInventory.IronIngot &&
                 (CreativeMode || held.Quantity > 0);
         }
@@ -1263,7 +1266,8 @@ public class BlockEditor : Script
             PickedUpper = false;
         }
         int heldType = _inventory.Slot(SelectedHotbar).Type;
-        PlaceType = heldType is >= 1 and <= BlockInventory.Chest ?
+        PlaceType = heldType is >= 1 and <= BlockInventory.MaxType &&
+            heldType != BlockInventory.IronIngot ?
             heldType : 0;
         if (PlaceType == BlockInventory.Chest) PlaceShape = 0;
         PlaceShape = Math.Clamp(PlaceShape, 0, 3);
@@ -1333,7 +1337,8 @@ public class BlockEditor : Script
                 return;
         }
         else if (placing &&
-            (PlaceType is < 1 or > BlockInventory.Chest ||
+            (PlaceType is < 1 or > BlockInventory.MaxType ||
+               PlaceType == BlockInventory.IronIngot ||
              (!CreativeMode &&
               _inventory.Slot(SelectedHotbar).Quantity == 0)))
             return;
