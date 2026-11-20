@@ -1477,6 +1477,253 @@ public class BlockWorld : Script
             _streamExhausted = true;
     }
 
+    private int DistantVersion(TerrainTileKey key) =>
+        _distantVersions.TryGetValue(key, out int version) ? version : 0;
+
+    private void RebuildDistantSelection(int cx, int cz)
+    {
+        if (QuadtreeLodEnabled)
+            _distantSelection = TerrainQuadtree.Select(cx, cz, _lastForward,
+                RenderRadius, SideRadius, BehindRadius, LodQuality,
+                _distantSelection.Tiles);
+        else
+            _distantSelection = new TerrainSelection();
+
+        foreach (var pair in _distantJobs)
+            if (!_distantSelection.Tiles.Contains(pair.Key) ||
+                pair.Value.Version != DistantVersion(pair.Key))
+                pair.Value.Cancel.Cancel();
+
+        _distantQueueDirty = true;
+        _distantNeedsRetire = true;
+    }
+
+    private bool DistantTileReady(int x, int z)
+    {
+        for (int level = 1; level <= TerrainQuadtree.MaxLevel; level++)
+        {
+            TerrainTileKey tile = TerrainTileKey.At(x, z, level);
+            if (_distantSelection.Tiles.Contains(tile))
+                return _distantLoaded.TryGetValue(tile, out var current) &&
+                    current.Version == DistantVersion(tile);
+        }
+        return false;
+    }
+
+    private bool SurfaceColumnReady(int x, int z, int cx, int cy, int cz)
+    {
+        var snapshot = _edits.Snapshot;
+        for (int y = 0; y <= ChunkGenerator.MaxChunkY; y++)
+        {
+            ChunkKey section = new(x, y, z);
+            if (!ShouldStream(section, cx, cy, cz))
+                continue;
+            if (!ChunkGenerator.HasPotentialBlocks(section, Seed, snapshot))
+                continue;
+            if (_loaded.ContainsKey(section) ||
+                (_emptyChunks.TryGetValue(section, out int empty) &&
+                    empty == VersionFor(section)))
+                continue;
+            return false;
+        }
+        return true;
+    }
+
+    private bool CanRetireDistant(TerrainTileKey old, int cx, int cy, int cz)
+    {
+        for (int z = old.Z; z < old.Z + old.Span; z++)
+        for (int x = old.X; x < old.X + old.Span; x++)
+        {
+            if (_distantSelection.Full.Contains(new TerrainColumn(x, z)))
+            {
+                if (!SurfaceColumnReady(x, z, cx, cy, cz))
+                    return false;
+            }
+            else if (_distantSelection.ContainsTile(x, z))
+            {
+                if (!DistantTileReady(x, z))
+                    return false;
+            }
+            else if (!QuadtreeLodEnabled &&
+                ShouldStream(new ChunkKey(x, 0, z), cx, cy, cz) &&
+                !SurfaceColumnReady(x, z, cx, cy, cz))
+                return false;
+        }
+        return true;
+    }
+
+    private void RetireDistant(int cx, int cy, int cz)
+    {
+        if (!_distantNeedsRetire) return;
+        _distantNeedsRetire = false;
+        _distantScratch.Clear();
+        foreach (var pair in _distantLoaded)
+        {
+            if (_distantSelection.Tiles.Contains(pair.Key) ||
+                !CanRetireDistant(pair.Key, cx, cy, cz))
+                continue;
+            if (pair.Value.Object.IsValid)
+            {
+                pair.Value.Renderer.ClearMesh();
+                pair.Value.Object.Destroy();
+            }
+            _distantScratch.Add(pair.Key);
+        }
+        foreach (TerrainTileKey key in _distantScratch)
+            _distantLoaded.Remove(key);
+    }
+
+    private void TickDistantTerrain(int cx, int cy, int cz, int uploadBudget)
+    {
+        _distantScratch.Clear();
+        foreach (var pair in _distantJobs)
+        {
+            if (uploadBudget <= 0) break;
+            if (!pair.Value.Task.IsCompleted) continue;
+            uploadBudget--;
+            TerrainTileKey key = pair.Key;
+            var job = pair.Value;
+            _distantScratch.Add(key);
+            job.Cancel.Dispose();
+            if (job.Task.IsFaulted)
+            {
+                Console.WriteLine($"Tallowcraft LOD tile {key} failed: {job.Task.Exception}");
+                continue;
+            }
+            if (!job.Task.IsCompletedSuccessfully ||
+                !QuadtreeLodEnabled ||
+                !_distantSelection.Tiles.Contains(key) ||
+                job.Version != DistantVersion(key))
+            {
+                _distantQueueDirty = true;
+                continue;
+            }
+
+            ChunkMesh mesh = job.Task.Result;
+            if (_distantLoaded.TryGetValue(key, out var current) &&
+                current.Object.IsValid)
+            {
+                current.Renderer.SetMesh(mesh.Vertices, mesh.Triangles,
+                    mesh.Normals, mesh.Uvs);
+                _distantLoaded[key] = (current.Object, current.Renderer,
+                    job.Version, mesh.Vertices.Length, mesh.Triangles.Length / 3);
+            }
+            else
+            {
+                GameObject tile = Scene.CreateGameObject(
+                    $"Terrain LOD{key.Level} {key.X}, {key.Z}");
+                tile.Transient = true;
+                tile.Transform.Position = new Vector3(
+                    key.X * ChunkGenerator.Size, 0f, key.Z * ChunkGenerator.Size);
+                MeshRenderer renderer = tile.AddComponent<MeshRenderer>();
+                renderer.FlatShading = true;
+                renderer.BackFaceCulling = false; // skirts have two visible sides
+                renderer.CastShadows = false;
+                renderer.Texture = BlockTextureAtlas.Path;
+                renderer.SetMesh(mesh.Vertices, mesh.Triangles,
+                    mesh.Normals, mesh.Uvs);
+                _distantLoaded[key] = (tile, renderer, job.Version,
+                    mesh.Vertices.Length, mesh.Triangles.Length / 3);
+            }
+
+            _distantNeedsRetire = true;
+            double milliseconds = Stopwatch.GetElapsedTime(job.Queued).TotalMilliseconds;
+            _distantQueueLatency += milliseconds;
+            _distantMaxLatency = Math.Max(_distantMaxLatency, milliseconds);
+            if (++_distantUploads >= Math.Max(1, StreamReportEvery) && ProfileStreaming)
+            {
+                long vertices = 0, triangles = 0;
+                foreach (var live in _distantLoaded.Values)
+                {
+                    vertices += live.Vertices;
+                    triangles += live.Triangles;
+                }
+                long bytes = vertices * (12 + 12 + 8) + triangles * 12;
+                Console.WriteLine(
+                    $"[Tallowcraft LOD] tiles={_distantLoaded.Count} " +
+                    $"full_sections={_loaded.Count} pending={_distantJobs.Count} " +
+                    $"verts={vertices} tris={triangles} cpu_mesh_bytes={bytes} " +
+                    $"queue_to_upload_avg_ms={_distantQueueLatency / _distantUploads:F1} " +
+                    $"max_ms={_distantMaxLatency:F1}");
+                _distantQueueLatency = _distantMaxLatency = 0;
+                _distantUploads = 0;
+            }
+        }
+        foreach (TerrainTileKey key in _distantScratch)
+            _distantJobs.Remove(key);
+
+        if (QuadtreeLodEnabled)
+        {
+            int workers = Math.Clamp(WorkerCount, 1,
+                Math.Max(1, Environment.ProcessorCount));
+            if (_distantQueueDirty)
+            {
+                _distantQueue.Clear();
+                foreach (TerrainTileKey key in _distantSelection.Tiles)
+                    if (!_distantJobs.ContainsKey(key) &&
+                        (!_distantLoaded.TryGetValue(key, out var live) ||
+                         live.Version != DistantVersion(key)))
+                        _distantQueue.Add(key);
+                _distantQueue.Sort((a, b) =>
+                {
+                    long ax = (long)a.X + a.Span / 2 - cx,
+                        az = (long)a.Z + a.Span / 2 - cz,
+                        bx = (long)b.X + b.Span / 2 - cx,
+                        bz = (long)b.Z + b.Span / 2 - cz;
+                    return (ax * ax + az * az).CompareTo(bx * bx + bz * bz);
+                });
+                _nextDistant = 0;
+                _distantQueueDirty = false;
+            }
+
+            var edits = _edits.Snapshot;
+            int seed = Seed;
+            while (_jobs.Count + _distantJobs.Count < workers &&
+                _nextDistant < _distantQueue.Count)
+            {
+                TerrainTileKey key = _distantQueue[_nextDistant++];
+                if (_distantJobs.ContainsKey(key) ||
+                    !_distantSelection.Tiles.Contains(key))
+                    continue;
+                if (_distantLoaded.TryGetValue(key, out var loaded) &&
+                    loaded.Version == DistantVersion(key))
+                    continue;
+                int version = DistantVersion(key);
+                var cancel = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                CancellationToken token = cancel.Token;
+                long queued = Stopwatch.GetTimestamp();
+                Task<ChunkMesh> task = Task.Run(
+                    () => DistantTerrainMesher.Generate(key, seed, edits, token),
+                    token);
+                _distantJobs.Add(key, (task, cancel, version, queued));
+            }
+        }
+        RetireDistant(cx, cy, cz);
+        // Remove obsolete full-detail chunks only after their replacement is
+        // uploaded, without leaving a one-frame gap in the rendered world.
+        if (_distantNeedsRetire)
+            UnloadDistant(cx, cy, cz);
+    }
+
+    private void ResetDistantTerrain()
+    {
+        foreach (var job in _distantJobs.Values)
+            job.Cancel.Cancel();
+        _distantJobs.Clear();
+        foreach (var live in _distantLoaded.Values)
+            if (live.Object.IsValid)
+            {
+                live.Renderer.ClearMesh();
+                live.Object.Destroy();
+            }
+        _distantLoaded.Clear();
+        _distantVersions.Clear();
+        _distantSelection = new TerrainSelection();
+        _distantQueue.Clear();
+        _distantQueueDirty = _distantNeedsRetire = true;
+        _nextDistant = 0;
+    }
+
     /// <summary>
     /// The shared block targeting query for both preview and server edits.
     /// A client may raycast its local generated collision chunks, but it cannot
