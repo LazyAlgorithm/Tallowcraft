@@ -44,6 +44,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkScheduling.cs" Link="ChunkScheduling.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldDisplaySettings.cs" Link="WorldDisplaySettings.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldWaypointStore.cs" Link="WorldWaypointStore.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WaypointCompass.cs" Link="WaypointCompass.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/HybridChunkMesher.cs" Link="HybridChunkMesher.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/TerrainQuadtree.cs" Link="TerrainQuadtree.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/DistantTerrainMesher.cs" Link="DistantTerrainMesher.cs" />
