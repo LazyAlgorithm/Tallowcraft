@@ -28,6 +28,7 @@
         <button id="view-setting" class="setting-button" onclick="OnViewDistance">View distance: Balanced</button>
         <button id="height-setting" class="setting-button" onclick="OnWorldHeight">Vertical range: Balanced</button>
         <button id="shadow-setting" class="setting-button" onclick="OnShadows">Block shadows: On</button>
+        <button id="threads-setting" class="setting-button" onclick="OnThreads">Chunk threads: Auto</button>
         <text class="settings-help">Higher settings may reduce FPS.</text>
         <button id="back-settings" class="game-menu-button-secondary" onclick="OnSettings">Back</button>
       </panel>

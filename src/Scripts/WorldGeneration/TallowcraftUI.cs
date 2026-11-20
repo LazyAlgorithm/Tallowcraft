@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using Tallow;
 
 namespace WorldGeneration;
@@ -40,6 +41,8 @@ public sealed class TallowcraftUI : Script
     private int _viewChoice = 1;
     private int _heightChoice = 1;
     private bool _shadows = true;
+    // Zero means automatic; positive values are explicit worker counts.
+    private int _workerSelection;
     private float _fpsSeconds;
     private int _fpsFrames;
     // Avoid hundreds of native Find/Visible calls whenever one stack count
@@ -67,9 +70,19 @@ public sealed class TallowcraftUI : Script
                 int.TryParse(lines[1], out int height) &&
                 bool.TryParse(lines[2], out bool shadows))
             {
-                _viewChoice = Math.Clamp(view, 0, 2);
+                _viewChoice = Math.Clamp(view, 0, WorldDisplaySettings.Distances.Length - 1);
                 _heightChoice = Math.Clamp(height, 0, 2);
                 _shadows = shadows;
+                if (lines.Length >= 4 && int.TryParse(lines[3], out int workers))
+                    _workerSelection = Math.Clamp(workers, 0, MaxWorkers());
+                // Preserve the effective settings from older Auto quality saves.
+                if (lines.Length >= 7 && bool.TryParse(lines[4], out bool automatic) && automatic)
+                {
+                    if (int.TryParse(lines[5], out int distance))
+                        _viewChoice = Math.Clamp(distance, 0, WorldDisplaySettings.Distances.Length - 1);
+                    if (bool.TryParse(lines[6], out bool savedShadows))
+                        _shadows = savedShadows;
+                }
             }
         }
         catch (FileNotFoundException) { }
@@ -79,20 +92,41 @@ public sealed class TallowcraftUI : Script
 
     private void ApplySettings()
     {
+        int maxWorkers = MaxWorkers();
+        int workers = WorldDisplaySettings.WorkerCount(_workerSelection, maxWorkers);
+        int distance = _viewChoice;
+        bool shadows = _shadows;
         var world = Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
         if (world is not null)
         {
-            int[] distance = { 4, 6, 9 };
-            world.RenderRadius = distance[_viewChoice];
-            world.SideRadius = new[] { 3, 4, 6 }[_viewChoice];
-            world.BehindRadius = new[] { 2, 2, 4 }[_viewChoice];
+            world.RenderRadius = WorldDisplaySettings.Distances[distance];
+            world.SideRadius = WorldDisplaySettings.SideDistances[distance];
+            world.BehindRadius = WorldDisplaySettings.BehindDistances[distance];
             world.VerticalRadius = _heightChoice;
-            world.ChunkShadowsEnabled = _shadows;
+            world.ChunkShadowsEnabled = shadows;
+            world.WorkerCount = workers;
+            // Uploads run on the render thread, so retain its existing safe cap.
+            world.UploadsPerFrame = Math.Clamp((workers + 1) / 2, 1, 4);
+            // Keep distant terrain visible through the scene's fog.
+            var environment = Scene.Environment;
+            environment.FogDensity = .004f * Math.Min(1f, 6f / world.RenderRadius);
         }
-        string[] choices = { "Near", "Balanced", "Far" };
-        Text("view-setting", "View distance: " + choices[_viewChoice]);
-        Text("height-setting", "Vertical range: " + choices[_heightChoice]);
-        Text("shadow-setting", "Block shadows: " + (_shadows ? "On" : "Off"));
+        ThreadPool.GetMinThreads(out int minWorkers, out int minIo);
+        if (workers > minWorkers)
+            ThreadPool.SetMinThreads(workers, minIo);
+        string[] heights = { "Near", "Balanced", "Far" };
+        Text("view-setting", $"View distance: {WorldDisplaySettings.DistanceNames[distance]} ({WorldDisplaySettings.Distances[distance]} chunks ahead)");
+        Text("height-setting", "Vertical range: " + heights[_heightChoice]);
+        Text("shadow-setting", "Block shadows: " + (shadows ? "On" : "Off"));
+        Text("threads-setting", _workerSelection == 0 ?
+            $"Chunk threads: Auto ({workers} of {maxWorkers})" :
+            $"Chunk threads: {workers} of {maxWorkers}");
+    }
+
+    private static int MaxWorkers()
+    {
+        ThreadPool.GetMaxThreads(out int maxPoolWorkers, out _);
+        return Math.Max(1, Math.Min(Environment.ProcessorCount, maxPoolWorkers));
     }
 
     private void SaveSettings()
@@ -102,7 +136,7 @@ public sealed class TallowcraftUI : Script
             Directory.CreateDirectory(GamePaths.PlayerData);
             File.WriteAllLines(SettingsPath, new[] {
                 _viewChoice.ToString(), _heightChoice.ToString(),
-                _shadows.ToString() });
+                _shadows.ToString(), _workerSelection.ToString() });
         }
         catch (Exception e) { Console.WriteLine($"Tallowcraft settings: {e.Message}"); }
     }
@@ -111,9 +145,10 @@ public sealed class TallowcraftUI : Script
     public void OnResume() => _owner?.UiResumeGame();
     public void OnSettings() => _owner?.UiToggleSettings();
     public void OnQuit() => _owner?.UiQuitGame();
-    public void OnViewDistance() { _viewChoice = (_viewChoice + 1) % 3; ApplySettings(); SaveSettings(); }
+    public void OnViewDistance() { _viewChoice = (_viewChoice + 1) % WorldDisplaySettings.Distances.Length; ApplySettings(); SaveSettings(); }
     public void OnWorldHeight() { _heightChoice = (_heightChoice + 1) % 3; ApplySettings(); SaveSettings(); }
     public void OnShadows() { _shadows = !_shadows; ApplySettings(); SaveSettings(); }
+    public void OnThreads() { _workerSelection = WorldDisplaySettings.NextWorkerSelection(_workerSelection, MaxWorkers()); ApplySettings(); SaveSettings(); }
 
     private void Text(string id, string value)
     {

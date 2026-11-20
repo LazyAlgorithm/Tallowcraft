@@ -13,7 +13,7 @@
 .game-menu-button-secondary, .setting-button { background-color: #34483c; border-color: #778d70 }
 .game-menu-button-quit { background-color: #633b38; border-color: #a8746b }
 .settings-title { font-size: 23; color: #f2ddaa }
-.settings-help { font-size: 14; color: #bbccb6; white-space: normal; text-align: center }
+.settings-help { width: 100%; height: 22; font-size: 14; color: #bbccb6; text-align: center }
 .game-menu-footer { font-size: 13; color: #9faf9d }
 #crosshair { position: absolute; left: 49.6%; top: 49%; width: 24; height: 28; font-size: 27; color: #f3f3e6c0; text-align: center }
 .hud { position: absolute; left: 0; right: 0; bottom: 22; height: 154; gap: 7; align-items: center; justify-content: center }

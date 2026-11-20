@@ -750,7 +750,7 @@ public class BlockWorld : Script
     }
 
     private int CollisionRadius() =>
-        Math.Clamp(EditableRadius, 0, Math.Clamp(RenderRadius, 1, 16));
+        Math.Clamp(EditableRadius, 0, Math.Clamp(RenderRadius, 1, WorldDisplaySettings.MaxDistance));
 
     private bool ShouldStream(ChunkKey key, int cx, int cy, int cz, int extra = 0)
     {
@@ -758,7 +758,7 @@ public class BlockWorld : Script
             Math.Abs((long)key.Y - cy) > Math.Clamp(VerticalRadius, 0, 2) + extra ||
             HiddenForViewer(key))
             return false;
-        int forwardRange = Math.Clamp(RenderRadius, 1, 16);
+        int forwardRange = Math.Clamp(RenderRadius, 1, WorldDisplaySettings.MaxDistance);
         int sideRange = Math.Clamp(SideRadius, 1, forwardRange);
         int backRange = Math.Clamp(BehindRadius, 0, sideRange);
         int nearRange = CollisionRadius();
@@ -801,7 +801,7 @@ public class BlockWorld : Script
             return false;
         if (!LimitChunkShadows)
             return true;
-        int radius = Math.Clamp(ShadowRadius, 0, Math.Clamp(RenderRadius, 1, 16));
+        int radius = Math.Clamp(ShadowRadius, 0, Math.Clamp(RenderRadius, 1, WorldDisplaySettings.MaxDistance));
         return ChunkScheduling.ShouldCastShadow(key, cx, cy, cz, radius);
     }
 
@@ -1289,13 +1289,13 @@ public class BlockWorld : Script
 
     private void StartNearestJobs(int cx, int cy, int cz)
     {
-        int workers = Math.Clamp(WorkerCount, 1, 4);
+        int workers = Math.Clamp(WorkerCount, 1, Math.Max(1, Environment.ProcessorCount));
         if (_jobs.Count >= workers)
             return;
 
         if (_candidateListDirty)
         {
-            int radius = Math.Clamp(RenderRadius, 1, 16);
+            int radius = Math.Clamp(RenderRadius, 1, WorldDisplaySettings.MaxDistance);
             int nearRadius = CollisionRadius();
             int vertical = Math.Clamp(VerticalRadius, 0, 2);
             _candidates.Clear();

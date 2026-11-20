@@ -8,6 +8,8 @@ Requires the current Tallow **feature/csharp-gameplay** engine branch (including
 
 Open project.tallow with Tallow and press Play. The Main scene starts a local **Host** network session on UDP port **7777**. It spawns the local player from src/Prefabs/Player.tprefab at one of four Spawn Points. Start a second instance as a client with the engine's --connect 127.0.0.1 option, or select Client in the Network Session component.
 
+World settings are available on the main and Escape menus. View distance ranges from 4 to 20 chunks ahead, with shorter side and rear ranges. Chunk threads can use Auto or a fixed count up to the detected maximum. Changes apply immediately and are saved for the local player. Higher distances and thread counts can use considerably more memory and CPU.
+
 ### Controls
 
 - WASD / mouse: move / look

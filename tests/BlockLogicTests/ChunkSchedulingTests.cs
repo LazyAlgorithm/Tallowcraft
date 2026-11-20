@@ -7,6 +7,21 @@ internal static class ChunkSchedulingTests
 {
     public static void Run(Action<bool, string> check)
     {
+        check(WorldDisplaySettings.Distances[^1] == 20 &&
+              WorldDisplaySettings.Distances.Length > 3,
+            "View distance offers multiple steps up to 20 chunks");
+        check(WorldDisplaySettings.WorkerCount(0, 12) == 11 &&
+              WorldDisplaySettings.WorkerCount(0, 1) == 1 &&
+              WorldDisplaySettings.WorkerCount(50, 12) == 12,
+            "Automatic and explicit chunk worker counts respect processor limits");
+        int choice = 0;
+        foreach (int expected in new[] { 1, 2, 4, 8, 12, 0 })
+        {
+            choice = WorldDisplaySettings.NextWorkerSelection(choice, 12);
+            check(choice == expected, "Thread options reach the exact detected maximum and Auto");
+        }
+        check(ChunkScheduling.ShouldCastShadow(new ChunkKey(20, 0, 0),
+            0, 0, 0, 20), "The extended shadow radius reaches 20 chunks");
         int collisionRadius = 2;
         ChunkKey center = new(0, 0, 0);
         ChunkKey near = new(1, 0, 0);

@@ -24,7 +24,7 @@ public static class ChunkScheduling
         int radius)
     {
         long dx = (long)key.X - cx, dz = (long)key.Z - cz;
-        long r = Math.Clamp(radius, 0, 16);
+        long r = Math.Clamp(radius, 0, WorldDisplaySettings.MaxDistance);
         return Math.Abs((long)key.Y - cy) <= 1 &&
             dx * dx + dz * dz <= r * r;
     }
@@ -36,7 +36,7 @@ public static class ChunkScheduling
         long dz = (long)key.Z - centerZ;
         long dy = (long)key.Y - centerY;
         long horizontal = dx * dx + dz * dz;
-        long near = Math.Clamp(collisionRadius, 0, 16);
+        long near = Math.Clamp(collisionRadius, 0, WorldDisplaySettings.MaxDistance);
         // Prefer the ground layer at the player's elevation. The layer just
         // beneath them stays fairly high priority for cave floors and physics.
         long vertical = dy == 0 ? 0 : Math.Abs(dy) *
