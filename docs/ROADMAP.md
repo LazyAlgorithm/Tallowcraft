@@ -2,6 +2,12 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Quadtree terrain streaming milestone — 20 November 2026
+
+**Committed to main; requires local compile/play-mode verification.** Introduced signed-coordinate X/Z quadtree selection, persistent 16³ LOD0 chunk storage, worker-generated coarse tiles using direct terrain sampling (not full voxel meshing), LOD hysteresis, stale-job cancellation, per-frame upload limits, coarse-tile skirts, an experimental GUI toggle and quality presets, edit-triggered ancestor invalidation and no-collider distant GameObjects. Existing full-detail multiplayer section replication, block editing, underground streams, near-player Jolt colliders and server collision around all players were not intentionally replaced. Unit regressions and optional CPU benchmarks are wired into `BlockLogicTests`; in-game profile logging captures frame intervals, mesh counts and rough memory.
+
+**Outstanding validation and work:** Verify C# build and all regression tests using the local engine's .NET SDK. Confirm transitions from full geometry to LOD1 and all mixed LOD seams on Linux and Windows; confirm there are no overdraw seams under severe terrain variation. Benchmark 20/32/48/64 chunks in a fixed seed/camera scenario, compare toggle OFF, evaluate RAM and GPU draw calls with renderer tooling. The heightfield is a coarse terrain approximation; trees, tunnels, edits to partial blocks and overhangs are not fully represented. Distant edited sections on joining clients are *not* globally replicated for coarse tiles: section requests are intentionally near-player only, so far-away edits need a bandwidth-bounded region-summary strategy before claiming full multiplayer distant-view parity. Consider optional frustum-based tile culling and capped distant tile cache **after** measured bottlenecks justify them. Do not claim 48–64 chunk FPS parity until measured.
+
 ## Progress update — 20 November 2026
 
 The milestones below track shipped repository code separately from engine
