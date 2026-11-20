@@ -226,6 +226,12 @@
           <panel id="page_craft" class="detail">
             <text class="section-title">CRAFTING</text>
             <text class="subtle">Choose a recipe. Ingredients come from your whole inventory.</text>
+            <panel class="recipe-scroll-controls">
+              <button id="recipe-scroll-up" class="recipe-scroll-button" onclick="OnRecipeScrollUp">▲</button>
+              <slider id="recipe-scrollbar" class="recipe-scrollbar" min="0" max="4" step="1" onchange="OnRecipeScroll" />
+              <button id="recipe-scroll-down" class="recipe-scroll-button" onclick="OnRecipeScrollDown">▼</button>
+              <text id="recipe-scroll-status" class="recipe-scroll-status">Recipes 1–4 of 8</text>
+            </panel>
             <panel class="recipes">
               <button id="recipe_1" class="recipe" onclick="OnRecipe"><image class="recipe-image" src="Textures/UI/planks.png"/><panel><text class="recipe-title">Wooden planks</text><text class="recipe-sub">1 log  ->  4 planks</text></panel></button>
               <button id="recipe_2" class="recipe" onclick="OnRecipe"><image class="recipe-image" src="Textures/UI/grass.png"/><panel><text class="recipe-title">Grass blocks</text><text class="recipe-sub">Dirt + leaves</text></panel></button>
