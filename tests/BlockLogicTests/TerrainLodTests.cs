@@ -68,6 +68,7 @@ internal static class TerrainLodTests
             blocks.Snapshot, CancellationToken.None);
         ChunkMesh neighbor = DistantTerrainMesher.Generate(right, seed,
             blocks.Snapshot, CancellationToken.None);
+        CheckCanonicalFaces(before, check);
         int cells = DistantTerrainMesher.CellsPerAxis;
         // Each terrain column is a flat-topped square, and exposed step
         // faces can add geometry without requiring a full voxel mesh.
@@ -157,6 +158,107 @@ internal static class TerrainLodTests
         catch (OperationCanceledException) { cancelled = true; }
         check(cancelled, "Distant terrain jobs must obey cancellation tokens");
         Console.WriteLine("PASS: signed quadtree coverage, stepped block terrain, tree LOD, edits, and cancellation");
+    }
+
+    /// <summary>
+    /// Far tiles must use the exact ChunkFace A/B/C/D vertex order: the
+    /// atlas's per-face orientation compensation is based on this order.
+    /// A winding-only check would miss 90/180-degree rotated stone textures.
+    /// </summary>
+    private static void CheckCanonicalFaces(ChunkMesh mesh,
+        Action<bool, string> check)
+    {
+        var uvCorners = new[]
+        {
+            new Vector2(0, 0), new Vector2(1, 0),
+            new Vector2(1, 1), new Vector2(0, 1)
+        };
+        for (int i = 0; i < mesh.Vertices.Length; i += 4)
+        {
+            Vector3 min = mesh.Vertices[i], max = mesh.Vertices[i];
+            for (int j = 1; j < 4; j++)
+            {
+                min = Vector3.Min(min, mesh.Vertices[i + j]);
+                max = Vector3.Max(max, mesh.Vertices[i + j]);
+            }
+            Vector3 normal = mesh.Normals[i];
+            int face;
+            Vector3[] positions;
+            if (normal == Vector3.UnitZ)
+            {
+                face = 0;
+                positions = new[] {
+                    new Vector3(min.X, min.Y, min.Z),
+                    new Vector3(max.X, min.Y, min.Z),
+                    new Vector3(max.X, max.Y, min.Z),
+                    new Vector3(min.X, max.Y, min.Z)
+                };
+            }
+            else if (normal == -Vector3.UnitZ)
+            {
+                face = 1;
+                positions = new[] {
+                    new Vector3(min.X, min.Y, min.Z),
+                    new Vector3(min.X, max.Y, min.Z),
+                    new Vector3(max.X, max.Y, min.Z),
+                    new Vector3(max.X, min.Y, min.Z)
+                };
+            }
+            else if (normal == Vector3.UnitX)
+            {
+                face = 2;
+                positions = new[] {
+                    new Vector3(min.X, min.Y, min.Z),
+                    new Vector3(min.X, max.Y, min.Z),
+                    new Vector3(min.X, max.Y, max.Z),
+                    new Vector3(min.X, min.Y, max.Z)
+                };
+            }
+            else if (normal == -Vector3.UnitX)
+            {
+                face = 3;
+                positions = new[] {
+                    new Vector3(min.X, min.Y, min.Z),
+                    new Vector3(min.X, min.Y, max.Z),
+                    new Vector3(min.X, max.Y, max.Z),
+                    new Vector3(min.X, max.Y, min.Z)
+                };
+            }
+            else if (normal == Vector3.UnitY)
+            {
+                face = 4;
+                positions = new[] {
+                    new Vector3(min.X, min.Y, min.Z),
+                    new Vector3(min.X, min.Y, max.Z),
+                    new Vector3(max.X, min.Y, max.Z),
+                    new Vector3(max.X, min.Y, min.Z)
+                };
+            }
+            else if (normal == -Vector3.UnitY)
+            {
+                face = 5;
+                positions = new[] {
+                    new Vector3(min.X, min.Y, min.Z),
+                    new Vector3(max.X, min.Y, min.Z),
+                    new Vector3(max.X, min.Y, max.Z),
+                    new Vector3(min.X, min.Y, max.Z)
+                };
+            }
+            else
+                throw new Exception("Non-axis-aligned distant terrain normal");
+
+            Vector2 zero = BlockTextureAtlas.FaceUV(0, face, 0, 0);
+            for (int j = 0; j < 4; j++)
+            {
+                check(mesh.Vertices[i + j] == positions[j],
+                    "LOD faces must match full-block canonical vertex order");
+                Vector2 expectedDelta = BlockTextureAtlas.FaceUV(
+                    0, face, uvCorners[j].X, uvCorners[j].Y) - zero;
+                check(Vector2.Distance(mesh.Uvs[i + j] - mesh.Uvs[i],
+                    expectedDelta) < 0.0001f,
+                    "LOD face UVs must keep the same rotation as nearby voxels");
+            }
+        }
     }
 
     public static void Benchmark()
