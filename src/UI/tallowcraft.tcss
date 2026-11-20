@@ -6,18 +6,22 @@
 .navigation-hud { position: absolute; top: 18; left: 22; width: 330; gap: 3; padding: 8 12; background-color: #121916dc; border-radius: 7; border-width: 1; border-color: #b8c59455 }
 .nav-coordinates { font-size: 15; color: #f3e3ad }
 .nav-target { font-size: 13; color: #c1d3c1 }
-/* Fixed bins avoid per-frame style mutation in Tallow's .tui subset.
-   Only the one selected bin per saved waypoint is made visible. */
-.compass-ribbon { position: absolute; top: 12; left: 25%; width: 50%; height: 64; flex-direction: row; align-items: center; justify-content: center; background-color: #121916ca; border-width: 1; border-color: #a7ad8366; border-radius: 7; padding: 3 5 }
-.compass-edge { width: 18; font-size: 19; color: #c7c6a2; text-align: center }
-.compass-track { width: 100%; height: 55; flex-direction: row; align-items: center; justify-content: center }
-.compass-bin { position: relative; width: 7.69%; height: 55; align-items: center; justify-content: center }
-.compass-tick { position: absolute; top: 2; width: 100%; text-align: center; font-size: 14; color: #e5e6d1 }
-.compass-marker { position: absolute; top: 20; width: 23; height: 26 }
-.compass-marker-0 { left: 0 }
-.compass-marker-1 { left: 7 }
-.compass-marker-2 { left: 13 }
-.compass-marker-3 { left: 19 }
+/* 15-degree labels and 3-degree marker positions share one width.
+   No decorative arrows: the ribbon does not extend beyond its frame.
+   Tallow's TUI has no public pixel-position API, so use a fixed marker
+   grid. The 244 image elements are created once, not every frame. */
+.compass-ribbon { position: absolute; top: 12; left: 25%; width: 50%; height: 64; align-items: center; justify-content: center; background-color: #121916ca; border-width: 1; border-color: #a7ad8366; border-radius: 7; padding: 3 7 }
+.compass-track { position: relative; width: 100%; height: 54 }
+.compass-tick-track { position: absolute; top: 0; left: 0; width: 100%; height: 23; flex-direction: row; align-items: center }
+.compass-bin { position: relative; width: 7.6923%; height: 23; align-items: center; justify-content: center }
+.compass-tick { width: 100%; text-align: center; font-size: 14; color: #e5e6d1 }
+.compass-marker-track { position: absolute; top: 20; left: 0; width: 100%; height: 32; flex-direction: row; align-items: center }
+.compass-marker-bin { position: relative; width: 1.63934%; height: 30 }
+.compass-marker { position: absolute; top: 2; left: -10; width: 24; height: 26 }
+.compass-marker-0 { top: 1; left: -13 }
+.compass-marker-1 { top: 3; left: -9 }
+.compass-marker-2 { top: 5; left: -5 }
+.compass-marker-3 { top: 7; left: -1 }
 /* Server-controlled return-to-spawn barrier; never hide the loading text
    until the authoritative ready handshake completes or times out. */
 .return-loading { position: absolute; top: 39%; left: 29%; width: 42%; height: 108; padding: 12; gap: 8; align-items: center; justify-content: center; background-color: #141e1ae8; border-width: 2; border-color: #e5c57e; border-radius: 10 }
