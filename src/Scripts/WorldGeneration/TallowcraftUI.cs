@@ -17,7 +17,8 @@ public sealed class TallowcraftUI : Script
     private static readonly string[] Images =
     {
         "", "grass", "dirt", "stone", "log", "forge", "planks",
-        "coal", "iron_ore", "leaves", "iron_ingot", "chest"
+        "coal", "iron_ore", "leaves", "iron_ingot", "chest",
+        "cobblestone", "stone_bricks", "mossy_stone", "dark_timber"
     };
 
     private BlockEditor? _owner;
