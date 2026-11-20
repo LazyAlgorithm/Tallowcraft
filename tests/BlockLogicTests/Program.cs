@@ -47,8 +47,11 @@ static class Program
             ForgeTests.Run(Check);
             ProfileTests.Run(Check);
             HybridMeshTests.Run(Check);
+            TerrainLodTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
+            if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--lod-bench"))
+                TerrainLodTests.Benchmark();
             Console.WriteLine($"PASS: {_assertions} block-state and placement assertions");
             return 0;
         }
