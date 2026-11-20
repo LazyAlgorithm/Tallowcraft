@@ -48,6 +48,8 @@ static class Program
             ProfileTests.Run(Check);
             HybridMeshTests.Run(Check);
             TerrainLodTests.Run(Check);
+            BuildingMaterialTests.Run(Check);
+            WaypointCompassTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--lod-bench"))
