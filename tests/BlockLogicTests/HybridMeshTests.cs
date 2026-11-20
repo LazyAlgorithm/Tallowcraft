@@ -38,6 +38,34 @@ internal static class HybridMeshTests
                 cases++;
             }
         }
+        // Auto-corner geometry must match independently sampled occupancy,
+        // including changed neighbor edit states across positive/negative
+        // chunk seams and upside-down stair variants.
+        for (int facing = 0; facing < 4; facing++)
+        for (int upper = 0; upper < 2; upper++)
+        {
+            var (fx, fz) = StairCornerResolver.Forward(facing);
+            var center = new BlockPosition(-1, 47, -16);
+            var adjacent = new BlockPosition(center.X + fx, center.Y,
+                center.Z + fz);
+            var casesWithCorner = new Dictionary<BlockPosition, ushort>
+            {
+                [center] = BlockState.Create(6, BlockShape.Stair, facing,
+                    upper == 1).Packed,
+                [adjacent] = BlockState.Create(6, BlockShape.Stair,
+                    (facing + 1) & 3, upper == 1).Packed
+            };
+            var keys = new HashSet<ChunkKey>
+            {
+                SectionedEditSnapshot.SectionOf(center),
+                SectionedEditSnapshot.SectionOf(adjacent)
+            };
+            foreach (ChunkKey chunk in keys)
+            {
+                Validate(chunk, casesWithCorner, seed, check);
+                cases++;
+            }
+        }
         Console.WriteLine($"PASS: {cases} hybrid mesh surface scenarios");
     }
 
@@ -75,6 +103,16 @@ internal static class HybridMeshTests
             int by = my / 2;
             ushort packed = ChunkGenerator.GetBlock(worldX, by, worldZ, seed, edits);
             var state = new BlockState(packed);
+            if (state.Shape == BlockShape.Stair)
+            {
+                var (fx, fz) = StairCornerResolver.Forward(state.Facing);
+                BlockState front = new(ChunkGenerator.GetBlock(
+                    worldX + fx, by, worldZ + fz, seed, edits));
+                BlockState behind = new(ChunkGenerator.GetBlock(
+                    worldX - fx, by, worldZ - fz, seed, edits));
+                state = state.WithCorner(StairCornerResolver.Choose(
+                    state, front, behind));
+            }
             return state.ContainsMicro(mx - ChunkGenerator.FloorDiv(mx, 2) * 2,
                 my % 2, mz - ChunkGenerator.FloorDiv(mz, 2) * 2);
         }
