@@ -33,6 +33,8 @@
         <text class="settings-title">WORLD SETTINGS</text>
         <text class="settings-help">Changes apply immediately.</text>
         <button id="view-setting" class="setting-button" onclick="OnViewDistance">View distance: Balanced</button>
+        <button id="lod-setting" class="setting-button" onclick="OnTerrainLod">Quadtree terrain LOD: On</button>
+        <button id="lod-quality-setting" class="setting-button" onclick="OnLodQuality">LOD quality: Balanced</button>
         <button id="height-setting" class="setting-button" onclick="OnWorldHeight">Vertical range: Balanced</button>
         <button id="shadow-setting" class="setting-button" onclick="OnShadows">Block shadows: On</button>
         <button id="threads-setting" class="setting-button" onclick="OnThreads">Chunk threads: Auto</button>
