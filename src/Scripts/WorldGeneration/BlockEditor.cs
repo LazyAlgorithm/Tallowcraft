@@ -135,8 +135,10 @@ public class BlockEditor : Script
         if (_world == null || _world.PersistenceLocked ||
             _world.WorldIdentity.Length == 0)
             return;
-        var controller = GetCharacterController();
-        if (controller == null || !controller.HasCharacter)
+        // GetCharacterController returns CharacterController? (a nullable
+        // value type). The pattern unwraps it before accessing its methods.
+        if (GetCharacterController() is not { } controller ||
+            !controller.HasCharacter)
             return;
         Vector3 destination = new(_serverSpawnXZ.X, 0f, _serverSpawnXZ.Y);
         destination.Y = _world.SafeSpawnHeight(destination.X,
