@@ -48,6 +48,13 @@ public class BlockWorld : Script
     public int ProfileReportEvery = 32;
     public bool ProfileStreaming = true;
     public int StreamReportEvery = 64;
+    public bool ProfileTerrainFrames = true;
+    public int FrameReportEvery = 300;
+    private int _frameSamples;
+    private double _frameMsTotal;
+    private double _frameMsMax;
+    private double _generationMsTotal;
+    private int _generationSamples;
     private int _streamUploads;
     private double _streamLatencyTotal;
     private double _streamLatencyMax;
@@ -87,6 +94,8 @@ public class BlockWorld : Script
         if (!ProfileStreaming) return;
         double elapsed = Stopwatch.GetElapsedTime(job.EnqueuedAt).TotalMilliseconds;
         _streamLatencyTotal += elapsed;
+        _generationMsTotal += job.Task.Result.GenerationMilliseconds;
+        _generationSamples++;
         _streamLatencyMax = Math.Max(_streamLatencyMax, elapsed);
         if (++_streamUploads < Math.Max(1, StreamReportEvery)) return;
         Console.WriteLine(
@@ -624,6 +633,55 @@ public class BlockWorld : Script
             Math.Max(0, Math.Clamp(UploadsPerFrame, 1, 4) - uploaded));
         if (!Scene.IsServer)
             RequestWaitingSections(deltaTime);
+        RecordFrameDiagnostics(deltaTime);
+    }
+
+    private void RecordFrameDiagnostics(float deltaTime)
+    {
+        if (!ProfileTerrainFrames) return;
+        double ms = Math.Clamp(deltaTime * 1000.0, 0.0, 1000.0);
+        _frameMsTotal += ms;
+        _frameMsMax = Math.Max(_frameMsMax, ms);
+        if (++_frameSamples < Math.Max(30, FrameReportEvery)) return;
+        long fullVerts = 0, fullTris = 0, lodVerts = 0, lodTris = 0;
+        foreach (LiveChunk chunk in _loaded.Values)
+        {
+            fullVerts += chunk.VertexCount;
+            fullTris += chunk.TriangleCount;
+        }
+        foreach (var tile in _distantLoaded.Values)
+        {
+            lodVerts += tile.Vertices;
+            lodTris += tile.Triangles;
+        }
+        // Approximate CPU mesh-array footprint; excludes GPU driver allocation
+        // and MeshRenderer-native bookkeeping. WorkingSet is whole process RSS.
+        long meshBytes = (fullVerts + lodVerts) * 32L +
+            (fullTris + lodTris) * 12L;
+        long workingSet = 0;
+        try
+        {
+            using Process process = Process.GetCurrentProcess();
+            workingSet = process.WorkingSet64;
+        }
+        catch (Exception) { } // Some sandboxed platforms hide process memory.
+        double mean = _frameMsTotal / _frameSamples;
+        Console.WriteLine(
+            $"[Tallowcraft frame profile] ahead={RenderRadius} " +
+            $"lod={QuadtreeLodEnabled} quality={LodQuality:F2} " +
+            $"avg_fps={(mean > 0.001 ? 1000 / mean : 0):F1} " +
+            $"avg_ms={mean:F2} max_ms={_frameMsMax:F2} " +
+            $"full_chunks={_loaded.Count} lod_tiles={_distantLoaded.Count} " +
+            $"full_verts={fullVerts} lod_verts={lodVerts} " +
+            $"full_tris={fullTris} lod_tris={lodTris} " +
+            $"mesh_array_bytes_est={meshBytes} process_rss_bytes={workingSet} " +
+            $"near_jobs={_jobs.Count} far_jobs={_distantJobs.Count} " +
+            $"avg_gen_ms={(_generationSamples == 0 ? 0 : _generationMsTotal / _generationSamples):F2} " +
+            "draw_calls=unavailable");
+        _frameSamples = 0;
+        _frameMsTotal = _frameMsMax = 0;
+        _generationMsTotal = 0;
+        _generationSamples = 0;
     }
 
     private void DropDistantTransfers(int cx, int cy, int cz)
@@ -1031,6 +1089,8 @@ public class BlockWorld : Script
                     FaceCount = data.Triangles.Length / 6
                 });
                 live.Blocks = ShouldHaveCollider(pair.Key, cx, cy, cz) ? data.Blocks : null;
+                live.VertexCount = data.Vertices.Length;
+                live.TriangleCount = data.Triangles.Length / 3;
                 live.Dirty = false;
                 continue;
             }
@@ -1069,6 +1129,8 @@ public class BlockWorld : Script
             _chunkObjects[obj.Id] = pair.Key;
             var newChunk=new LiveChunk(obj,renderer,
                 collision ? data.Blocks : null);
+            newChunk.VertexCount = data.Vertices.Length;
+            newChunk.TriangleCount = data.Triangles.Length / 3;
             _loaded.Add(pair.Key,newChunk);
             DecorateChestFronts(pair.Key,newChunk,data.Blocks);
         }
@@ -1474,8 +1536,14 @@ public class BlockWorld : Script
                 CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
             CancellationToken token = cancellation.Token;
             long enqueuedAt = Stopwatch.GetTimestamp();
-            Task<ChunkMesh> task = Task.Run(
-                () => ChunkGenerator.GenerateMesh(key, seed, snapshot, token), token);
+            Task<ChunkMesh> task = Task.Run(() =>
+            {
+                long started = Stopwatch.GetTimestamp();
+                ChunkMesh mesh = ChunkGenerator.GenerateMesh(key, seed, snapshot, token);
+                mesh.GenerationMilliseconds =
+                    Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                return mesh;
+            }, token);
             _jobs.Add(key, new ChunkJob(task, version, cancellation, enqueuedAt));
         }
 
@@ -1635,6 +1703,8 @@ public class BlockWorld : Script
 
             _distantNeedsRetire = true;
             newTileUploaded = true;
+            _generationMsTotal += mesh.GenerationMilliseconds;
+            _generationSamples++;
             double milliseconds = Stopwatch.GetElapsedTime(job.Queued).TotalMilliseconds;
             _distantQueueLatency += milliseconds;
             _distantMaxLatency = Math.Max(_distantMaxLatency, milliseconds);
@@ -1700,9 +1770,14 @@ public class BlockWorld : Script
                 var cancel = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
                 CancellationToken token = cancel.Token;
                 long queued = Stopwatch.GetTimestamp();
-                Task<ChunkMesh> task = Task.Run(
-                    () => DistantTerrainMesher.Generate(key, seed, edits, token),
-                    token);
+                Task<ChunkMesh> task = Task.Run(() =>
+                {
+                    long started = Stopwatch.GetTimestamp();
+                    ChunkMesh mesh = DistantTerrainMesher.Generate(key, seed, edits, token);
+                    mesh.GenerationMilliseconds =
+                        Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                    return mesh;
+                }, token);
                 _distantJobs.Add(key, (task, cancel, version, queued));
             }
         }
@@ -1716,7 +1791,10 @@ public class BlockWorld : Script
     private void ResetDistantTerrain()
     {
         foreach (var job in _distantJobs.Values)
+        {
             job.Cancel.Cancel();
+            job.Cancel.Dispose();
+        }
         _distantJobs.Clear();
         foreach (var live in _distantLoaded.Values)
             if (live.Object.IsValid)
