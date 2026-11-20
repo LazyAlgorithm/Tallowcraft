@@ -1343,7 +1343,10 @@ public class BlockWorld : Script
         if (_candidateListDirty)
         {
             int radius = Math.Clamp(RenderRadius, 1,
-                QuadtreeLodEnabled ? WorldDisplaySettings.MaxDistance : 20);
+                QuadtreeLodEnabled
+                    ? (int)MathF.Ceiling(TerrainQuadtree.DefaultFullRadius *
+                        Math.Clamp(LodQuality, 0.65f, 1.6f) + TerrainQuadtree.Hysteresis + 1f)
+                    : 20);
             int nearRadius = CollisionRadius();
             int vertical = Math.Clamp(VerticalRadius, 0, 2);
             _candidates.Clear();
@@ -1576,6 +1579,7 @@ public class BlockWorld : Script
     private void TickDistantTerrain(int cx, int cy, int cz, int uploadBudget)
     {
         _distantScratch.Clear();
+        bool newTileUploaded = false;
         foreach (var pair in _distantJobs)
         {
             if (uploadBudget <= 0) break;
@@ -1627,6 +1631,7 @@ public class BlockWorld : Script
             }
 
             _distantNeedsRetire = true;
+            newTileUploaded = true;
             double milliseconds = Stopwatch.GetElapsedTime(job.Queued).TotalMilliseconds;
             _distantQueueLatency += milliseconds;
             _distantMaxLatency = Math.Max(_distantMaxLatency, milliseconds);
@@ -1701,7 +1706,7 @@ public class BlockWorld : Script
         RetireDistant(cx, cy, cz);
         // Remove obsolete full-detail chunks only after their replacement is
         // uploaded, without leaving a one-frame gap in the rendered world.
-        if (_distantNeedsRetire)
+        if (newTileUploaded)
             UnloadDistant(cx, cy, cz);
     }
 
