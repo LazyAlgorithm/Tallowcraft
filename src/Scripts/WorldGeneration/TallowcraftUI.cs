@@ -48,6 +48,9 @@ public sealed class TallowcraftUI : Script
     private int _viewChoice = 1;
     private int _heightChoice = 1;
     private bool _shadows = true;
+    private bool _lodEnabled = true;
+    private int _lodQualityChoice = 1;
+    private static readonly float[] LodScales = { 0.75f, 1f, 1.25f };
     // Zero means automatic; positive values are explicit worker counts.
     private int _workerSelection;
     private float _fpsSeconds;
@@ -82,6 +85,13 @@ public sealed class TallowcraftUI : Script
                 _shadows = shadows;
                 if (lines.Length >= 4 && int.TryParse(lines[3], out int workers))
                     _workerSelection = Math.Clamp(workers, 0, MaxWorkers());
+                if (lines.Length >= 6 &&
+                    bool.TryParse(lines[4], out bool lodEnabled) &&
+                    int.TryParse(lines[5], out int quality))
+                {
+                    _lodEnabled = lodEnabled;
+                    _lodQualityChoice = Math.Clamp(quality, 0, LodScales.Length - 1);
+                }
                 // Preserve the effective settings from older Auto quality saves.
                 if (lines.Length >= 7 && bool.TryParse(lines[4], out bool automatic) && automatic)
                 {
@@ -112,17 +122,25 @@ public sealed class TallowcraftUI : Script
             world.VerticalRadius = _heightChoice;
             world.ChunkShadowsEnabled = shadows;
             world.WorkerCount = workers;
+            world.QuadtreeLodEnabled = _lodEnabled;
+            world.LodQuality = LodScales[_lodQualityChoice];
             // Uploads run on the render thread, so retain its existing safe cap.
             world.UploadsPerFrame = Math.Clamp((workers + 1) / 2, 1, 4);
             // Keep distant terrain visible through the scene's fog.
             var environment = Scene.Environment;
-            environment.FogDensity = .004f * Math.Min(1f, 6f / world.RenderRadius);
+            environment.FogDensity = .004f * Math.Min(1f,
+                6f / (_lodEnabled ? world.RenderRadius : Math.Min(20, world.RenderRadius)));
         }
         ThreadPool.GetMinThreads(out int minWorkers, out int minIo);
         if (workers > minWorkers)
             ThreadPool.SetMinThreads(workers, minIo);
         string[] heights = { "Near", "Balanced", "Far" };
-        Text("view-setting", $"View distance: {WorldDisplaySettings.DistanceNames[distance]} ({WorldDisplaySettings.Distances[distance]} chunks ahead)");
+        int shownDistance = _lodEnabled ? WorldDisplaySettings.Distances[distance] :
+            Math.Min(20, WorldDisplaySettings.Distances[distance]);
+        Text("view-setting", $"View distance: {WorldDisplaySettings.DistanceNames[distance]} ({shownDistance} chunks ahead)");
+        Text("lod-setting", "Quadtree terrain LOD: " + (_lodEnabled ? "On" : "Off (full meshes, 20 max)"));
+        string[] qualities = { "Performance", "Balanced", "High detail" };
+        Text("lod-quality-setting", "LOD quality: " + qualities[_lodQualityChoice]);
         Text("height-setting", "Vertical range: " + heights[_heightChoice]);
         Text("shadow-setting", "Block shadows: " + (shadows ? "On" : "Off"));
         Text("threads-setting", _workerSelection == 0 ?
@@ -143,7 +161,8 @@ public sealed class TallowcraftUI : Script
             Directory.CreateDirectory(GamePaths.PlayerData);
             File.WriteAllLines(SettingsPath, new[] {
                 _viewChoice.ToString(), _heightChoice.ToString(),
-                _shadows.ToString(), _workerSelection.ToString() });
+                _shadows.ToString(), _workerSelection.ToString(),
+                _lodEnabled.ToString(), _lodQualityChoice.ToString() });
         }
         catch (Exception e) { Console.WriteLine($"Tallowcraft settings: {e.Message}"); }
     }
@@ -328,6 +347,8 @@ public sealed class TallowcraftUI : Script
 
     public void OnQuit() => _owner?.UiQuitGame();
     public void OnViewDistance() { _viewChoice = (_viewChoice + 1) % WorldDisplaySettings.Distances.Length; ApplySettings(); SaveSettings(); }
+    public void OnTerrainLod() { _lodEnabled = !_lodEnabled; ApplySettings(); SaveSettings(); }
+    public void OnLodQuality() { _lodQualityChoice = (_lodQualityChoice + 1) % LodScales.Length; ApplySettings(); SaveSettings(); }
     public void OnWorldHeight() { _heightChoice = (_heightChoice + 1) % 3; ApplySettings(); SaveSettings(); }
     public void OnShadows() { _shadows = !_shadows; ApplySettings(); SaveSettings(); }
     public void OnThreads() { _workerSelection = WorldDisplaySettings.NextWorkerSelection(_workerSelection, MaxWorkers()); ApplySettings(); SaveSettings(); }
