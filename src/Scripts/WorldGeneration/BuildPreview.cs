@@ -163,14 +163,16 @@ public class BuildPreview : Script
             _editor.MiningZ == _remove.Z &&
             _editor.MiningType ==
                 new BlockState(_world.BlockAt(_remove)).Type)
-            ShowDamage(_remove, _world.BlockAt(_remove),
+            ShowDamage(_remove, _world.ResolveVisualShape(
+                    _remove, new BlockState(_world.BlockAt(_remove))).Packed,
                 _editor.MiningPercent);
         else
             HideDamage();
 
-        DrawShape(_remove, new BlockState(_world.BlockAt(_remove)),
+        DrawShape(_remove, _world.ResolveVisualShape(
+                _remove, new BlockState(_world.BlockAt(_remove))),
             new Color(1f, .25f, .18f, 1f));
-        DrawShape(_place, _placeState,
+        DrawShape(_place, _world.ResolveVisualShape(_place, _placeState),
             _canPlace ? new Color(.25f, 1f, .35f, 1f) :
                 new Color(1f, .62f, .16f, 1f));
     }
