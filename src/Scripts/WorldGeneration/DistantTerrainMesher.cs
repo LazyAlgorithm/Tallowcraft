@@ -121,26 +121,28 @@ public static class DistantTerrainMesher
             triangles.Add(start + 3);
         }
 
-        // Winding matches ChunkFace: exposed cliff walls are vertical
-        // rectangular voxel faces, never diagonally interpolated slopes.
+        // Vertices MUST use the same A,B,C,D order as ChunkFace.All.
+        // BlockTextureAtlas.FaceUV rotates/flips texels per canonical face;
+        // merely matching winding rotates far-cliff artwork 90/180 degrees.
+        // The corners are rectangular voxel faces, never diagonal slopes.
         void West(float x, float z0, float z1, float top, float bottom, int tile) =>
-            Quad(new(x, top, z1), new(x, top, z0),
-                new(x, bottom, z0), new(x, bottom, z1),
+            Quad(new(x, bottom, z0), new(x, bottom, z1),
+                new(x, top, z1), new(x, top, z0),
                 -Vector3.UnitX, tile, 3);
 
         void East(float x, float z0, float z1, float top, float bottom, int tile) =>
-            Quad(new(x, top, z0), new(x, top, z1),
-                new(x, bottom, z1), new(x, bottom, z0),
+            Quad(new(x, bottom, z0), new(x, top, z0),
+                new(x, top, z1), new(x, bottom, z1),
                 Vector3.UnitX, tile, 2);
 
         void South(float z, float x0, float x1, float top, float bottom, int tile) =>
-            Quad(new(x0, top, z), new(x1, top, z),
-                new(x1, bottom, z), new(x0, bottom, z),
+            Quad(new(x0, bottom, z), new(x0, top, z),
+                new(x1, top, z), new(x1, bottom, z),
                 -Vector3.UnitZ, tile, 1);
 
         void North(float z, float x0, float x1, float top, float bottom, int tile) =>
-            Quad(new(x1, top, z), new(x0, top, z),
-                new(x0, bottom, z), new(x1, bottom, z),
+            Quad(new(x0, bottom, z), new(x1, bottom, z),
+                new(x1, top, z), new(x0, top, z),
                 Vector3.UnitZ, tile, 0);
 
         for (int z = 0; z < CellsPerAxis; z++)
@@ -200,8 +202,8 @@ public static class DistantTerrainMesher
             Quad(new(x0, y1, z0), new(x0, y1, z1),
                 new(x1, y1, z1), new(x1, y1, z0),
                 Vector3.UnitY, tile, 4);
-            Quad(new(x0, y0, z1), new(x0, y0, z0),
-                new(x1, y0, z0), new(x1, y0, z1),
+            Quad(new(x0, y0, z0), new(x1, y0, z0),
+                new(x1, y0, z1), new(x0, y0, z1),
                 -Vector3.UnitY, tile, 5);
         }
 
