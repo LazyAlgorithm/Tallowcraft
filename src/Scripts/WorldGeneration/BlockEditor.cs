@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using Tallow;
@@ -872,16 +873,35 @@ public class BlockEditor : Script
         return true;
     }
 
-    internal bool TryReceiveWorldDrop(int type, int quantity)
+    /// <summary>The 256-drop cap / prefab spawn failure cannot simply
+    /// credit an unsaved inventory after the voxel has been mined. Stage
+    /// the reward and commit the mined block and player inventory as one
+    /// journaled transaction, including the current tool durability.</summary>
+    private bool TryReceiveMinedFallback(int type, BlockPosition position,
+        ushort blockBefore, SectionedEditSnapshot beforeEdit,
+        IReadOnlyDictionary<ChunkKey, int> beforeRevisions)
     {
         if (!Scene.IsServer || !ProfileReady ||
-            _world?.PersistenceLocked == true ||
-            type is < 1 or > BlockInventory.MaxType ||
-            quantity is < 1 or > BlockInventory.StackLimit ||
-            !_inventory.TryCollect(type, quantity))
+            type is < 1 or > BlockInventory.MaxType)
             return false;
+        var after = new BlockInventory();
+        if (!after.TryLoad(_inventory.Serialize()) ||
+            !after.TryCollect(type, 1))
+            return false;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world == null ||
+            !_world.TryCommitMiningCredit(position, blockBefore,
+                beforeEdit, beforeRevisions, _profileToken,
+                after, _tools, PlaceType, PlaceShape, FacingOffset,
+                SelectedHotbar))
+            return false;
+
+        if (!_inventory.TryLoad(after.Serialize()))
+            throw new InvalidOperationException(
+                "Mined reward committed but live inventory rejected.");
         InventoryState = _inventory.Serialize();
-        _profileDirty = true;
+        _profileDirty = false;
+        _profileSaveClock = 0f;
         return true;
     }
 
@@ -1005,24 +1025,47 @@ public class BlockEditor : Script
 
         if (_world.TryEditFromRay(origin, direction, Math.Clamp(Reach, 1f, 8f),
             breaking, GameObject, selected.Packed,
-            out ushort previous, out _))
+            out ushort previous, out _, out BlockPosition editedPosition,
+            out SectionedEditSnapshot beforeEdit,
+            out IReadOnlyDictionary<ChunkKey, int> beforeRevisions))
         {
             if (breaking)
             {
-                // Minecraft-style collectible: a server-owned networked
-                // drop falls from the mined voxel. On spawn failure (e.g.
-                // temporary entity cap), award directly instead of losing it.
+                // Record tool wear before journaling so an interrupted
+                // direct-credit reward also recovers the correct durability.
+                string toolsBefore = _tools.Serialize();
+                bool toolsChanged = _tools.OnBlockMined();
+                if (toolsChanged)
+                    ToolState = _tools.Serialize();
+
                 int material = new BlockState(previous).Type;
                 Vector3 droppedAt = new(
-                    _miningPosition.X + .5f,
-                    _miningPosition.Y + .55f,
-                    _miningPosition.Z + .5f);
-                if (!WorldDrop.TrySpawn(Scene, material, droppedAt))
-                    TryReceiveWorldDrop(material, 1);
-                if (_tools.OnBlockMined())
+                    editedPosition.X + .5f,
+                    editedPosition.Y + .55f,
+                    editedPosition.Z + .5f);
+                if (WorldDrop.TrySpawn(Scene, material, droppedAt))
                 {
-                    ToolState = _tools.Serialize();
-                    _profileDirty = true;
+                    if (toolsChanged) _profileDirty = true;
+                }
+                else if (!TryReceiveMinedFallback(material, editedPosition,
+                    previous, beforeEdit, beforeRevisions))
+                {
+                    // No item must be lost if a pickup is impossible (such
+                    // as a full 999-item cap), or before the receipt exists.
+                    // A partial disk transaction instead locks the world and
+                    // is safely replayed after restart.
+                    if (!_world.PersistenceLocked)
+                    {
+                        if (_world.TryUndoFailedMining(editedPosition, previous))
+                        {
+                            if (!_tools.TryLoad(toolsBefore))
+                                throw new InvalidOperationException(
+                                    "Could not revert tool wear after failed reward.");
+                            ToolState = _tools.Serialize();
+                        }
+                        else
+                            _world.HaltAfterRewardFailure();
+                    }
                 }
             }
             else if (!CreativeMode && _inventory.TrySpendSlot(SelectedHotbar))

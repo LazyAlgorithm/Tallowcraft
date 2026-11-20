@@ -26,10 +26,17 @@ before acknowledging an inventory change. The chest receipt stores one
 changed chest record, and recovery replays the same result safely whether
 the interrupted transfer was a deposit or withdrawal.
 
-**Next implementation priority:** verify both paths in host/client Play mode,
-replace per-transaction whole-world snapshots with compact/batched writes,
-and cover the direct-credit mining fallback plus other independent
-inventory mutations. Full public multiplayer authentication is out of scope. **Still blocked on engine verification:** character
+**Current implementation:** direct-credit mining rewards after a world-drop
+spawn failure also use the redo journal. The world checkpoint immediately
+before the edit preserves earlier unsaved work, and the receipt records the
+removed voxel, credited item and current tool state. Failed rewards restore
+the block and tool durability; pending journals lock saves until recovery.
+
+**Next implementation priority:** compile and verify all three transaction
+paths in Linux/Windows Play mode, replace per-transaction full snapshots with
+compact/batched writes, and extend crash consistency to placement spending,
+crafting and smelting. Full public multiplayer authentication is out of scope.
+**Still blocked on engine verification:** character
 animation/occlusion, collision accuracy for partial blocks, and sustained
 high-radius performance.
 
@@ -136,7 +143,8 @@ high-radius performance.
 - [x] Redo-log physical drop pickups across world/player saves; recover both post-pickup states after abrupt crashes (unit tests added; Play-mode verification pending)
 - [ ] Batch pickup journal/checkpoint writes without degrading large-world performance; current transactional path saves the world synchronously
 - [x] Redo-log chest-to-player transfers, including empty-chest withdrawals and crash recovery from both save directions (unit tests added; runtime testing pending)
-- [ ] Extend equivalent crash safety to direct-credit mining fallback and other independent inventory mutations
+- [x] Redo-log direct-credit mining fallback with pre-edit world checkpoint, mined voxel replay and tool durability; rollback on full inventory or pre-journal error (pure-C# regression added; runtime verification pending)
+- [ ] Extend equivalent crash safety to placement spending, crafting, smelting and other independent inventory mutations
 - [ ] Health/damage, simple wildlife and AI, weather/day–night polish
 
 ## Verification and release gates
@@ -151,7 +159,7 @@ high-radius performance.
 
 - The world currently uses signed 16-block vertical sections (Y=-32..47); bounds and world settings are not user-configurable yet.
 - Versioned chunk pages and deltas replace the original 512-edit global snapshot, but the RPC bridge still lacks true per-recipient filtering.
-- Physical item pickups and player/chest deposits and withdrawals share a crash-recoverable redo journal. Other inventory operations still use independent profile/world saves; this is not a general multi-player transaction system.
+- Physical item pickups, player/chest deposits and withdrawals, and mined-block direct-credit rewards share a crash-recoverable redo journal. Other inventory operations still use independent profile/world saves; this is not a general multiplayer transaction system.
 - The .tui hotbar, inventory, crafting, and chest UI exist. Rendering, chest interaction and replicated animation still require hands-on editor/host/client verification.
 - Player identity is a local bearer token rather than authenticated multiplayer account ownership.
 
@@ -173,6 +181,37 @@ resetting inventory. Recovery is repeatable across subsequent restarts, and
 new unit tests simulate interruption before either save, after only the world
 write, after only the player write, and after both writes but before receipt
 deletion. They also test checksum tampering and duplicate pending pickups.
+
+### M6: direct-credit mining fallback — November 19, 2026
+
+If a mined block cannot spawn a physics drop (for example the per-scene
+256-entity limit), the fallback resource credit is now durably coupled to
+the voxel removal. The authoritative voxel edit exposes its exact position,
+previous state and immutable pre-edit section snapshot/revisions. When the
+drop spawn fails, the server stages the inventory and tool durability, then
+checkpoints the pre-edit world *before* creating the journal. The new
+version-3 receipt records the target voxel, the original block state, air,
+the after-reward inventory/tools and the unchanged loose-drop snapshot.
+After the receipt is durable, the edited world and profile commit.
+
+Startup accepts both the original and already-mined voxel states, replays
+the removal only when necessary, and refuses mismatched or malformed
+mining receipts without deleting their recovery evidence. If the player
+cannot accept the material (including the 999-item cap), or the journal
+cannot be created, the server undoes the voxel change and restores
+pre-mining tool durability. Unrecoverable rollback failure or a partially
+committed receipt locks world writes for recovery.
+
+New pure-C# tests cover crash stages before either save, after only the
+world save, after only the profile save, and after both saves, plus
+unrelated-voxel preservation, correct tool life, and forged receipt
+rejection. These are added to the normal test runner; no CI/Actions are
+enabled, and the engine has not been changed.
+
+**Performance:** rare direct-credit fallback requires the pre-edit
+checkpoint and the post-edit generation; regular pickups and chest transfers
+also force synchronous world writes. Compact transactional logging and
+runtime failure-injection tests remain important follow-ups.
 
 ### M6: crash-recoverable chest transfers — November 19, 2026
 

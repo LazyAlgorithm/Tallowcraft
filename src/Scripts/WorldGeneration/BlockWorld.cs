@@ -193,9 +193,10 @@ public class BlockWorld : Script
                 if (PickupTransactionStore.Recover(SaveFolder, _worldId,
                         Seed, _edits.Snapshot, _edits.Revisions,
                         _chests.Snapshot, out var recoveredDrops,
-                        out var recoveredChests))
+                        out var recoveredChests, out BlockEdits recoveredEdits))
                 {
                     drops = recoveredDrops;
+                    _edits = recoveredEdits;
                     _chests.Restore(recoveredChests);
                     Console.WriteLine("Tallowcraft completed an interrupted inventory transfer.");
                 }
@@ -277,7 +278,9 @@ public class BlockWorld : Script
     /// and startup replays it if any subsequent step fails or is interrupted.
     /// The receipt and world checkpoint represent a single game-thread tick.</summary>
     private bool CommitInventoryWorld(PickupReceipt receipt,
-        IReadOnlyDictionary<BlockPosition, ChestContents> afterChests)
+        IReadOnlyDictionary<BlockPosition, ChestContents> afterChests,
+        SectionedEditSnapshot? beforeMinedEdit = null,
+        IReadOnlyDictionary<ChunkKey, int>? beforeMinedRevisions = null)
     {
         if (!Scene.IsServer || _saveLoadFailed ||
             receipt.WorldId != _worldId ||
@@ -292,10 +295,21 @@ public class BlockWorld : Script
                 _saveTask = null;
                 _savedGeneration = _savingGeneration;
             }
-            if (_generation != _savedGeneration)
+            if (beforeMinedEdit != null)
             {
-                // Precheckpoint all earlier voxel, chest, and drop changes
-                // before journaling this new transaction.
+                // The mined voxel is already changed in live ECS state but
+                // must NOT reach disk before the journal exists. Checkpoint
+                // the immutable snapshot captured just before that edit,
+                // preserving all unrelated edits and their revisions.
+                if (beforeMinedRevisions == null)
+                    throw new InvalidOperationException(
+                        "Mining transaction has no pre-edit revisions.");
+                WorldEditSave.Save(SaveFolder, _worldId, Seed,
+                    beforeMinedEdit, beforeMinedRevisions, _chests.Snapshot,
+                    WorldDrop.Capture(Scene));
+            }
+            else if (_generation != _savedGeneration)
+            {
                 WorldEditSave.Save(SaveFolder, _worldId, Seed,
                     _edits.Snapshot, _edits.Revisions, _chests.Snapshot,
                     WorldDrop.Capture(Scene));
@@ -311,6 +325,7 @@ public class BlockWorld : Script
                 receipt.SelectedType, receipt.SelectedShape, receipt.Facing,
                 receipt.SelectedSlot);
             PickupTransactionStore.Complete(SaveFolder);
+            _savedGeneration = _generation;
             _saveClock = 0f;
             return true;
         }
@@ -341,6 +356,63 @@ public class BlockWorld : Script
             inventoryAfter, tools, selectedType, selectedShape,
             facing, selectedSlot, WorldDrop.Capture(Scene, drop));
         return CommitInventoryWorld(receipt, _chests.Snapshot);
+    }
+
+    /// <summary>Direct reward when the server cannot spawn a drop (for
+    /// example at the 256-entity limit). The pre-edit snapshot is saved
+    /// first, then the journal atomically couples the mined voxel to the
+    /// post-credit player profile. Crash recovery can redo the missing edit.</summary>
+    public bool TryCommitMiningCredit(BlockPosition position,
+        ushort previousState, SectionedEditSnapshot beforeEdit,
+        IReadOnlyDictionary<ChunkKey, int> beforeRevisions,
+        string token, BlockInventory inventoryAfter, PlayerTools tools,
+        int selectedType, int selectedShape, int facing, int selectedSlot)
+    {
+        if (!Scene.IsServer || _saveLoadFailed ||
+            previousState == 0 || !BlockState.IsValid(previousState) ||
+            !BlockEdits.ValidPosition(position) ||
+            BlockAt(position) != 0)
+            return false;
+
+        var receipt = new PickupReceipt(_worldId, token,
+            inventoryAfter, tools, selectedType, selectedShape, facing,
+            selectedSlot, WorldDrop.Capture(Scene), EditedBlock: position,
+            BlockBefore: previousState, BlockAfter: 0);
+        return CommitInventoryWorld(receipt, _chests.Snapshot,
+            beforeEdit, beforeRevisions);
+    }
+
+    /// <summary>Do not persist an edited voxel if an unexpected failure
+    /// prevented both its item spawn and its inverse edit. Reopen the
+    /// last committed world generation and report the failure.</summary>
+    public void HaltAfterRewardFailure()
+    {
+        if (!Scene.IsServer) return;
+        _saveLoadFailed = true;
+        Console.WriteLine("Tallowcraft mining reward rollback failed; " +
+            "world writes halted to preserve committed items.");
+    }
+
+    /// <summary>When a drop failed to spawn and the player cannot accept
+    /// its fallback reward, return the mined block to the same scene tick.
+    /// A pending receipt instead locks all gameplay until recovery.</summary>
+    public bool TryUndoFailedMining(BlockPosition position,
+        ushort previousState)
+    {
+        if (!Scene.IsServer || _saveLoadFailed ||
+            previousState == 0 || !BlockState.IsValid(previousState) ||
+            BlockAt(position) != 0 ||
+            !_edits.Set(position, previousState, Seed))
+            return false;
+        MarkBlockDirty(position);
+        UpdateSurfaceOpening(position);
+        _generation++;
+        ChunkKey section = SectionedEditSnapshot.SectionOf(position);
+        _encodedSections.Remove(section);
+        Rpc(nameof(ReceiveSectionDelta), section.X, section.Y, section.Z,
+            _edits.Revision(section), (int)EditSectionCodec.Index(position),
+            (int)previousState);
+        return true;
     }
 
     /// <summary>Stage both inventories in memory, then atomically journal
@@ -1520,10 +1592,26 @@ public class BlockWorld : Script
     /// </summary>
     public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach,
         bool breaking, GameObject actingPlayer, ushort placeState,
-        out ushort previousState, out ushort replacementState)
+        out ushort previousState, out ushort replacementState) =>
+        TryEditFromRay(origin, direction, reach, breaking, actingPlayer,
+            placeState, out previousState, out replacementState,
+            out _, out _, out _);
+
+    /// <summary>Also exposes the exact modified voxel and immutable
+    /// before-edit world snapshot so reward fallback can checkpoint the
+    /// pre-mine state without undoing or rewinding live ECS revisions.</summary>
+    public bool TryEditFromRay(Vector3 origin, Vector3 direction, float reach,
+        bool breaking, GameObject actingPlayer, ushort placeState,
+        out ushort previousState, out ushort replacementState,
+        out BlockPosition editedPosition,
+        out SectionedEditSnapshot beforeEdit,
+        out IReadOnlyDictionary<ChunkKey, int> beforeRevisions)
     {
         previousState = 0;
         replacementState = 0;
+        editedPosition = default;
+        beforeEdit = _edits.Snapshot;
+        beforeRevisions = _edits.Revisions;
         if (!Scene.IsServer || _saveLoadFailed ||
             (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))) ||
             !TryQueryFromRay(origin, direction, reach, actingPlayer,
@@ -1557,6 +1645,7 @@ public class BlockWorld : Script
 
         previousState = previous;
         replacementState = replacement;
+        editedPosition = target;
         if (breaking && new BlockState(previous).Type == BlockInventory.Chest)
             _chests.Remove(target);
         MarkBlockDirty(target);

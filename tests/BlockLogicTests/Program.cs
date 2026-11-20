@@ -34,6 +34,7 @@ static class Program
             WorldDropSaveTests.Run(Check);
             PickupTransactionTests.Run(Check);
             ChestTransactionTests.Run(Check);
+            MiningFallbackTransactionTests.Run(Check);
             ChestStorageTests.Run(Check);
             InventoryMenuTests.Run(Check);
             SectionEditTests.Run(Check);

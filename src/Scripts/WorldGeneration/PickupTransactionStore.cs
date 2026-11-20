@@ -17,7 +17,9 @@ public sealed record PickupReceipt(
     string WorldId, string PlayerToken, BlockInventory Inventory,
     PlayerTools Tools, int SelectedType, int SelectedShape,
     int Facing, int SelectedSlot, IReadOnlyList<SavedWorldDrop> Drops,
-    BlockPosition? ChestPosition = null, ChestContents? ChestAfter = null);
+    BlockPosition? ChestPosition = null, ChestContents? ChestAfter = null,
+    BlockPosition? EditedBlock = null, ushort BlockBefore = 0,
+    ushort BlockAfter = 0);
 
 public static class PickupTransactionStore
 {
@@ -52,6 +54,19 @@ public static class PickupTransactionStore
         if (receipt.ChestAfter != null &&
             !ChestContents.TryLoad(receipt.ChestAfter.Serialize(), out _))
             throw new InvalidDataException("Invalid journaled chest state.");
+        // V3 represents only a mined block turning into air. Other edits
+        // must use their own transaction semantics.
+        if (receipt.EditedBlock is BlockPosition mined)
+        {
+            if (receipt.ChestPosition != null ||
+                !BlockEdits.ValidPosition(mined) ||
+                receipt.BlockBefore == 0 ||
+                !BlockState.IsValid(receipt.BlockBefore) ||
+                receipt.BlockAfter != 0)
+                throw new InvalidDataException("Invalid mining reward receipt.");
+        }
+        else if (receipt.BlockBefore != 0 || receipt.BlockAfter != 0)
+            throw new InvalidDataException("Mining edit is missing its position.");
     }
 
     private static string Encode(PickupReceipt receipt)
@@ -59,7 +74,8 @@ public static class PickupTransactionStore
         Validate(receipt);
         var fields = new List<string>
         {
-            receipt.ChestPosition.HasValue ? "2" : "1",
+            receipt.EditedBlock.HasValue ? "3" :
+                receipt.ChestPosition.HasValue ? "2" : "1",
             receipt.WorldId,
             receipt.PlayerToken,
             receipt.Inventory.Serialize(),
@@ -76,6 +92,13 @@ public static class PickupTransactionStore
             fields.Add(string.Join(",", position.X.ToString(Invariant),
                 position.Y.ToString(Invariant), position.Z.ToString(Invariant)));
             fields.Add(chest.Serialize());
+        }
+        if (receipt.EditedBlock is BlockPosition mined)
+        {
+            fields.Add(string.Join(",", mined.X.ToString(Invariant),
+                mined.Y.ToString(Invariant), mined.Z.ToString(Invariant)));
+            fields.Add(receipt.BlockBefore.ToString(Invariant));
+            fields.Add(receipt.BlockAfter.ToString(Invariant));
         }
         string payload = string.Join(";", fields);
         string hash = Convert.ToHexString(SHA256.HashData(
@@ -135,7 +158,8 @@ public static class PickupTransactionStore
         string[] fields = lines[1].Split(';');
         bool dropOnly = fields.Length == 10 && fields[0] == "1";
         bool chestTransfer = fields.Length == 12 && fields[0] == "2";
-        if ((!dropOnly && !chestTransfer) ||
+        bool miningReward = fields.Length == 13 && fields[0] == "3";
+        if ((!dropOnly && !chestTransfer && !miningReward) ||
             fields[1] != expectedWorldId ||
             !PlayerIdentity.Valid(fields[1]) ||
             !PlayerIdentity.Valid(fields[2]) ||
@@ -173,8 +197,28 @@ public static class PickupTransactionStore
             chestPosition = new BlockPosition(x, y, z);
             chestAfter = decoded;
         }
+        BlockPosition? editedBlock = null;
+        ushort blockBefore = 0, blockAfter = 0;
+        if (miningReward)
+        {
+            string[] parts = fields[10].Split(',');
+            if (parts.Length != 3 ||
+                !int.TryParse(parts[0], NumberStyles.Integer, Invariant,
+                    out int x) ||
+                !int.TryParse(parts[1], NumberStyles.Integer, Invariant,
+                    out int y) ||
+                !int.TryParse(parts[2], NumberStyles.Integer, Invariant,
+                    out int z) ||
+                !ushort.TryParse(fields[11], NumberStyles.None,
+                    Invariant, out blockBefore) ||
+                !ushort.TryParse(fields[12], NumberStyles.None,
+                    Invariant, out blockAfter))
+                throw new InvalidDataException("Invalid mined block receipt.");
+            editedBlock = new BlockPosition(x, y, z);
+        }
         receipt = new PickupReceipt(fields[1], fields[2], inventory, tools,
-            type, shape, facing, slot, drops, chestPosition, chestAfter);
+            type, shape, facing, slot, drops, chestPosition, chestAfter,
+            editedBlock, blockBefore, blockAfter);
         Validate(receipt);
         return true;
     }
@@ -190,34 +234,59 @@ public static class PickupTransactionStore
         IReadOnlyDictionary<BlockPosition, ChestContents> chests,
         out IReadOnlyList<SavedWorldDrop> drops) =>
         Recover(root, worldId, seed, edits, revisions, chests,
-            out drops, out _);
+            out drops, out _, out _);
 
-    /// <summary>Replay the post-transaction profile and world snapshots.
-    /// A chest v2 receipt replaces only the changed chest; reapplying the
-    /// same update to either the old or already-committed world is safe.</summary>
     public static bool Recover(string root, string worldId, int seed,
         SectionedEditSnapshot edits,
         IReadOnlyDictionary<ChunkKey, int> revisions,
         IReadOnlyDictionary<BlockPosition, ChestContents> chests,
         out IReadOnlyList<SavedWorldDrop> drops,
-        out IReadOnlyDictionary<BlockPosition, ChestContents> restoredChests)
+        out IReadOnlyDictionary<BlockPosition, ChestContents> restoredChests) =>
+        Recover(root, worldId, seed, edits, revisions, chests,
+            out drops, out restoredChests, out _);
+
+    /// <summary>Replay an interrupted physical pickup, chest transfer or
+    /// mined-block direct reward. The optional block edit is replayed only
+    /// when the loaded save still contains the original block, and remains
+    /// unchanged if the committed edit was already saved.</summary>
+    public static bool Recover(string root, string worldId, int seed,
+        SectionedEditSnapshot edits,
+        IReadOnlyDictionary<ChunkKey, int> revisions,
+        IReadOnlyDictionary<BlockPosition, ChestContents> chests,
+        out IReadOnlyList<SavedWorldDrop> drops,
+        out IReadOnlyDictionary<BlockPosition, ChestContents> restoredChests,
+        out BlockEdits restoredEdits)
     {
         drops = Array.Empty<SavedWorldDrop>();
         restoredChests = chests;
+        restoredEdits = new BlockEdits();
         if (!TryRead(root, worldId, out PickupReceipt? receipt))
             return false;
         if (receipt == null)
             throw new InvalidDataException("Missing committed inventory receipt.");
 
+        foreach (ChunkKey key in revisions.Keys)
+            restoredEdits.ReplaceSection(key, edits.InSection(key),
+                revisions[key], seed);
+
+        if (receipt.EditedBlock is BlockPosition mined)
+        {
+            ushort current = restoredEdits.Get(mined.X, mined.Y, mined.Z, seed);
+            if (current == receipt.BlockBefore)
+            {
+                if (!restoredEdits.Set(mined, receipt.BlockAfter, seed))
+                    throw new InvalidDataException(
+                        "Unable to redo journaled mined voxel.");
+            }
+            else if (current != receipt.BlockAfter)
+                throw new InvalidDataException(
+                    "Mined voxel differs from both transaction states.");
+        }
+
         if (receipt.ChestPosition is BlockPosition position &&
             receipt.ChestAfter is ChestContents after)
         {
-            // Refuse orphan chest data before modifying either save file.
-            var world = new BlockEdits();
-            foreach (ChunkKey key in revisions.Keys)
-                world.ReplaceSection(key, edits.InSection(key),
-                    revisions[key], seed);
-            if (new BlockState(world.Get(position.X, position.Y,
+            if (new BlockState(restoredEdits.Get(position.X, position.Y,
                     position.Z, seed)).Type != BlockInventory.Chest)
                 throw new InvalidDataException(
                     "Journaled storage is no longer a chest voxel.");
@@ -229,7 +298,8 @@ public static class PickupTransactionStore
             restoredChests = updated;
         }
 
-        WorldEditSave.Save(root, worldId, seed, edits, revisions,
+        WorldEditSave.Save(root, worldId, seed,
+            restoredEdits.Snapshot, restoredEdits.Revisions,
             restoredChests, receipt.Drops);
         PlayerProfileStore.Save(Path.Combine(root, "players", worldId),
             worldId, receipt.PlayerToken, receipt.Inventory, receipt.Tools,

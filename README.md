@@ -99,8 +99,9 @@ determines each material/quantity and accepts a pickup only within 1.6 m of
 the player's real position after a 0.5 s delay. Identical nearby drops
 merge to stacks of 64; drops despawn after five minutes, and a bounded
 256-entity cap prevents unlimited networked rigid bodies. If the cap or
-prefab load prevents a spawn, resources are credited directly rather than
-lost, subject to the existing per-type 999-item cap.
+prefab load prevents a spawn, a journaled direct-inventory reward is used,
+subject to the existing per-type 999-item cap. If the player has no capacity,
+the mined block is restored instead of silently consuming its resources.
 
 **Ground drop persistence:** active server-owned drops now save with the
 same atomic world generation as voxel edits and chest contents (world save v5).
@@ -131,12 +132,23 @@ the chest, and replays the player profile exactly once. Transfers are not
 accepted if the journal or either save fails; the existing recovery evidence
 is preserved. Moves between slots within a single chest stay world-only.
 
-**Known limits:** this correctness-first path writes a full world generation
-synchronously for every physical pickup or cross-inventory chest transfer,
-which may hitch on large worlds. Linux/Windows host/client and write-failure
-tests have not yet been run. Direct-credit mining rewards when the drop cap
-is hit, other independent inventory mutations and authenticated public
-multiplayer accounts are not covered by this transaction mechanism.
+**Crash-recoverable mining fallback:** if a physical drop cannot spawn,
+the server stages a direct reward and tool wear. It checkpoints the immutable
+world snapshot captured *before* mining, then records a v3 redo receipt with
+the exact removed voxel and post-reward player profile. If the server crashes
+after journaling but before both saves finish, recovery replays the block
+removal and grants the materials and tool durability exactly once. If the
+player cannot receive the reward, or a save fails before a receipt exists,
+the block and tool durability are restored in the same tick. A failure after
+a receipt exists locks world writes until restart recovery.
+
+**Known limits:** physical pickups, chest transfers and direct-credit fallback
+still synchronously write full world generations, which may hitch on large
+worlds (the mining fallback first writes a pre-edit checkpoint). Linux/Windows
+host/client tests and disk-failure injection have not yet been run. Other
+independent inventory mutations (crafting, smelting, placement spending and
+regular tool wear) and authenticated public multiplayer accounts are not
+covered by these redo transactions.
 
 ### Chests and world save v4 (supported by v5)
 
