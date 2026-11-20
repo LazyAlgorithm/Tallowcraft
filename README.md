@@ -10,6 +10,12 @@ Open project.tallow with Tallow and press Play. The Main scene starts a local **
 
 World settings are available on the main and Escape menus. View distance ranges from 4 to 64 chunks ahead, with shorter side and rear ranges. The experimental **Quadtree terrain LOD** toggle switches between the new coarse-distance terrain and the original full-chunk renderer (capped at 20 chunks). The **LOD quality** setting scales the near-to-distant transition boundaries. Chunk threads can use Auto or a fixed count up to the detected maximum. Changes apply immediately and are saved for the local player (including compatibility with older display-settings files). Larger distances can use considerably more memory and CPU. **64 chunks is an experimental cap, not a validated frame-rate guarantee.**
 
+### November 20 follow-up: compass and stair corners
+
+The compass now updates from the local camera on every local UI frame, with 3° marker increments and 15° cardinal-label ticks. The decorative left/right arrows were removed. This is a bounded .tui presentation workaround rather than continuously interpolated CSS positioning; labels only update when they change.
+
+Automatic inner/outer stair corners are derived from adjacent stairs at mesh-generation time. Continuous same-facing stair rows are protected from unintended cuts when a perpendicular stair touches their side. Both mesh generation and placement/mining previews use the same derived occupancy. The world save, multiplayer edits, and item types still store ordinary stair states without persistent corner metadata. These changes include pure C# regression tests but still require a Linux play-mode rendering check.
+
 ### November 20 additions: safe return, compass and building materials
 
 **Return to Spawn** now reserves the destination's actual 16³ terrain chunks (including Jolt collision) on the server and preloads the same destination on the owning remote client. Movement, look, mining and item actions are locked while the destination is prepared. A remote client acknowledges readiness only after its chunks and colliders are available; the server then teleports authoritatively. The attempt cancels after a bounded timeout instead of teleporting into a missing chunk. The HUD shows a loading banner during this process. Test this on host and remote client before relying on it for long-distance travel.
