@@ -7,9 +7,10 @@ internal static class ChunkSchedulingTests
 {
     public static void Run(Action<bool, string> check)
     {
-        check(WorldDisplaySettings.Distances[^1] == 20 &&
+        check(WorldDisplaySettings.Distances[^1] == 64 &&
+              WorldDisplaySettings.Distances.Contains(20) &&
               WorldDisplaySettings.Distances.Length > 3,
-            "View distance offers multiple steps up to 20 chunks");
+            "View distance preserves 20 chunks and extends to 64 with quadtree LOD");
         check(WorldDisplaySettings.WorkerCount(0, 12) == 11 &&
               WorldDisplaySettings.WorkerCount(0, 1) == 1 &&
               WorldDisplaySettings.WorkerCount(50, 12) == 12,
@@ -22,6 +23,18 @@ internal static class ChunkSchedulingTests
         }
         check(ChunkScheduling.ShouldCastShadow(new ChunkKey(20, 0, 0),
             0, 0, 0, 20), "The extended shadow radius reaches 20 chunks");
+        check(ChunkScheduling.DistantWorkerLimit(1, false, false) == 0 &&
+              ChunkScheduling.DistantWorkerLimit(4, false, true) == 0,
+            "No distant LOD jobs start until immediate spawn terrain is ready");
+        check(ChunkScheduling.DistantWorkerLimit(1, true, false) == 0 &&
+              ChunkScheduling.DistantWorkerLimit(1, true, true) == 1,
+            "Single-worker builds finish near terrain before distant meshes");
+        check(ChunkScheduling.DistantWorkerLimit(2, true, false) == 1 &&
+              ChunkScheduling.DistantWorkerLimit(4, true, false) == 1 &&
+              ChunkScheduling.DistantWorkerLimit(8, true, false) == 2,
+            "Multi-worker builds reserve most workers for full-detail chunks");
+        check(ChunkScheduling.DistantWorkerLimit(16, true, false) == 4,
+            "Large worker pools keep the far LOD quota bounded to one quarter");
         int collisionRadius = 2;
         ChunkKey center = new(0, 0, 0);
         ChunkKey near = new(1, 0, 0);
