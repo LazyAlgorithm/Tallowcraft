@@ -66,6 +66,36 @@ internal static class HybridMeshTests
                 cases++;
             }
         }
+        // Exercise both sides of the stair's slope. The facing direction
+        // is the lower end; OUTER corners resolve at the raised (-forward)
+        // neighbor and INNER corners at the lower (+forward) neighbor.
+        // Test both sides across signed X/Z section seams and both halves.
+        for (int facing = 0; facing < 4; facing++)
+        for (int upper = 0; upper < 2; upper++)
+        for (int neighborSide = -1; neighborSide <= 1; neighborSide += 2)
+        {
+            var (fx, fz) = StairCornerResolver.Forward(facing);
+            var center = new BlockPosition(-16, 45, -16);
+            var next = new BlockPosition(center.X + fx * neighborSide,
+                center.Y, center.Z + fz * neighborSide);
+            var edits = new Dictionary<BlockPosition, ushort>
+            {
+                [center] = BlockState.Create(13, BlockShape.Stair,
+                    facing, upper == 1).Packed,
+                [next] = BlockState.Create(13, BlockShape.Stair,
+                    (facing + 1) & 3, upper == 1).Packed
+            };
+            var sectionKeys = new HashSet<ChunkKey>
+            {
+                SectionedEditSnapshot.SectionOf(center),
+                SectionedEditSnapshot.SectionOf(next)
+            };
+            foreach (ChunkKey section in sectionKeys)
+            {
+                Validate(section, edits, seed, check);
+                cases++;
+            }
+        }
         Console.WriteLine($"PASS: {cases} hybrid mesh surface scenarios");
     }
 
