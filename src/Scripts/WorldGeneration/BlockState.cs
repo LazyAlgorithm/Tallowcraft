@@ -144,17 +144,24 @@ public static class StairCornerResolver
         bool StraightSide(BlockState state) =>
             SameHalf(state) && state.Facing == center.Facing;
 
-        if (Perpendicular(front))
-        {
-            bool turningRight = front.Facing == ((center.Facing + 1) & 3);
-            // Preserve continuous stair rows even if another stair turns
-            // immediately in front of a piece of the row.
-            if (!StraightSide(turningRight ? left : right))
-                return turningRight ? StairCorner.OuterLeft : StairCorner.OuterRight;
-        }
+        // Facing points toward the LOWER step (the front). The raised
+        // half of a normal stair is BEHIND the facing direction:
+        // for facing +Z, ContainsMicro raises z == 0.
+        //
+        // An OUTER corner is formed by a perpendicular stair beyond the
+        // raised half (behind); retain only its matching raised quadrant.
+        // An INNER corner is formed on the lower side (front); add the
+        // matching quadrant. Swapping these makes an L turn look like a
+        // solid block with a notch in the wrong place.
         if (Perpendicular(behind))
         {
             bool turningRight = behind.Facing == ((center.Facing + 1) & 3);
+            if (!StraightSide(turningRight ? left : right))
+                return turningRight ? StairCorner.OuterLeft : StairCorner.OuterRight;
+        }
+        if (Perpendicular(front))
+        {
+            bool turningRight = front.Facing == ((center.Facing + 1) & 3);
             if (!StraightSide(turningRight ? right : left))
                 return turningRight ? StairCorner.InnerLeft : StairCorner.InnerRight;
         }
