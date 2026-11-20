@@ -20,7 +20,7 @@ public static class HybridChunkMesher
         var uvs = new List<Vector2>(2048);
         var triangles = new List<int>(3072);
 
-        BlockState At(int x, int y, int z)
+        BlockState RawAt(int x, int y, int z)
         {
             int worldY = key.Y * ChunkGenerator.Size + y;
             if (!ChunkGenerator.InWorld(worldY))
@@ -31,6 +31,19 @@ public static class HybridChunkMesher
             return new BlockState(ChunkGenerator.GetBlock(
                 key.X * ChunkGenerator.Size + x, worldY,
                 key.Z * ChunkGenerator.Size + z, seed, edits));
+        }
+
+        BlockState At(int x, int y, int z)
+        {
+            BlockState raw = RawAt(x, y, z);
+            if (raw.Shape != BlockShape.Stair) return raw;
+            var (fx, fz) = StairCornerResolver.Forward(raw.Facing);
+            // Derive the same corner on every peer from authoritative
+            // neighbor states. This also works across signed chunk seams.
+            StairCorner corner = StairCornerResolver.Choose(raw,
+                RawAt(x + fx, y, z + fz),
+                RawAt(x - fx, y, z - fz));
+            return raw.WithCorner(corner);
         }
 
         bool Occupied(int bx, int by, int bz, int mx, int my, int mz)
