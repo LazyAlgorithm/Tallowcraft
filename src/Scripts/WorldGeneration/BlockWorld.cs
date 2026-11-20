@@ -2055,7 +2055,12 @@ public class BlockWorld : Script
                     Vector3 center = new(position.X + (x == 0 ? 0.25f : 0.75f),
                         position.Y + (y == 0 ? 0.25f : 0.75f),
                         position.Z + (z == 0 ? 0.25f : 0.75f));
-                    if (Scene.CheckBox(center, new Vector3(0.45f), Quaternion.Identity))
+                    // Each microcell is 0.5m wide, so 0.245m is its
+                    // half-extent with 5mm clearance. The old 0.45m
+                    // half-extent crossed into the occupied half of a slab
+                    // and blocked stacking a matching second slab.
+                    if (Scene.CheckBox(center, new Vector3(0.245f),
+                        Quaternion.Identity))
                         return false;
                 }
         return true;
