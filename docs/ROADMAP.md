@@ -13,10 +13,17 @@ matching player stacks instead of failing an otherwise valid partial merge.
 Regression coverage was added, but this change has not been compiled or
 Play-tested on Linux or Windows in this session.
 
-**Next implementation priority:** transactional consistency between world
-drops and player profiles, followed by host/client and save-recovery Play-mode
-testing. Drop snapshots now save with world-save v5, but independently saved
-player profiles can diverge during abrupt crashes. **Still blocked on engine verification:** character
+**Current implementation:** physical item pickups now use a durable, checksummed
+redo journal. A pre-pickup world checkpoint is committed if terrain/chests are
+dirty. The journal records complete post-pickup drop and player-profile states
+before updating either file. On restart, an interrupted transaction replays
+both states and is removed only after both writes succeed. Corrupt receipts
+halt loading instead of being discarded.
+
+**Next implementation priority:** benchmark the synchronous pickup checkpoint
+path, validate host/client crash recovery in Play mode, and extend transactional
+consistency to chest transfers and the direct-credit mining fallback. Full
+public multiplayer account authentication is still out of scope. **Still blocked on engine verification:** character
 animation/occlusion, collision accuracy for partial blocks, and sustained
 high-radius performance.
 
@@ -120,7 +127,9 @@ high-radius performance.
 - [x] Crafting recipes, proximity-validated forge smelting, stone/iron tools, and 27-slot chests saved with the world
 - [x] Partial chest withdrawals into matching, nearly-full player stacks without losing remainder (pure-C# regression added; runtime verification pending)
 - [x] Persist live ground drops with terrain/chest world-save v5, including age/position and corrupt-generation rollback (regression tests added; runtime testing pending)
-- [ ] Make pickup/player-profile persistence atomic with world drop changes (currently separate files can diverge after abrupt crashes)
+- [x] Redo-log physical drop pickups across world/player saves; recover both post-pickup states after abrupt crashes (unit tests added; Play-mode verification pending)
+- [ ] Batch pickup journal/checkpoint writes without degrading large-world performance; current transactional path saves the world synchronously
+- [ ] Extend equivalent crash safety to chest-to-player transfers, direct-credit mining fallback, and other inventory mutations
 - [ ] Health/damage, simple wildlife and AI, weather/day–night polish
 
 ## Verification and release gates
@@ -135,10 +144,44 @@ high-radius performance.
 
 - The world currently uses signed 16-block vertical sections (Y=-32..47); bounds and world settings are not user-configurable yet.
 - Versioned chunk pages and deltas replace the original 512-edit global snapshot, but the RPC bridge still lacks true per-recipient filtering.
-- World edits, chest contents, player profiles and loose dropped items persist; drop pickup/profile changes are not yet an atomic cross-file transaction.
+- Physical ground-item pickups now have a crash-recoverable redo journal; chests and other inventory operations still use independent profile/world saves. This is not a general multi-player transaction system.
 - The .tui hotbar, inventory, crafting, and chest UI exist. Rendering, chest interaction and replicated animation still require hands-on editor/host/client verification.
 - Player identity is a local bearer token rather than authenticated multiplayer account ownership.
 
+
+## Physical item pickup recovery — November 19, 2026
+
+The server now validates a physical drop and copies the receiving inventory
+before any disk changes. An existing async world save is completed, and unsaved
+terrain/chest edits are checkpointed before an immutable post-pickup drop
+snapshot is journaled alongside the complete post-pickup player inventory,
+tools, and selection. The receipt is flushed to disk and atomically renamed
+before either the world v5 generation or player profile can change. After
+both saves succeed, the receipt is removed, the in-memory inventory changes,
+and the physical drop despawns. Startup replays any valid pending receipt
+before restoring drops or accepting player profile logins.
+
+A corrupt or unrecoverable pending receipt blocks loading instead of silently
+resetting inventory. Recovery is repeatable across subsequent restarts, and
+new unit tests simulate interruption before either save, after only the world
+write, after only the player write, and after both writes but before receipt
+deletion. They also test checksum tampering and duplicate pending pickups.
+
+**Important performance limit:** each successful physical pickup forces a
+synchronous world-save generation (plus a precheckpoint if world edits are
+dirty). This prioritizes correctness over throughput for the current testbed.
+Before large-scale play, replace per-pickup full snapshots with compact,
+batched, durable transactions. World edits/chest transfers, player identity,
+and direct-credit fallbacks have separate consistency requirements.
+
+Run the pure-C# suite on Nobara:
+
+```bash
+dotnet run --project tests/BlockLogicTests -c Release
+```
+
+Play-mode host/client verification remains required before considering crash
+recovery reliable on the live Tallow backend.
 
 ## M3 benchmark procedure
 

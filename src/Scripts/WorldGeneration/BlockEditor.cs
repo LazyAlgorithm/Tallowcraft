@@ -123,7 +123,8 @@ public class BlockEditor : Script
             return false;
 
         _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
-        if (_world == null || _world.WorldIdentity.Length == 0)
+        if (_world == null || _world.WorldIdentity.Length == 0 ||
+            _world.PersistenceLocked)
             return false;
         string worldId = _world.WorldIdentity;
         if (!PlayerProfileClaims.TryClaim(worldId, token))
@@ -204,6 +205,21 @@ public class BlockEditor : Script
     private void TickProfile(float deltaTime)
     {
         _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world?.PersistenceLocked == true)
+        {
+            if (ProfileReady)
+            {
+                // Do not overwrite the redo journal's promised profile with
+                // unsaved mutations after a disk failure. Restart to recover.
+                PlayerProfileClaims.Release(_profileWorldId, _profileToken);
+                ProfileReady = false;
+                ProfileError = true;
+                _profileDirty = false;
+                Console.WriteLine(
+                    "Tallowcraft profile locked after pickup persistence error.");
+            }
+            return;
+        }
         if (ProfileReady && _world != null &&
             _world.WorldIdentity.Length > 0 &&
             _profileWorldId != _world.WorldIdentity)
@@ -812,9 +828,43 @@ public class BlockEditor : Script
     /// An invalid item, full material cap or uninitialized profile rejects
     /// the pickup without deleting the drop.
     /// </summary>
+    /// <summary>Atomically persist a physical pickup's receiving profile
+    /// and its removal from the ground-drop snapshot before changing memory.
+    /// This is distinct from the direct-credit fallback when no drop spawned.</summary>
+    internal bool TryReceivePersistedDrop(WorldDrop drop)
+    {
+        if (!Scene.IsServer || !ProfileReady || !drop.GameObject.IsValid ||
+            _world?.PersistenceLocked == true ||
+            drop.ItemType is < 1 or > BlockInventory.MaxType ||
+            drop.Quantity is < 1 or > BlockInventory.StackLimit)
+            return false;
+
+        var after = new BlockInventory();
+        if (!after.TryLoad(_inventory.Serialize()) ||
+            !after.TryCollect(drop.ItemType, drop.Quantity))
+            return false;
+
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world == null ||
+            !_world.TryCommitDropPickup(drop, _profileToken, after, _tools,
+                PlaceType, PlaceShape, FacingOffset, SelectedHotbar))
+            return false;
+
+        // The durable profile has already been saved. Replacing the live
+        // inventory here cannot fail: it was validated before journal creation.
+        if (!_inventory.TryLoad(after.Serialize()))
+            throw new InvalidOperationException(
+                "Pickup profile committed but in-memory inventory rejected.");
+        InventoryState = _inventory.Serialize();
+        _profileDirty = false;
+        _profileSaveClock = 0f;
+        return true;
+    }
+
     internal bool TryReceiveWorldDrop(int type, int quantity)
     {
         if (!Scene.IsServer || !ProfileReady ||
+            _world?.PersistenceLocked == true ||
             type is < 1 or > BlockInventory.MaxType ||
             quantity is < 1 or > BlockInventory.StackLimit ||
             !_inventory.TryCollect(type, quantity))

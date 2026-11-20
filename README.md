@@ -111,11 +111,24 @@ world to roll back to the previous validated generation. A normal quit saves
 the current drop state; automatic checkpoints occur every 30 seconds while
 drops exist.
 
-**Crash consistency limit:** player inventories save separately from the
-world. A crash between an item pickup and the respective player/world saves
-can still duplicate or lose a recently collected item after recovery.
-Truly atomic player/drop transactions require a shared transaction journal
-or a unified player+world checkpoint before public multiplayer deployment.
+**Crash-recoverable physical pickups:** before a ground-item pickup
+credits the player or despawns the item, the server writes a checksummed
+redo receipt containing the complete *post-pickup* player profile and the
+remaining world drops. Unsaved terrain/chest edits are checkpointed first.
+After the receipt is durable, both the world save and profile save commit;
+only then is the receipt removed and the pickup applied in memory. Startup
+finishes any interrupted receipt before restoring drops or loading profiles.
+Corrupt pending receipts block world startup instead of silently discarding
+items. This prevents a crash between the two pickup saves from duplicating
+or losing the collected ground item.
+
+**Known limits:** this correctness-first path writes a full world generation
+synchronously for each successful physical pickup, which can cause hitches
+on large worlds. It still needs Linux/Windows host/client verification and
+write-failure testing. Chest-to-player transfers, direct-credit fallback
+rewards when the drop entity cap is hit, and other inventory operations
+are not yet covered by this redo journal. User tokens remain prototype
+bearer identities, not authenticated public multiplayer accounts.
 
 ### Chests and world save v4 (supported by v5)
 

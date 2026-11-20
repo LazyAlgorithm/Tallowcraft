@@ -120,6 +120,9 @@ public class BlockWorld : Script
     // Server-only stable identity for player saves. Transient client ids are
     // never used as inventory filenames: they change when reconnecting.
     public string WorldIdentity => Scene.IsServer ? _worldId : "";
+    // A durable incomplete pickup receipt blocks all further gameplay
+    // inventory mutations until startup can replay the transaction.
+    public bool PersistenceLocked => _saveLoadFailed;
     public string PlayerProfilesFolder =>
         Path.Combine(SaveFolder, "players", _worldId);
     private string CacheFolder => Path.Combine(
@@ -183,6 +186,25 @@ public class BlockWorld : Script
             Seed = loadedSeed;
             _edits = loaded;
             _chests = chests;
+            try
+            {
+                // If a pickup crashed between writing the world and player
+                // profile, finish both writes before exposing world objects.
+                if (PickupTransactionStore.Recover(SaveFolder, _worldId,
+                        Seed, _edits.Snapshot, _edits.Revisions,
+                        _chests.Snapshot, out var recoveredDrops))
+                {
+                    drops = recoveredDrops;
+                    Console.WriteLine("Tallowcraft completed an interrupted pickup.");
+                }
+            }
+            catch (Exception exception)
+            {
+                _saveLoadFailed = true;
+                Console.WriteLine(
+                    $"Tallowcraft pickup recovery failed; world locked: {exception}");
+                return;
+            }
             if (!WorldDrop.Restore(Scene, drops))
             {
                 _saveLoadFailed = true;
@@ -246,6 +268,75 @@ public class BlockWorld : Script
             MarkAllDirty();
         }
         _appliedSnapshot = EditState;
+    }
+
+    /// <summary>
+    /// Redo-logged pickup: precheckpoint existing block edits, write a durable
+    /// receipt with BOTH post-pickup snapshots, then persist both sides.
+    /// No gameplay inventory or drop mutation happens before this succeeds.
+    /// A crash after receipt creation is completed at next world startup.
+    /// This synchronous path is deliberate; optimize with batched journaling
+    /// only after validating crash-recovery and dedicated-server behavior.
+    /// </summary>
+    public bool TryCommitDropPickup(WorldDrop drop, string token,
+        BlockInventory inventoryAfter, PlayerTools tools,
+        int selectedType, int selectedShape, int facing, int selectedSlot)
+    {
+        if (!Scene.IsServer || _saveLoadFailed ||
+            !PlayerIdentity.Valid(token) || _worldId.Length == 0 ||
+            !drop.GameObject.IsValid || drop.Scene.SessionId != Scene.SessionId)
+            return false;
+
+        try
+        {
+            // A previous 30-second save may still be writing. Its completion
+            // and any unsaved voxel/chest edits must precede the receipt.
+            if (_saveTask != null)
+            {
+                _saveTask.GetAwaiter().GetResult();
+                _saveTask = null;
+                _savedGeneration = _savingGeneration;
+            }
+            if (_generation != _savedGeneration)
+            {
+                WorldEditSave.Save(SaveFolder, _worldId, Seed,
+                    _edits.Snapshot, _edits.Revisions, _chests.Snapshot,
+                    WorldDrop.Capture(Scene));
+                _savedGeneration = _generation;
+            }
+
+            IReadOnlyList<SavedWorldDrop> afterDrops =
+                WorldDrop.Capture(Scene, drop);
+            var receipt = new PickupReceipt(_worldId, token,
+                inventoryAfter, tools, selectedType, selectedShape,
+                facing, selectedSlot, afterDrops);
+            PickupTransactionStore.Prepare(SaveFolder, receipt);
+
+            // The receipt is now the durable source of truth. Either write
+            // may be interrupted: recovery always redoes BOTH full states.
+            WorldEditSave.Save(SaveFolder, _worldId, Seed,
+                _edits.Snapshot, _edits.Revisions, _chests.Snapshot,
+                afterDrops);
+            PlayerProfileStore.Save(PlayerProfilesFolder, _worldId, token,
+                inventoryAfter, tools, selectedType, selectedShape, facing,
+                selectedSlot);
+            PickupTransactionStore.Complete(SaveFolder);
+            _savedGeneration = _generation;
+            _saveClock = 0f;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            if (PickupTransactionStore.HasPending(SaveFolder))
+            {
+                _saveLoadFailed = true;
+                Console.WriteLine(
+                    "Tallowcraft pickup receipt is pending; world writes " +
+                    "are halted until startup can recover it.");
+            }
+            Console.WriteLine($"Tallowcraft pickup persistence failed: {exception}");
+            return false;
+        }
     }
 
     // Server-owned spawn, merge, pickup and despawn events mark saves dirty.

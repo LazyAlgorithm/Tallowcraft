@@ -48,13 +48,15 @@ public sealed class WorldDrop : Script
 
     /// <summary>Capture a stable snapshot on the main game thread; the save
     /// worker never touches networked objects or Jolt transforms.</summary>
-    public static IReadOnlyList<SavedWorldDrop> Capture(Scene scene)
+    public static IReadOnlyList<SavedWorldDrop> Capture(Scene scene,
+        WorldDrop? exclude = null)
     {
         var result = new List<SavedWorldDrop>();
         if (!scene.IsServer) return result;
         foreach (WorldDrop drop in Active)
         {
-            if (!drop.GameObject.IsValid ||
+            if (ReferenceEquals(drop, exclude) ||
+                !drop.GameObject.IsValid ||
                 drop.Scene.SessionId != scene.SessionId ||
                 drop.Quantity <= 0 || drop._age >= DespawnAfter)
                 continue;
@@ -303,8 +305,9 @@ public sealed class WorldDrop : Script
                     new Vector3(0f,.45f,0f)))
             return false;
         BlockEditor? inventory = player.GetComponent<BlockEditor>();
-        if (inventory == null || !inventory.TryReceiveWorldDrop(ItemType, Quantity))
+        if (inventory == null || !inventory.TryReceivePersistedDrop(this))
             return false;
+        // Disk commit is complete before deleting the authoritative object.
         RemoveDrop();
         return true;
     }
