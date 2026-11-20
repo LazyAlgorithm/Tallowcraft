@@ -9,6 +9,103 @@
     <text id="hud-waypoint" class="nav-target">Pause > Waypoints</text>
     <text id="hud-pick-feedback" class="nav-feedback"></text>
   </panel>
+  <panel id="compass-ribbon" class="compass-ribbon">
+    <text class="compass-edge">‹</text>
+    <panel class="compass-track">
+      <panel class="compass-bin">
+        <text id="compass-tick-0" class="compass-tick">·</text>
+        <image id="compass-marker-0-0" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-0" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-0" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-0" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-1" class="compass-tick">·</text>
+        <image id="compass-marker-0-1" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-1" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-1" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-1" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-2" class="compass-tick">·</text>
+        <image id="compass-marker-0-2" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-2" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-2" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-2" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-3" class="compass-tick">·</text>
+        <image id="compass-marker-0-3" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-3" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-3" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-3" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-4" class="compass-tick">·</text>
+        <image id="compass-marker-0-4" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-4" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-4" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-4" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-5" class="compass-tick">·</text>
+        <image id="compass-marker-0-5" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-5" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-5" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-5" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-6" class="compass-tick">·</text>
+        <image id="compass-marker-0-6" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-6" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-6" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-6" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-7" class="compass-tick">·</text>
+        <image id="compass-marker-0-7" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-7" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-7" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-7" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-8" class="compass-tick">·</text>
+        <image id="compass-marker-0-8" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-8" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-8" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-8" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-9" class="compass-tick">·</text>
+        <image id="compass-marker-0-9" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-9" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-9" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-9" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-10" class="compass-tick">·</text>
+        <image id="compass-marker-0-10" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-10" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-10" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-10" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-11" class="compass-tick">·</text>
+        <image id="compass-marker-0-11" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-11" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-11" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-11" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+      <panel class="compass-bin">
+        <text id="compass-tick-12" class="compass-tick">·</text>
+        <image id="compass-marker-0-12" class="compass-marker compass-marker-0" src="Textures/UI/Waypoints/home.png" />
+        <image id="compass-marker-1-12" class="compass-marker compass-marker-1" src="Textures/UI/Waypoints/building.png" />
+        <image id="compass-marker-2-12" class="compass-marker compass-marker-2" src="Textures/UI/Waypoints/mine.png" />
+        <image id="compass-marker-3-12" class="compass-marker compass-marker-3" src="Textures/UI/Waypoints/landmark.png" />
+      </panel>
+    </panel>
+    <text class="compass-edge">›</text>
+  </panel>
   <text id="crosshair">+</text>
   <panel id="hud" class="hud">
     <panel class="hud-title"><text id="hud-name">TALLOWCRAFT</text><text id="hud-status"></text></panel>
