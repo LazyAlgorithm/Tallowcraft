@@ -10,6 +10,8 @@ public sealed class LiveChunk
     public MeshRenderer Renderer;
     public ushort[]? Blocks;
     public bool Dirty;
+    public int VertexCount;
+    public int TriangleCount;
     public readonly List<GameObject> Decorations = new();
 
     public void ClearDecorations()
