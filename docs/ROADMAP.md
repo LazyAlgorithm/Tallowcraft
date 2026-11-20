@@ -2,7 +2,7 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
-## Progress update — 19 November 2026
+## Progress update — 20 November 2026
 
 The milestones below track shipped repository code separately from engine
 Play-mode verification. Since the early roadmap entries, the game has gained
@@ -38,9 +38,17 @@ procedural chunks are still seed-generated, and identical edited section
 revisions are reused without re-encoding or rewriting their contents.
 Shared blob garbage collection runs conservatively every 32 checkpoints.
 
-**Next implementation priority:** compile and verify the persistence suite in
-Linux/Windows Play mode, profile manifest and fsync costs, and extend
-transactional consistency to placement spending, crafting and smelting. Full public multiplayer authentication is out of scope.
+**Current implementation:** peaceful exploration now has personal, locally
+persisted landmarks per world/player (four named slots with tracking,
+coordinates, compass direction and distance), plus an optional,
+owner-validated Return to Spawn command. It does not require death or
+remove player inventory. Markers do not authorize arbitrary teleportation.
+
+**Next implementation priority:** verify the new .tui navigation and
+server-teleport behavior in host/client Play mode, expand useful building
+materials and decorative shapes, and improve world-generation variety.
+Profile the incremental save and section-streaming paths before increasing
+world scale. Full public multiplayer authentication is out of scope.
 **Still blocked on engine verification:** character
 animation/occlusion, collision accuracy for partial blocks, and sustained
 high-radius performance.
@@ -138,7 +146,7 @@ high-radius performance.
 - [ ] Automated multiplayer test matrix (two clients, churn, prediction/replay, reconnect)
 - [ ] Dedicated-server bandwidth, CPU and stability profiling
 
-## M6 — Survival/crafting vertical slice
+## M6 — Peaceful building and crafting vertical slice
 
 - [x] 36 physical inventory slots (9 hotbar + 27 backpack), 64-stack limits, count validation and saved player profiles
 - [x] Server-authoritative placement costs and mining rewards, with optional creative/survival building toggle
@@ -151,7 +159,22 @@ high-radius performance.
 - [x] Redo-log chest-to-player transfers, including empty-chest withdrawals and crash recovery from both save directions (unit tests added; runtime testing pending)
 - [x] Redo-log direct-credit mining fallback with pre-edit world checkpoint, mined voxel replay and tool durability; rollback on full inventory or pre-journal error (pure-C# regression added; runtime verification pending)
 - [ ] Extend equivalent crash safety to placement spending, crafting, smelting and other independent inventory mutations
-- [ ] Health/damage, simple wildlife and AI, weather/day–night polish
+- [ ] Optional ambient day/night and decorative world polish (no mandatory survival mechanics)
+- [ ] Expand construction materials, block shapes and builder-friendly placement tools
+- [ ] Add more explorable ruins, natural decorations, and distinct biome landmarks
+
+## M7 — Exploration and navigation (peaceful sandbox)
+
+- [x] Display world coordinates and tracked landmark distance and world-axis compass direction on the local HUD
+- [x] Four player-local, world-scoped landmarks (Home, Building site, Mine, Landmark), with atomic checksummed saves, mark/track/clear controls and corruption rejection (pure C# regression tests added; Play mode pending)
+- [x] Optional manual Return to Spawn from pause menu; server validates ownership, computes safe ground height and uses the native character teleport without dropping inventory (host/client Play mode pending)
+- [ ] In-world waypoint indicators and optional map overview
+- [ ] Expand peaceful exploration with distinctive structures, collectables and additional decorative materials
+- [ ] Builder tools such as pick-block, fill/replace selections or structure templates
+
+**Design direction:** peaceful sandbox, exploration and building. Health,
+hunger, hostile enemies and combat progression are intentionally not
+required; do not implement them unless priorities change.
 
 ## Verification and release gates
 

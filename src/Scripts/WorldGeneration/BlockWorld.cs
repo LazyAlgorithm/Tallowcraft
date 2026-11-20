@@ -121,6 +121,9 @@ public class BlockWorld : Script
     // Server-only stable identity for player saves. Transient client ids are
     // never used as inventory filenames: they change when reconnecting.
     public string WorldIdentity => Scene.IsServer ? _worldId : "";
+    // The synchronized world identity is safe for local navigation-file
+    // namespacing. It grants no authority to access server player saves.
+    public string ClientWorldIdentity => _worldId;
     // A durable incomplete pickup receipt blocks all further gameplay
     // inventory mutations until startup can replay the transaction.
     public bool PersistenceLocked => _saveLoadFailed;

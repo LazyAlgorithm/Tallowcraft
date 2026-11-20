@@ -94,6 +94,8 @@ public class BlockEditor : Script
     private bool _mainMenu = true;
     private bool _paused;
     private bool _settingsOpen;
+    private Vector2 _serverSpawnXZ;
+    private float _returnToSpawnCooldown;
 
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -110,11 +112,40 @@ public class BlockEditor : Script
     internal void UiResumeGame() { _paused = false; _settingsOpen = false; }
     internal void UiToggleSettings() => _settingsOpen = !_settingsOpen;
     internal void UiQuitGame() => Application.Quit();
+    internal void UiReturnToSpawn() => Rpc(nameof(RequestReturnToSpawn));
+
+    /// <summary>Voluntary, server-authorized return to the original spawn
+    /// point. No health, death or inventory loss is involved. Clients cannot
+    /// provide arbitrary destination coordinates or bypass the cooldown.</summary>
+    [Rpc(RpcTarget.Server)]
+    private void RequestReturnToSpawn()
+    {
+        if (!Scene.IsServer || !ProfileReady ||
+            _returnToSpawnCooldown > 0f ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        if (_world == null || _world.PersistenceLocked ||
+            _world.WorldIdentity.Length == 0)
+            return;
+        var controller = GetCharacterController();
+        if (controller == null || !controller.HasCharacter)
+            return;
+        Vector3 destination = new(_serverSpawnXZ.X, 0f, _serverSpawnXZ.Y);
+        destination.Y = _world.SafeSpawnHeight(destination.X,
+            destination.Z, 2f);
+        if (!WaypointBook.ValidPosition(destination) ||
+            !controller.Teleport(destination))
+            return;
+        Transform.Position = destination;
+        _returnToSpawnCooldown = 10f;
+    }
 
     public override void Start()
     {
         if (!Scene.IsServer)
             return;
+        _serverSpawnXZ = new Vector2(Transform.Position.X, Transform.Position.Z);
         _inventory.FillStarter();
         InventoryState = _inventory.Serialize();
         ToolState = _tools.Serialize();
@@ -937,6 +968,7 @@ public class BlockEditor : Script
             return;
 
         _cooldown = MathF.Max(0f, _cooldown - deltaTime);
+        _returnToSpawnCooldown = MathF.Max(0f, _returnToSpawnCooldown - deltaTime);
         _craftCooldown = MathF.Max(0f, _craftCooldown - deltaTime);
         _chunkRequestCooldown = MathF.Max(0f, _chunkRequestCooldown - deltaTime);
 

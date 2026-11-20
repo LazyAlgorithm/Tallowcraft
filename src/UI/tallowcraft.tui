@@ -4,6 +4,10 @@
      so native .tui click events handle every slot. -->
 <panel id="screen">
   <panel id="fps-counter" class="fps-counter"><text id="fps-value">FPS --</text></panel>
+  <panel id="navigation-hud" class="navigation-hud">
+    <text id="hud-coordinates" class="nav-coordinates">XYZ --, --, --</text>
+    <text id="hud-waypoint" class="nav-target">Pause > Waypoints</text>
+  </panel>
   <text id="crosshair">+</text>
   <panel id="hud" class="hud">
     <panel class="hud-title"><text id="hud-name">TALLOWCRAFT</text><text id="hud-status"></text></panel>
@@ -20,6 +24,8 @@
         <button id="play-game" class="game-menu-button" onclick="OnPlay">Play world</button>
         <button id="resume-game" class="game-menu-button" onclick="OnResume">Resume game</button>
         <button id="open-settings" class="game-menu-button-secondary" onclick="OnSettings">World settings</button>
+        <button id="open-waypoints" class="game-menu-button-secondary" onclick="OnWaypoints">Waypoints and coordinates</button>
+        <button id="respawn-menu-button" class="game-menu-button-secondary" onclick="OnRespawnPrompt">Return to spawn</button>
         <button id="quit-game" class="game-menu-button-quit" onclick="OnQuit">Quit game</button>
       </panel>
       <panel id="world-settings" class="world-settings">
@@ -31,6 +37,52 @@
         <button id="threads-setting" class="setting-button" onclick="OnThreads">Chunk threads: Auto</button>
         <text class="settings-help">Higher settings may reduce FPS.</text>
         <button id="back-settings" class="game-menu-button-secondary" onclick="OnSettings">Back</button>
+      </panel>
+      <panel id="waypoint-panel" class="world-settings">
+        <text class="settings-title">EXPLORATION WAYPOINTS</text>
+        <text id="waypoint-status" class="settings-help">Mark your favorite places.</text>
+        <text class="waypoint-help">Mark here saves your current location. Track displays its distance on the HUD.</text>
+        <panel class="waypoint-list">
+          <panel class="waypoint-row">
+            <text id="waypoint-info-0" class="waypoint-position">Home: not marked</text>
+            <panel class="waypoint-actions">
+              <button id="waypoint-track-0" class="waypoint-button" onclick="OnTrackWaypoint">Track</button>
+              <button id="waypoint-set-0" class="waypoint-button waypoint-set" onclick="OnSetWaypoint">Mark here</button>
+              <button id="waypoint-clear-0" class="waypoint-button waypoint-clear" onclick="OnClearWaypoint">Clear</button>
+            </panel>
+          </panel>
+          <panel class="waypoint-row">
+            <text id="waypoint-info-1" class="waypoint-position">Building site: not marked</text>
+            <panel class="waypoint-actions">
+              <button id="waypoint-track-1" class="waypoint-button" onclick="OnTrackWaypoint">Track</button>
+              <button id="waypoint-set-1" class="waypoint-button waypoint-set" onclick="OnSetWaypoint">Mark here</button>
+              <button id="waypoint-clear-1" class="waypoint-button waypoint-clear" onclick="OnClearWaypoint">Clear</button>
+            </panel>
+          </panel>
+          <panel class="waypoint-row">
+            <text id="waypoint-info-2" class="waypoint-position">Mine: not marked</text>
+            <panel class="waypoint-actions">
+              <button id="waypoint-track-2" class="waypoint-button" onclick="OnTrackWaypoint">Track</button>
+              <button id="waypoint-set-2" class="waypoint-button waypoint-set" onclick="OnSetWaypoint">Mark here</button>
+              <button id="waypoint-clear-2" class="waypoint-button waypoint-clear" onclick="OnClearWaypoint">Clear</button>
+            </panel>
+          </panel>
+          <panel class="waypoint-row">
+            <text id="waypoint-info-3" class="waypoint-position">Landmark: not marked</text>
+            <panel class="waypoint-actions">
+              <button id="waypoint-track-3" class="waypoint-button" onclick="OnTrackWaypoint">Track</button>
+              <button id="waypoint-set-3" class="waypoint-button waypoint-set" onclick="OnSetWaypoint">Mark here</button>
+              <button id="waypoint-clear-3" class="waypoint-button waypoint-clear" onclick="OnClearWaypoint">Clear</button>
+            </panel>
+          </panel>
+        </panel>
+        <button id="back-waypoints" class="game-menu-button-secondary" onclick="OnBackWaypoints">Back</button>
+      </panel>
+      <panel id="respawn-confirm" class="world-settings">
+        <text class="settings-title">RETURN TO SPAWN?</text>
+        <text class="waypoint-help">Travel back to your original spawn point. Your items and builds stay where they are. This does not affect other players.</text>
+        <button id="confirm-respawn" class="game-menu-button" onclick="OnConfirmRespawn">Return to spawn</button>
+        <button id="cancel-respawn" class="game-menu-button-secondary" onclick="OnCancelRespawn">Cancel</button>
       </panel>
       <text class="game-menu-footer">ESC pauses  •  TAB opens inventory</text>
     </panel>

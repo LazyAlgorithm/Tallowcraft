@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Numerics;
 using System.Threading;
 using Tallow;
 
@@ -38,6 +39,12 @@ public sealed class TallowcraftUI : Script
     private float _refreshClock;
     private bool _initialized;
     private bool _settingsLoaded;
+    private WaypointBook _waypoints = new();
+    private string _waypointWorldId = "";
+    private string _waypointToken = "";
+    private bool _waypointLoadError;
+    private bool _waypointsOpen;
+    private bool _respawnConfirm;
     private int _viewChoice = 1;
     private int _heightChoice = 1;
     private bool _shadows = true;
@@ -141,9 +148,184 @@ public sealed class TallowcraftUI : Script
         catch (Exception e) { Console.WriteLine($"Tallowcraft settings: {e.Message}"); }
     }
 
-    public void OnPlay() => _owner?.UiStartGame();
-    public void OnResume() => _owner?.UiResumeGame();
-    public void OnSettings() => _owner?.UiToggleSettings();
+    /// <summary>World/player-specific landmarks live only in this machine's
+    /// player-data directory. They are never transmitted or used as trusted
+    /// teleport targets by the multiplayer server.</summary>
+    private void EnsureWaypointsLoaded()
+    {
+        string worldId = Scene.Find("BlockWorld")?
+            .GetComponent<BlockWorld>()?.ClientWorldIdentity ?? "";
+        if (!PlayerIdentity.Valid(worldId)) return;
+        string token;
+        try
+        {
+            string? slot = Environment.GetEnvironmentVariable(
+                "TALLOWCRAFT_PROFILE_SLOT");
+            token = PlayerIdentity.GetOrCreate(GamePaths.PlayerData,
+                string.IsNullOrEmpty(slot) ?
+                    Scene.IsServer ? "host" : "client" : slot);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Tallowcraft navigation identity: {e.Message}");
+            return;
+        }
+        if (_waypointWorldId == worldId && _waypointToken == token)
+            return;
+        _waypointWorldId = worldId;
+        _waypointToken = token;
+        _waypointLoadError = false;
+        try
+        {
+            _waypoints = WorldWaypointStore.Load(GamePaths.PlayerData,
+                worldId, token);
+        }
+        catch (Exception e)
+        {
+            // Corrupt or inaccessible files are never silently overwritten.
+            _waypoints = new WaypointBook();
+            _waypointLoadError = true;
+            Console.WriteLine($"Tallowcraft waypoints unavailable: {e.Message}");
+        }
+    }
+
+    private void SaveWaypoints()
+    {
+        if (_waypointLoadError || _waypointWorldId.Length == 0 ||
+            _waypointToken.Length == 0)
+            return;
+        try
+        {
+            WorldWaypointStore.Save(GamePaths.PlayerData,
+                _waypointWorldId, _waypointToken, _waypoints);
+        }
+        catch (Exception e)
+        {
+            _waypointLoadError = true;
+            Console.WriteLine($"Tallowcraft waypoints cannot be saved: {e.Message}");
+        }
+    }
+
+    private static bool WaypointSlot(string id, string prefix, out int slot)
+    {
+        slot = -1;
+        return id.StartsWith(prefix, StringComparison.Ordinal) &&
+            int.TryParse(id.AsSpan(prefix.Length), out slot) &&
+            slot >= 0 && slot < WaypointBook.SlotCount;
+    }
+
+    private void UpdateNavigation()
+    {
+        if (_owner is not { } editor) return;
+        Vector3 here = editor.Transform.Position;
+        Text("hud-coordinates", $"XYZ {MathF.Floor(here.X):F0}, " +
+            $"{MathF.Floor(here.Y):F0}, {MathF.Floor(here.Z):F0}");
+        int tracked = _waypoints.Tracked;
+        Vector3? goal = _waypoints.Position(tracked);
+        Text("hud-waypoint", goal is Vector3 destination ?
+            $"{WaypointBook.Names[tracked]}  {MathF.Round(Vector3.Distance(
+                here, destination)):F0}m {WaypointBook.Direction(here, destination)}" :
+            "Mark places from Pause > Waypoints");
+
+        Text("waypoint-status", _waypointLoadError ?
+            "Landmark file needs repair. Check the game log." :
+            _waypointWorldId.Length == 0 ?
+            "Waiting for the world's identity..." :
+            "Personal markers are saved on this device, per world.");
+        for (int slot = 0; slot < WaypointBook.SlotCount; slot++)
+        {
+            Vector3? position = _waypoints.Position(slot);
+            Text("waypoint-info-" + slot,
+                position is Vector3 p ?
+                $"{WaypointBook.Names[slot]}: " +
+                $"{MathF.Floor(p.X):F0}, {MathF.Floor(p.Y):F0}, {MathF.Floor(p.Z):F0}" :
+                WaypointBook.Names[slot] + ": not marked");
+            Text("waypoint-track-" + slot, _waypoints.Tracked == slot ?
+                "Untrack" : "Track");
+        }
+    }
+
+    public void OnPlay()
+    {
+        _owner?.UiStartGame();
+        _waypointsOpen = false;
+        _respawnConfirm = false;
+    }
+
+    public void OnResume()
+    {
+        _owner?.UiResumeGame();
+        _waypointsOpen = false;
+        _respawnConfirm = false;
+    }
+
+    public void OnSettings()
+    {
+        _waypointsOpen = false;
+        _respawnConfirm = false;
+        _owner?.UiToggleSettings();
+    }
+
+    public void OnWaypoints()
+    {
+        if (_owner is not { UiGameMenuVisible: true } editor) return;
+        if (editor.UiSettingsOpen) editor.UiToggleSettings();
+        _respawnConfirm = false;
+        _waypointsOpen = !_waypointsOpen;
+        UpdateNavigation();
+    }
+
+    public void OnBackWaypoints() => _waypointsOpen = false;
+
+    public void OnSetWaypoint(string id)
+    {
+        if (!_waypointsOpen || _waypointLoadError ||
+            _waypointWorldId.Length == 0 ||
+            _owner is not { } editor ||
+            !WaypointSlot(id, "waypoint-set-", out int slot))
+            return;
+        if (_waypoints.Mark(slot, editor.Transform.Position))
+            SaveWaypoints();
+        UpdateNavigation();
+    }
+
+    public void OnTrackWaypoint(string id)
+    {
+        if (!_waypointsOpen || _waypointLoadError ||
+            !WaypointSlot(id, "waypoint-track-", out int slot))
+            return;
+        if (_waypoints.Track(_waypoints.Tracked == slot ? -1 : slot))
+            SaveWaypoints();
+        UpdateNavigation();
+    }
+
+    public void OnClearWaypoint(string id)
+    {
+        if (!_waypointsOpen || _waypointLoadError ||
+            !WaypointSlot(id, "waypoint-clear-", out int slot))
+            return;
+        if (_waypoints.Clear(slot)) SaveWaypoints();
+        UpdateNavigation();
+    }
+
+    public void OnRespawnPrompt()
+    {
+        if (_owner is not { UiPaused: true }) return;
+        _respawnConfirm = true;
+        _waypointsOpen = false;
+    }
+
+    public void OnCancelRespawn() => _respawnConfirm = false;
+
+    public void OnConfirmRespawn()
+    {
+        if (!_respawnConfirm || _owner is not { UiPaused: true } editor)
+            return;
+        _respawnConfirm = false;
+        editor.UiReturnToSpawn();
+        editor.UiResumeGame();
+    }
+
     public void OnQuit() => _owner?.UiQuitGame();
     public void OnViewDistance() { _viewChoice = (_viewChoice + 1) % WorldDisplaySettings.Distances.Length; ApplySettings(); SaveSettings(); }
     public void OnWorldHeight() { _heightChoice = (_heightChoice + 1) % 3; ApplySettings(); SaveSettings(); }
@@ -332,6 +514,12 @@ public sealed class TallowcraftUI : Script
             return;
 
         LoadSettings();
+        EnsureWaypointsLoaded();
+        if (!editor.UiGameMenuVisible)
+        {
+            _waypointsOpen = false;
+            _respawnConfirm = false;
+        }
         if (!editor.UiGameMenuVisible)
         {
             _fpsSeconds += MathF.Max(0f, Time.UnscaledDeltaTime);
@@ -344,10 +532,16 @@ public sealed class TallowcraftUI : Script
             }
         }
         Visible("fps-counter", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
+        Visible("navigation-hud", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
         Visible("game-menu", editor.UiGameMenuVisible);
         Visible("inventory-panel", editor.IsInventoryVisible);
-        Visible("game-menu-actions", editor.UiGameMenuVisible && !editor.UiSettingsOpen);
-        Visible("world-settings", editor.UiGameMenuVisible && editor.UiSettingsOpen);
+        Visible("game-menu-actions", editor.UiGameMenuVisible &&
+            !editor.UiSettingsOpen && !_waypointsOpen && !_respawnConfirm);
+        Visible("world-settings", editor.UiGameMenuVisible &&
+            editor.UiSettingsOpen && !_waypointsOpen && !_respawnConfirm);
+        Visible("waypoint-panel", editor.UiGameMenuVisible && _waypointsOpen);
+        Visible("respawn-confirm", editor.UiGameMenuVisible && _respawnConfirm);
+        Visible("respawn-menu-button", editor.UiPaused);
         Visible("play-game", editor.UiMainMenu);
         Visible("resume-game", editor.UiPaused);
         Text("game-menu-subtitle", editor.UiPaused ? "Game menu" :
@@ -442,6 +636,7 @@ public sealed class TallowcraftUI : Script
         {
             _refreshClock = 0.2f;
             RefreshPage();
+            UpdateNavigation();
         }
         _initialized = true;
     }

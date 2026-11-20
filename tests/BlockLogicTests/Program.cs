@@ -38,6 +38,7 @@ static class Program
             MiningFallbackTransactionTests.Run(Check);
             ChestStorageTests.Run(Check);
             InventoryMenuTests.Run(Check);
+            WorldWaypointTests.Run(Check);
             SectionEditTests.Run(Check);
             MiningTests.Run(Check);
             BlockDamageTests.Run(Check);
