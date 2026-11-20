@@ -40,7 +40,8 @@ public static class BlockTextureAtlas
 
     // 0 grass top, 1 grass side, 2 dirt, 3 stone,
     // 4 log bark, 5 log end, 6 forge side, 7 forge front, 8 planks,
-    // 9 coal ore, 10 iron ore, 11 opaque leaves.
+    // 9 coal ore, 10 iron ore, 11 opaque leaves, 12 cobblestone, 13 stone
+    // bricks, 14 mossy stone, 15 dark timber. Tiles 0–11 are unchanged.
     public static int TileFor(BlockState state, int face) =>
         state.Type switch
         {
@@ -60,6 +61,10 @@ public static class BlockTextureAtlas
             8 => 10,
             9 => 11,
             11 => 8, // Plank-textured until the chest front art is added.
+            12 => 12,
+            13 => 13,
+            14 => 14,
+            15 => 15,
             _ => 3
         };
 }
