@@ -29,6 +29,23 @@ public static class ChunkScheduling
             dx * dx + dz * dz <= r * r;
     }
 
+    /// <summary>
+    /// Distant LOD should never monopolize the same worker pool used for
+    /// collidable, full-resolution near terrain. Startup builds no far tiles
+    /// until the immediate viewer footprint is ready. Single-worker targets
+    /// finish the near queue first. Other targets reserve at least 75% of
+    /// their workers for full-detail sections.
+    /// </summary>
+    public static int DistantWorkerLimit(int workers, bool nearReady,
+        bool nearQueueExhausted)
+    {
+        workers = Math.Max(1, workers);
+        if (!nearReady) return 0;
+        if (workers == 1)
+            return nearQueueExhausted ? 1 : 0;
+        return Math.Max(1, workers / 4);
+    }
+
     public static long Priority(ChunkKey key, int centerX, int centerY,
         int centerZ, int collisionRadius)
     {
