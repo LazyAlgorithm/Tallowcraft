@@ -79,6 +79,24 @@ internal static class StairCornerTests
             check(StairCornerResolver.Choose(stair, right, left) ==
                     StairCorner.OuterLeft,
                 "Front stair takes precedence in an ambiguous corner");
+            // A perpendicular neighbor does not make a corner if a
+            // same-facing stair continues along the exposed side.
+            check(StairCornerResolver.Choose(stair, right, default,
+                    parallel, default) == StairCorner.Straight &&
+                StairCornerResolver.Choose(stair, left, default,
+                    default, parallel) == StairCorner.Straight,
+                "Outer corner must not cut out a continuous stair row");
+            check(StairCornerResolver.Choose(stair, default, right,
+                    default, parallel) == StairCorner.Straight &&
+                StairCornerResolver.Choose(stair, default, left,
+                    parallel, default) == StairCorner.Straight,
+                "Inner corner must not extend into a continuous stair row");
+            check(StairCornerResolver.Choose(stair, right, left,
+                    parallel, default) == StairCorner.InnerRight,
+                "Suppressed outer corner may still form an inner corner");
+            check(StairCornerResolver.Choose(stair, right, default,
+                    oppositeLayer, default) == StairCorner.OuterLeft,
+                "Opposite-half side stair does not block a valid corner");
             check(Count(stair) == 6, "Straight stair occupies six microcells");
 
             foreach (StairCorner corner in Enum.GetValues<StairCorner>())
