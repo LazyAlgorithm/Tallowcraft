@@ -255,8 +255,8 @@ public sealed class TallowcraftUI : Script
         }
 
         GameObject? camera = Scene.Find("Main Camera");
-        Vector3 look = camera is { IsValid: true }
-            ? camera.Transform.Forward : editor.Transform.Forward;
+        Vector3 look = camera is { } validCamera && validCamera.IsValid
+            ? validCamera.Transform.Forward : editor.Transform.Forward;
         Vector3 here = editor.Transform.Position;
         for (int bin = 0; bin < WaypointCompass.Slots; bin++)
             Text("compass-tick-" + bin, WaypointCompass.TickLabel(look, bin));
