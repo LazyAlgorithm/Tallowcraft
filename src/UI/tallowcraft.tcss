@@ -94,7 +94,11 @@
 #reserve-info { font-size: 13; color: #c8bc95 }
 .detail-column { width: 422; height: 538; background-color: #222e28; padding: 12; border-radius: 9; border-width: 1; border-color: #425a47 }
 .detail { gap: 9; width: 100% }
-.recipes { gap: 6; margin-top: 2; margin-bottom: 4 }
+.recipe-scroll-controls { flex-direction: row; align-items: center; width: 100%; height: 29; gap: 5 }
+.recipe-scroll-button { width: 29; height: 27; border-radius: 4; background-color: #4b6352; color: #e9d59e; font-size: 15 }
+.recipe-scrollbar { width: 130; height: 18; background-color: #28392e }
+.recipe-scroll-status { font-size: 12; color: #c8d4bb }
+.recipes { gap: 6; height: 230; margin-top: 2; margin-bottom: 4 }
 .recipe { flex-direction: row; align-items: center; gap: 13; width: 100%; height: 53; background-color: #354638; padding: 6 10; border-radius: 8; border-color: #688067; border-width: 1 }
 .recipe-image { width: 34; height: 34 }
 .recipe-title { font-size: 17; color: #f6f0db }
@@ -117,7 +121,7 @@
   .menu-content { height: 482 }
   .player-column, .detail-column { height: 482 }
   .detail { gap: 6 }
-  .recipes { gap: 4 }
+  .recipes { gap: 4; height: 204 }
   .recipe { height: 48 }
   .tool-row { height: 36 }
   .hud { bottom: 7 }
