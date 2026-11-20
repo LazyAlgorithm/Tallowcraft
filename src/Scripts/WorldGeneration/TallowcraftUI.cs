@@ -40,6 +40,8 @@ public sealed class TallowcraftUI : Script
     private bool _initialized;
     private bool _settingsLoaded;
     private WaypointBook _waypoints = new();
+    private readonly int[] _compassPrevious = { -1, -1, -1, -1 };
+    private bool _compassInitialized;
     private string _waypointWorldId = "";
     private string _waypointToken = "";
     private bool _waypointLoadError;
@@ -193,6 +195,7 @@ public sealed class TallowcraftUI : Script
             return;
         _waypointWorldId = worldId;
         _waypointToken = token;
+        _compassInitialized = false;
         _waypointLoadError = false;
         try
         {
@@ -233,10 +236,50 @@ public sealed class TallowcraftUI : Script
             slot >= 0 && slot < WaypointBook.SlotCount;
     }
 
+    /// <summary>
+    /// The 13 fixed image slots avoid mutating UI layout at runtime.
+    /// Icons appear only for bookmarks actually saved in WaypointBook.
+    /// Hide the old bin before showing a new one to avoid duplicate markers.
+    /// </summary>
+    private void UpdateCompass()
+    {
+        if (_owner is not { } editor) return;
+        if (!_compassInitialized)
+        {
+            for (int index = 0; index < WaypointBook.SlotCount; index++)
+            for (int bin = 0; bin < WaypointCompass.Slots; bin++)
+                Visible($"compass-marker-{index}-{bin}", false);
+            Array.Fill(_compassPrevious, -1);
+            _compassInitialized = true;
+        }
+
+        GameObject? camera = Scene.Find("Main Camera");
+        Vector3 look = camera is { IsValid: true }
+            ? camera.Transform.Forward : editor.Transform.Forward;
+        Vector3 here = editor.Transform.Position;
+        for (int bin = 0; bin < WaypointCompass.Slots; bin++)
+            Text("compass-tick-" + bin, WaypointCompass.TickLabel(look, bin));
+
+        for (int index = 0; index < WaypointBook.SlotCount; index++)
+        {
+            Vector3? destination = _waypoints.Position(index);
+            int next = destination is Vector3 target
+                ? WaypointCompass.Slot(here, look, target) : -1;
+            int previous = _compassPrevious[index];
+            if (next == previous) continue;
+            if (previous >= 0)
+                Visible($"compass-marker-{index}-{previous}", false);
+            if (next >= 0)
+                Visible($"compass-marker-{index}-{next}", true);
+            _compassPrevious[index] = next;
+        }
+    }
+
     private void UpdateNavigation()
     {
         if (_owner is not { } editor) return;
         Vector3 here = editor.Transform.Position;
+        UpdateCompass();
         Text("hud-coordinates", $"XYZ {MathF.Floor(here.X):F0}, " +
             $"{MathF.Floor(here.Y):F0}, {MathF.Floor(here.Z):F0}");
         int tracked = _waypoints.Tracked;
@@ -559,6 +602,7 @@ public sealed class TallowcraftUI : Script
         }
         Visible("fps-counter", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
         Visible("navigation-hud", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
+        Visible("compass-ribbon", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
         Visible("game-menu", editor.UiGameMenuVisible);
         Visible("inventory-panel", editor.IsInventoryVisible);
         Visible("game-menu-actions", editor.UiGameMenuVisible &&
