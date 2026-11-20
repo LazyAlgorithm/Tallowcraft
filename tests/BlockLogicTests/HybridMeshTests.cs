@@ -94,13 +94,16 @@ internal static class HybridMeshTests
 
         bool Solid(int mx, int my, int mz)
         {
-            if (my < 0) return true;
-            if (my >= ChunkGenerator.Size * 2) return false;
+            // Sample the actual neighboring vertical section rather than
+            // assuming every chunk starts at world Y=0. This matters for
+            // upper, lower and negative-coordinate stair seam tests.
             int worldX = key.X * ChunkGenerator.Size +
                 ChunkGenerator.FloorDiv(mx, 2);
             int worldZ = key.Z * ChunkGenerator.Size +
                 ChunkGenerator.FloorDiv(mz, 2);
-            int by = my / 2;
+            int by = key.Y * ChunkGenerator.Size +
+                ChunkGenerator.FloorDiv(my, 2);
+            if (!ChunkGenerator.InWorld(by)) return false;
             ushort packed = ChunkGenerator.GetBlock(worldX, by, worldZ, seed, edits);
             var state = new BlockState(packed);
             if (state.Shape == BlockShape.Stair)
