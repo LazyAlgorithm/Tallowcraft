@@ -795,7 +795,10 @@ public class BlockWorld : Script
             QuadtreeLodEnabled ? WorldDisplaySettings.MaxDistance : 20);
         int sideRange = Math.Clamp(SideRadius, 1, forwardRange);
         int backRange = Math.Clamp(BehindRadius, 0, sideRange);
-        int nearRange = CollisionRadius();
+        int nearRange = QuadtreeLodEnabled
+            ? Math.Clamp((int)MathF.Round(TerrainQuadtree.DefaultFullRadius *
+                Math.Clamp(LodQuality, 0.65f, 1.6f)), 2, forwardRange)
+            : CollisionRadius();
 
         float dx = key.X - cx, dz = key.Z - cz;
         float distance = MathF.Sqrt(dx * dx + dz * dz);
