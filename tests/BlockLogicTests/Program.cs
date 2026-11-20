@@ -47,6 +47,7 @@ static class Program
             ForgeTests.Run(Check);
             ProfileTests.Run(Check);
             HybridMeshTests.Run(Check);
+            StairCornerTests.Run(Check);
             TerrainLodTests.Run(Check);
             BuildingMaterialTests.Run(Check);
             WaypointCompassTests.Run(Check);
