@@ -109,12 +109,18 @@ internal static class HybridMeshTests
             if (state.Shape == BlockShape.Stair)
             {
                 var (fx, fz) = StairCornerResolver.Forward(state.Facing);
+                var (lx, lz) = StairCornerResolver.Forward((state.Facing + 3) & 3);
+                var (rx, rz) = StairCornerResolver.Forward((state.Facing + 1) & 3);
                 BlockState front = new(ChunkGenerator.GetBlock(
                     worldX + fx, by, worldZ + fz, seed, edits));
                 BlockState behind = new(ChunkGenerator.GetBlock(
                     worldX - fx, by, worldZ - fz, seed, edits));
+                BlockState left = new(ChunkGenerator.GetBlock(
+                    worldX + lx, by, worldZ + lz, seed, edits));
+                BlockState right = new(ChunkGenerator.GetBlock(
+                    worldX + rx, by, worldZ + rz, seed, edits));
                 state = state.WithCorner(StairCornerResolver.Choose(
-                    state, front, behind));
+                    state, front, behind, left, right));
             }
             return state.ContainsMicro(mx - ChunkGenerator.FloorDiv(mx, 2) * 2,
                 my % 2, mz - ChunkGenerator.FloorDiv(mz, 2) * 2);
