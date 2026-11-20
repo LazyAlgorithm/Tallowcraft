@@ -8,7 +8,26 @@ Requires the current Tallow **feature/csharp-gameplay** engine branch (including
 
 Open project.tallow with Tallow and press Play. The Main scene starts a local **Host** network session on UDP port **7777**. It spawns the local player from src/Prefabs/Player.tprefab at one of four Spawn Points. Start a second instance as a client with the engine's --connect 127.0.0.1 option, or select Client in the Network Session component.
 
-World settings are available on the main and Escape menus. View distance ranges from 4 to 20 chunks ahead, with shorter side and rear ranges. Chunk threads can use Auto or a fixed count up to the detected maximum. Changes apply immediately and are saved for the local player. Higher distances and thread counts can use considerably more memory and CPU.
+World settings are available on the main and Escape menus. View distance ranges from 4 to 64 chunks ahead, with shorter side and rear ranges. The experimental **Quadtree terrain LOD** toggle switches between the new coarse-distance terrain and the original full-chunk renderer (capped at 20 chunks). The **LOD quality** setting scales the near-to-distant transition boundaries. Chunk threads can use Auto or a fixed count up to the detected maximum. Changes apply immediately and are saved for the local player (including compatibility with older display-settings files). Larger distances can use considerably more memory and CPU. **64 chunks is an experimental cap, not a validated frame-rate guarantee.**
+
+### Experimental distant-terrain LOD
+
+Tallowcraft now selects a signed X/Z quadtree of 16-metre chunk columns. LOD0 keeps the existing full 16³ voxel geometry, edits, collider rules, underground sections, and authoritative multiplayer state. Outside the near LOD0 footprint, LOD1–3 generate approximately 32m, 64m, and 128m square heightfield tiles directly from deterministic terrain sampling; they do **not** create and throw away voxel meshes. Coarse tiles have no physics colliders or replicated GameObjects. Their edges include skirts, and obsolete representations remain until requested replacements are uploaded.
+
+**Current limitations:** The heightfield is a silhouette approximation. It does not yet reproduce all trees, overhangs, partial block shapes, and underground/cave openings in distant views. Distant tiles incorporate edits already in the local edit snapshot, but remote clients currently request validated edit sections only near their player; edits far outside that request radius may be missing from client-side LODs until they approach and synchronize. Test hosting and late joining carefully before relying on distant edited structures. This feature does not change Tallow Engine's voxel destruction system.
+
+### Validation and benchmarks
+
+The C#-only regression suite includes signed-coordinate quadtree coverage, stable selections, no overlapping LOD leaves, seam samples, edit-driven invalidation and task cancellation. Run it with:
+
+```bash
+dotnet run --project tests/BlockLogicTests/BlockLogicTests.csproj -c Release
+dotnet run --project tests/BlockLogicTests/BlockLogicTests.csproj -c Release -- --lod-bench
+```
+
+The second command prints CPU selection and eight-tile meshing samples at 20, 32, 48 and 64 chunks; it is **not** a gameplay FPS benchmark. In Tallow play mode, enable `BlockWorld.ProfileTerrainFrames` and `ProfileStreaming`, then capture `[Tallowcraft frame profile]` and `[Tallowcraft LOD]` log lines for each distance, both with LOD enabled and disabled. Log output includes average frame time and estimated FPS, maximum sampled frame time, CPU-mesh geometry, estimated CPU array bytes, process RSS if available, job counts and queue-to-upload latency. Draw calls and actual GPU allocation are not exposed by these measurements. Compare identical camera positions, seeds, worlds and settings, and test at least one host plus remote client.
+
+The current repository has **not** been verified by a Linux/Windows in-editor run or measured FPS trial. Review local test output and renderer transitions before claiming a performance gain.
 
 **Peaceful exploration:** Pause with Escape and select **Waypoints and coordinates** to mark up to four personal locations: Home, Building site, Mine and Landmark. Track one location to see its distance and compass direction (N/S/E/W) alongside your XYZ coordinates during play. Markers are checksum-verified, saved atomically in local player data, and separated by world and player identity. They are not server-controlled teleport destinations and are not synchronized between devices. The menu also offers **Return to spawn** with confirmation: the server validates ownership, resolves a safe ground height at the player's original spawn location, and teleports only that player without changing their inventory. This is optional convenience travel, not a health, hunger or death system.
 
