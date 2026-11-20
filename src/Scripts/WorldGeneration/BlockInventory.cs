@@ -3,8 +3,8 @@ using System.Globalization;
 
 namespace WorldGeneration;
 
-/// <summary>One concrete inventory item stack. Type 1-9 are placeable blocks,
-/// type 10 is an iron ingot. Empty slots have both fields zero.</summary>
+/// <summary>One concrete item stack. Type 10 is an ingot; other valid
+/// types are placeable blocks. Empty slots have both fields zero.</summary>
 public readonly record struct ItemStack(int Type, int Quantity)
 {
     public bool IsEmpty => Type == 0;
@@ -18,7 +18,11 @@ public readonly record struct ItemStack(int Type, int Quantity)
 /// </summary>
 public sealed class BlockInventory
 {
-    public const int MaxType = 11;
+    public const int MaxType = 15;
+    public const int Cobblestone = 12;
+    public const int StoneBricks = 13;
+    public const int MossyStone = 14;
+    public const int DarkTimber = 15;
     public const int Chest = 11;
     public const int IronIngot = 10;
     public const int MaxPerType = 999;
@@ -253,7 +257,8 @@ public sealed class BlockInventory
     }
 
     /// <summary>
-    /// v4 lists exactly 36 real stacks (type:count or 0) and 11 reserves.
+    /// v4 lists 36 real stacks and per-type reserves. Legacy saves with
+    /// only 11 reserve fields are padded with zeros for the four new types.
     /// The payload stays under 700 characters, well inside the sync bridge.
     /// </summary>
     public string Serialize()
@@ -298,7 +303,8 @@ public sealed class BlockInventory
         string[] items = fields[1].Split(',');
         string[] reserve = fields[2].Split(',');
         if (items.Length != SlotCount ||
-            reserve.Length != (legacySlots ? 10 : MaxType))
+            reserve.Length != (legacySlots ? 10 : MaxType) &&
+            !( !legacySlots && reserve.Length == 11))
             return false;
 
         var next = new ItemStack[SlotCount];
