@@ -18,6 +18,12 @@
 .compass-marker-1 { left: 7 }
 .compass-marker-2 { left: 13 }
 .compass-marker-3 { left: 19 }
+/* Server-controlled return-to-spawn barrier; never hide the loading text
+   until the authoritative ready handshake completes or times out. */
+.return-loading { position: absolute; top: 39%; left: 29%; width: 42%; height: 108; padding: 12; gap: 8; align-items: center; justify-content: center; background-color: #141e1ae8; border-width: 2; border-color: #e5c57e; border-radius: 10 }
+.return-loading-title { font-size: 19; color: #ffe1a3; text-align: center }
+.return-loading-status { font-size: 15; color: #eef1d9; text-align: center }
+.return-loading-subtitle { font-size: 12; color: #b8d0c5; text-align: center }
 .nav-feedback { font-size: 13; color: #e0bd7f; white-space: normal }
 .game-menu { width: 520; background-color: #1d2724fa; border-width: 2; border-color: #8aa077; border-radius: 16; padding: 30; gap: 16; align-items: center }
 .game-menu-kicker { font-size: 14; color: #dfb978 }
