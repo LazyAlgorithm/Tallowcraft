@@ -31,8 +31,14 @@ public static class WaypointCompass
             dx * dx + dz * dz < 0.01f ||
             direction.X * direction.X + direction.Z * direction.Z < 0.0001f)
             return -1;
-        float delta = SignedDelta(Heading(dx, dz),
-            Heading(direction.X, direction.Z));
+        // The Tallow camera looks along its local +Z, with local +X to
+        // the camera's right. A rightward camera turn must therefore push
+        // a stationary waypoint LEFT on screen. World compass headings
+        // wind in the opposite direction; subtracting Heading values
+        // in the other order previously made icons follow the turn.
+        float right = dx * direction.Z - dz * direction.X;
+        float ahead = dx * direction.X + dz * direction.Z;
+        float delta = MathF.Atan2(right, ahead) * (180f / MathF.PI);
         if (MathF.Abs(delta) > HalfWidth + DegreesPerSlot * 0.5f)
             return -1;
         return Math.Clamp((int)MathF.Round(delta / DegreesPerSlot) + Slots / 2,
@@ -42,7 +48,10 @@ public static class WaypointCompass
     public static string TickLabel(Vector3 forward, int slot)
     {
         if (slot < 0 || slot >= Slots) return "";
-        float bearing = Heading(forward.X, forward.Z) +
+        // +slot is screen-right, which corresponds to decreasing world
+        // bearing with Tallow's +Z-forward camera. Keep tick labels and
+        // waypoint markers on the same axis.
+        float bearing = Heading(forward.X, forward.Z) -
             (slot - Slots / 2) * DegreesPerSlot;
         bearing = (bearing % 360f + 360f) % 360f;
         int direction = (int)MathF.Round(bearing / 45f) % 8;
