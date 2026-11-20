@@ -603,6 +603,10 @@ public sealed class TallowcraftUI : Script
         Visible("fps-counter", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
         Visible("navigation-hud", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
         Visible("compass-ribbon", !editor.UiGameMenuVisible && !editor.IsInventoryVisible);
+        Visible("return-loading", editor.ReturnToSpawnLocked);
+        if (editor.ReturnToSpawnLocked)
+            Text("return-loading-status",
+                "Generating destination terrain and colliders...");
         Visible("game-menu", editor.UiGameMenuVisible);
         Visible("inventory-panel", editor.IsInventoryVisible);
         Visible("game-menu-actions", editor.UiGameMenuVisible &&
