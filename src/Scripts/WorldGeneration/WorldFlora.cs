@@ -84,6 +84,29 @@ public static class WorldFlora
         return true;
     }
 
+    /// <summary>
+    /// Discover one procedural tree per existing 8m anchor cell without
+    /// probing every block. Distant LOD meshes use exactly the same seeded
+    /// trees as the full-detail chunk generator.
+    /// </summary>
+    public static bool TryTreeRootInCell(int cellX, int cellZ, int seed,
+        out int worldX, out int worldZ, out int groundY,
+        out int trunkHeight, out bool pine)
+    {
+        if (TryTreeInCell(cellX, cellZ, seed, out Tree tree))
+        {
+            worldX = tree.X;
+            worldZ = tree.Z;
+            groundY = tree.GroundY;
+            trunkHeight = tree.WoodHeight;
+            pine = tree.IsPine;
+            return true;
+        }
+        worldX = worldZ = groundY = trunkHeight = 0;
+        pine = false;
+        return false;
+    }
+
     public static bool TryTreeAt(int worldX, int worldZ, int seed,
         out int groundY, out int trunkHeight) =>
         TryTreeAt(worldX, worldZ, seed,
