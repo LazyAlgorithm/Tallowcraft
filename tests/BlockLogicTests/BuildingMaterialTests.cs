@@ -79,20 +79,36 @@ internal static class WaypointCompassTests
             origin - Vector3.UnitZ * 100) == 6,
             "Northward waypoint centers in a northward camera");
         check(WaypointCompass.Slot(origin, -Vector3.UnitZ,
-            origin + Vector3.UnitX * 100) == 12,
-            "Eastward waypoint is at right compass edge when facing north");
+            origin + Vector3.UnitX * 100) == 0,
+            "Facing -Z, eastward waypoint is screen-left in Tallow's +Z camera convention");
         check(WaypointCompass.Slot(origin, -Vector3.UnitZ,
-            origin - Vector3.UnitX * 100) == 0,
-            "Westward waypoint is at left compass edge when facing north");
+            origin - Vector3.UnitX * 100) == 12,
+            "Facing -Z, westward waypoint is screen-right in Tallow's +Z camera convention");
         check(WaypointCompass.Slot(origin, -Vector3.UnitZ,
             origin + Vector3.UnitZ * 100) == -1,
             "Waypoints behind the player are excluded from forward ribbon");
         check(WaypointCompass.Slot(origin, Vector3.UnitX,
-            origin - Vector3.UnitZ * 100) == 0,
+            origin - Vector3.UnitZ * 100) == 12,
             "Compass headings rotate relative to the camera");
         check(WaypointCompass.TickLabel(-Vector3.UnitZ, 6) == "N" &&
             WaypointCompass.TickLabel(Vector3.UnitX, 6) == "E",
             "Center tick label matches camera direction");
+        // Reproduce the reported regression: after the camera turns
+        // right, a stationary waypoint ahead must move left on the ribbon.
+        Vector3 fixedWaypoint = origin + Vector3.UnitZ * 100f;
+        float turn = MathF.PI / 12f; // 15 degrees = one ribbon slot
+        Vector3 cameraTurnRight = Vector3.Transform(Vector3.UnitZ,
+            Quaternion.CreateFromAxisAngle(Vector3.UnitY, turn));
+        Vector3 cameraTurnLeft = Vector3.Transform(Vector3.UnitZ,
+            Quaternion.CreateFromAxisAngle(Vector3.UnitY, -turn));
+        check(WaypointCompass.Slot(origin, Vector3.UnitZ, fixedWaypoint) == 6 &&
+            WaypointCompass.Slot(origin, cameraTurnRight, fixedWaypoint) == 5 &&
+            WaypointCompass.Slot(origin, cameraTurnLeft, fixedWaypoint) == 7,
+            "Stationary waypoint moves opposite to right/left camera turns");
+        check(WaypointCompass.TickLabel(Vector3.UnitZ, 0) == "W" &&
+            WaypointCompass.TickLabel(Vector3.UnitZ, 6) == "S" &&
+            WaypointCompass.TickLabel(Vector3.UnitZ, 12) == "E",
+            "Cardinal labels use the same left/right axis as waypoint icons");
         // Tallow camera.Transform.Forward is local +Z rotated by yaw.
         // Test every quarter-turn using that axis convention, not a
         // fixed player heading or the replicated body rotation.
