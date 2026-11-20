@@ -44,10 +44,14 @@ public static class HybridChunkMesher
             if (cornerCache.TryGetValue((x, y, z), out BlockState resolved))
                 return resolved;
             var (fx, fz) = StairCornerResolver.Forward(raw.Facing);
-            // Derive identically on every peer, including signed boundaries.
+            var (lx, lz) = StairCornerResolver.Forward((raw.Facing + 3) & 3);
+            var (rx, rz) = StairCornerResolver.Forward((raw.Facing + 1) & 3);
+            // Guarding each corner against straight runs prevents cut-outs.
             StairCorner corner = StairCornerResolver.Choose(raw,
                 RawAt(x + fx, y, z + fz),
-                RawAt(x - fx, y, z - fz));
+                RawAt(x - fx, y, z - fz),
+                RawAt(x + lx, y, z + lz),
+                RawAt(x + rx, y, z + rz));
             resolved = raw.WithCorner(corner);
             cornerCache.Add((x, y, z), resolved);
             return resolved;
