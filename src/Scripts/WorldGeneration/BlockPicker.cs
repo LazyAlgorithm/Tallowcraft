@@ -25,7 +25,7 @@ public static class BlockPicker
             return false;
 
         int type = new BlockState(packedState).Type;
-        if (type <= 0 || type > BlockInventory.Chest ||
+        if (type <= 0 || type > BlockInventory.MaxType ||
             type == BlockInventory.IronIngot)
             return false;
 
