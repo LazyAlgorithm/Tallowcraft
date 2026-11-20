@@ -32,6 +32,10 @@ public class BlockWorld : Script
     public int WorkerCount = 3;
     public int UploadsPerFrame = 3;
     public int VerticalRadius = 1;
+    // Quadtree affects local rendering only; server-owned 16³ sections and
+    // near-player collision are unchanged.
+    public bool QuadtreeLodEnabled = true;
+    public float LodQuality = 1f;
     // Drawing a distant mountain must not require distant chunk meshes to
     // render again in the cascaded sun-shadow passes.
     public bool LimitChunkShadows = true;
@@ -133,6 +137,20 @@ public class BlockWorld : Script
         GamePaths.PlayerData, "tallowcraft", "chunk-cache");
     private readonly Dictionary<ChunkKey, LiveChunk> _loaded = new();
     private readonly Dictionary<ChunkKey, ChunkJob> _jobs = new();
+    private TerrainSelection _distantSelection = new();
+    private readonly Dictionary<TerrainTileKey, (GameObject Object,
+        MeshRenderer Renderer, int Version, int Vertices, int Triangles)> _distantLoaded = new();
+    private readonly Dictionary<TerrainTileKey, (Task<ChunkMesh> Task,
+        CancellationTokenSource Cancel, int Version, long Queued)> _distantJobs = new();
+    private readonly Dictionary<TerrainTileKey, int> _distantVersions = new();
+    private readonly List<TerrainTileKey> _distantQueue = new();
+    private readonly List<TerrainTileKey> _distantScratch = new();
+    private bool _distantQueueDirty = true;
+    private bool _distantNeedsRetire = true;
+    private int _nextDistant;
+    private int _distantUploads;
+    private double _distantQueueLatency;
+    private double _distantMaxLatency;
     // Successful zero-surface jobs do not need a GameObject or GPU buffers.
     private readonly Dictionary<ChunkKey, int> _emptyChunks = new();
     private readonly Dictionary<ChunkKey, int> _versions = new();
@@ -267,6 +285,7 @@ public class BlockWorld : Script
         if (_worldId != pieces[2] || Seed != seed)
         {
             _edits = new BlockEdits();
+            ResetDistantTerrain();
             _clientReady.Clear();
             _transfers.Clear();
             Seed = seed;
@@ -546,6 +565,7 @@ public class BlockWorld : Script
                 _edits = new BlockEdits();
                 _chests = new WorldChestStorage();
                 _encodedSections.Clear();
+                ResetDistantTerrain();
                 _generation++;
                 EditState = WorldMetadata();
                 _exposedBelow.Clear();
@@ -581,6 +601,7 @@ public class BlockWorld : Script
         bool streamChanged = StreamStateChanged(cx, cy, cz);
         if (streamChanged)
         {
+            RebuildDistantSelection(cx, cz);
             // These scans are proportional to the live chunk count. They
             // belong to stream boundary changes, not every rendered frame.
             CancelObsoleteJobs(cx, cy, cz);
@@ -588,7 +609,8 @@ public class BlockWorld : Script
             if (!Scene.IsServer)
                 DropDistantTransfers(cx, cy, cz);
         }
-        UploadFinished(cx, cy, cz);
+        int uploaded = UploadFinished(cx, cy, cz);
+        if (uploaded > 0) _distantNeedsRetire = true;
         if (_collisionRescan)
         {
             // Turning changes directional mesh residency, not who needs
@@ -598,6 +620,8 @@ public class BlockWorld : Script
         }
         if (!_streamExhausted)
             StartNearestJobs(cx, cy, cz);
+        TickDistantTerrain(cx, cy, cz,
+            Math.Max(0, Math.Clamp(UploadsPerFrame, 1, 4) - uploaded));
         if (!Scene.IsServer)
             RequestWaitingSections(deltaTime);
     }
@@ -616,7 +640,8 @@ public class BlockWorld : Script
     {
         int settings = HashCode.Combine(RenderRadius, SideRadius, BehindRadius,
             EditableRadius, KeepMargin, VerticalRadius, ShadowRadius,
-            HashCode.Combine(LimitChunkShadows, ChunkShadowsEnabled));
+            HashCode.Combine(LimitChunkShadows, ChunkShadowsEnabled,
+                QuadtreeLodEnabled, LodQuality));
         ChunkKey center = new(cx, cy, cz);
         bool belowSurface = _viewerWorldY < 5f;
         // Only rescan the directional mesh footprint when orientation changes
@@ -757,11 +782,17 @@ public class BlockWorld : Script
 
     private bool ShouldStream(ChunkKey key, int cx, int cy, int cz, int extra = 0)
     {
+        // The quadtree's LOD0 leaves own the full-resolution camera footprint.
+        // Collider sections for remote players are scheduled separately.
+        if (QuadtreeLodEnabled &&
+            !_distantSelection.Full.Contains(new TerrainColumn(key.X, key.Z)))
+            return false;
         if (key.Y < ChunkGenerator.MinChunkY || key.Y > ChunkGenerator.MaxChunkY ||
             Math.Abs((long)key.Y - cy) > Math.Clamp(VerticalRadius, 0, 2) + extra ||
             HiddenForViewer(key))
             return false;
-        int forwardRange = Math.Clamp(RenderRadius, 1, WorldDisplaySettings.MaxDistance);
+        int forwardRange = Math.Clamp(RenderRadius, 1,
+            QuadtreeLodEnabled ? WorldDisplaySettings.MaxDistance : 20);
         int sideRange = Math.Clamp(SideRadius, 1, forwardRange);
         int backRange = Math.Clamp(BehindRadius, 0, sideRange);
         int nearRange = CollisionRadius();
@@ -782,6 +813,11 @@ public class BlockWorld : Script
     private bool ShouldKeep(ChunkKey key, int cx, int cy, int cz, int margin = 0)
     {
         if (ShouldStream(key, cx, cy, cz, margin))
+            return true;
+        // Do not discard existing full-detail meshes before their coarse
+        // replacement has completed its worker build and render upload.
+        if (QuadtreeLodEnabled && _distantSelection.ContainsTile(key.X, key.Z) &&
+            !DistantTileReady(key.X, key.Z))
             return true;
 
         // Dedicated/host server must simulate collision around every client,
@@ -900,7 +936,7 @@ public class BlockWorld : Script
         }
     }
 
-    private void UploadFinished(int cx, int cy, int cz)
+    private int UploadFinished(int cx, int cy, int cz)
     {
         int processed = 0;
         _scratch.Clear();
@@ -1036,6 +1072,7 @@ public class BlockWorld : Script
 
         foreach (ChunkKey key in _scratch)
             _jobs.Remove(key);
+        return processed;
     }
 
     private void UpdateColliders(int cx, int cy, int cz)
@@ -1118,6 +1155,13 @@ public class BlockWorld : Script
 
     private void MarkBlockDirty(BlockPosition position)
     {
+        foreach (TerrainTileKey tile in TerrainQuadtree.Ancestors(position.X, position.Z))
+        {
+            _distantVersions[tile] = DistantVersion(tile) + 1;
+            if (_distantJobs.TryGetValue(tile, out var running))
+                running.Cancel.Cancel();
+        }
+        _distantQueueDirty = true;
         int size = ChunkGenerator.Size;
         int x = ChunkGenerator.FloorDiv(position.X, size);
         int y = ChunkGenerator.FloorDiv(position.Y, size);
@@ -1293,12 +1337,13 @@ public class BlockWorld : Script
     private void StartNearestJobs(int cx, int cy, int cz)
     {
         int workers = Math.Clamp(WorkerCount, 1, Math.Max(1, Environment.ProcessorCount));
-        if (_jobs.Count >= workers)
+        if (_jobs.Count + _distantJobs.Count >= workers)
             return;
 
         if (_candidateListDirty)
         {
-            int radius = Math.Clamp(RenderRadius, 1, WorldDisplaySettings.MaxDistance);
+            int radius = Math.Clamp(RenderRadius, 1,
+                QuadtreeLodEnabled ? WorldDisplaySettings.MaxDistance : 20);
             int nearRadius = CollisionRadius();
             int vertical = Math.Clamp(VerticalRadius, 0, 2);
             _candidates.Clear();
@@ -1373,7 +1418,8 @@ public class BlockWorld : Script
         var snapshot = _edits.Snapshot;
         int seed = Seed;
         int searchedThisFrame = 0;
-        while (_jobs.Count < workers && _nextCandidate < _candidates.Count)
+        while (_jobs.Count + _distantJobs.Count < workers &&
+            _nextCandidate < _candidates.Count)
         {
             // A newly joining client must not enqueue hundreds of requests or
             // hit the disk cache for every visible chunk in a single frame.
@@ -1672,6 +1718,7 @@ public class BlockWorld : Script
         _stop.Cancel();
         foreach (ChunkJob job in _jobs.Values)
             job.Cancellation.Cancel();
+        ResetDistantTerrain();
         foreach (LiveChunk chunk in _loaded.Values)
         {
             if (!chunk.Object.IsValid)
