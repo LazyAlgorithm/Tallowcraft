@@ -9,8 +9,13 @@ namespace WorldGeneration;
 /// </summary>
 public static class WaypointCompass
 {
+    // Thirteen low-cost label ticks, but five times finer image-marker bins.
+    // Tallow's current .tui UIElement API has no runtime pixel-position
+    // setter, so visible marker bins are changed only when crossing 3°.
     public const int Slots = 13;
     public const float DegreesPerSlot = 15f;
+    public const int MarkerSlots = 61;
+    public const float MarkerDegreesPerSlot = 3f;
     public const float HalfWidth = 90f;
 
     public static float Heading(float x, float z) =>
@@ -39,10 +44,10 @@ public static class WaypointCompass
         float right = dx * direction.Z - dz * direction.X;
         float ahead = dx * direction.X + dz * direction.Z;
         float delta = MathF.Atan2(right, ahead) * (180f / MathF.PI);
-        if (MathF.Abs(delta) > HalfWidth + DegreesPerSlot * 0.5f)
+        if (MathF.Abs(delta) > HalfWidth + MarkerDegreesPerSlot * 0.5f)
             return -1;
-        return Math.Clamp((int)MathF.Round(delta / DegreesPerSlot) + Slots / 2,
-            0, Slots - 1);
+        return Math.Clamp((int)MathF.Round(delta / MarkerDegreesPerSlot) +
+                MarkerSlots / 2, 0, MarkerSlots - 1);
     }
 
     public static string TickLabel(Vector3 forward, int slot)
