@@ -5,12 +5,12 @@ namespace WorldGeneration;
 /// <summary>Player-facing streaming presets and their machine limits.</summary>
 public static class WorldDisplaySettings
 {
-    public const int MaxDistance = 20;
-    public static readonly int[] Distances = { 4, 6, 9, 12, 16, 20 };
-    public static readonly int[] SideDistances = { 3, 4, 6, 9, 12, 16 };
-    public static readonly int[] BehindDistances = { 2, 2, 4, 6, 8, 10 };
+    public const int MaxDistance = 64;
+    public static readonly int[] Distances = { 4, 6, 9, 12, 16, 20, 32, 48, 64 };
+    public static readonly int[] SideDistances = { 3, 4, 6, 9, 12, 16, 24, 36, 48 };
+    public static readonly int[] BehindDistances = { 2, 2, 4, 6, 8, 10, 16, 24, 32 };
     public static readonly string[] DistanceNames =
-        { "Near", "Balanced", "Far", "Very far", "Ultra", "Maximum" };
+        { "Near", "Balanced", "Far", "Very far", "Ultra", "Maximum", "Extended", "Horizon", "Extreme" };
 
     // Leave one logical processor for the game and operating system when possible.
     public static int WorkerCount(int selection, int processors)
