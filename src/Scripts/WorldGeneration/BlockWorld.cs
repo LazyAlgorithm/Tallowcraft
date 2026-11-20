@@ -148,7 +148,8 @@ public class BlockWorld : Script
     private readonly Dictionary<ChunkKey, ChunkJob> _jobs = new();
     private TerrainSelection _distantSelection = new();
     private readonly Dictionary<TerrainTileKey, (GameObject Object,
-        MeshRenderer Renderer, int Version, int Vertices, int Triangles)> _distantLoaded = new();
+        MeshRenderer Renderer, int Version, int Vertices, int Triangles,
+        int Trees)> _distantLoaded = new();
     private readonly Dictionary<TerrainTileKey, (Task<ChunkMesh> Task,
         CancellationTokenSource Cancel, int Version, long Queued)> _distantJobs = new();
     private readonly Dictionary<TerrainTileKey, int> _distantVersions = new();
@@ -643,7 +644,7 @@ public class BlockWorld : Script
         _frameMsTotal += ms;
         _frameMsMax = Math.Max(_frameMsMax, ms);
         if (++_frameSamples < Math.Max(30, FrameReportEvery)) return;
-        long fullVerts = 0, fullTris = 0, lodVerts = 0, lodTris = 0;
+        long fullVerts = 0, fullTris = 0, lodVerts = 0, lodTris = 0, distantTrees = 0;
         foreach (LiveChunk chunk in _loaded.Values)
         {
             fullVerts += chunk.VertexCount;
@@ -653,6 +654,7 @@ public class BlockWorld : Script
         {
             lodVerts += tile.Vertices;
             lodTris += tile.Triangles;
+            distantTrees += tile.Trees;
         }
         // Approximate CPU mesh-array footprint; excludes GPU driver allocation
         // and MeshRenderer-native bookkeeping. WorkingSet is whole process RSS.
@@ -672,6 +674,7 @@ public class BlockWorld : Script
             $"avg_fps={(mean > 0.001 ? 1000 / mean : 0):F1} " +
             $"avg_ms={mean:F2} max_ms={_frameMsMax:F2} " +
             $"full_chunks={_loaded.Count} lod_tiles={_distantLoaded.Count} " +
+            $"batched_far_trees={distantTrees} " +
             $"full_verts={fullVerts} lod_verts={lodVerts} " +
             $"full_tris={fullTris} lod_tris={lodTris} " +
             $"mesh_array_bytes_est={meshBytes} process_rss_bytes={workingSet} " +
@@ -1681,7 +1684,8 @@ public class BlockWorld : Script
                 current.Renderer.SetMesh(mesh.Vertices, mesh.Triangles,
                     mesh.Normals, mesh.Uvs);
                 _distantLoaded[key] = (current.Object, current.Renderer,
-                    job.Version, mesh.Vertices.Length, mesh.Triangles.Length / 3);
+                    job.Version, mesh.Vertices.Length, mesh.Triangles.Length / 3,
+                    mesh.DistantTreeCount);
             }
             else
             {
@@ -1698,7 +1702,7 @@ public class BlockWorld : Script
                 renderer.SetMesh(mesh.Vertices, mesh.Triangles,
                     mesh.Normals, mesh.Uvs);
                 _distantLoaded[key] = (tile, renderer, job.Version,
-                    mesh.Vertices.Length, mesh.Triangles.Length / 3);
+                    mesh.Vertices.Length, mesh.Triangles.Length / 3, mesh.DistantTreeCount);
             }
 
             _distantNeedsRetire = true;
