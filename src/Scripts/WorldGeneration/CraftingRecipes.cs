@@ -24,6 +24,11 @@ public static class CraftingRecipes
         new(4, "Iron ingot", 8, 1, 7, 1, BlockInventory.IronIngot, 1),
         new(5, "Five iron ingots", 8, 5, 7, 5, BlockInventory.IronIngot, 5),
         new(6, "Storage chest", 6, 8, 0, 0, BlockInventory.Chest, 1),
+        new(7, "Cobblestone", 3, 2, 0, 0, BlockInventory.Cobblestone, 2),
+        new(8, "Stone bricks", 3, 4, 0, 0, BlockInventory.StoneBricks, 4),
+        new(9, "Mossy stone", BlockInventory.Cobblestone, 3,
+            9, 1, BlockInventory.MossyStone, 4),
+        new(10, "Dark timber", 4, 2, 0, 0, BlockInventory.DarkTimber, 4),
     };
 
     public static System.Collections.Generic.IReadOnlyList<CraftingRecipe> All => Recipes;
