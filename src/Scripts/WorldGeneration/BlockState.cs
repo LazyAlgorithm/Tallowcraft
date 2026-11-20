@@ -125,23 +125,44 @@ public static class StairCornerResolver
             _ => (-1, 0)
         };
 
+    /// <summary>
+    /// A perpendicular stair is not sufficient to form a corner: a straight
+    /// stair continuing along the exposed side must keep its normal profile.
+    /// Side neighbors are relative to the center's facing (+90° is right).
+    /// </summary>
     public static StairCorner Choose(BlockState center,
-        BlockState front, BlockState behind)
+        BlockState front, BlockState behind, BlockState left, BlockState right)
     {
         if (center.Shape != BlockShape.Stair)
             return StairCorner.Straight;
-        // Require identical upper/lower halves and perpendicular facing.
-        // Different materials can still join, as in Minecraft.
-        bool Compatible(BlockState neighbor) =>
-            neighbor.Shape == BlockShape.Stair &&
-            neighbor.Upper == center.Upper &&
-            ((neighbor.Facing ^ center.Facing) & 1) != 0;
-        if (Compatible(front))
-            return front.Facing == ((center.Facing + 1) & 3)
-                ? StairCorner.OuterLeft : StairCorner.OuterRight;
-        if (Compatible(behind))
-            return behind.Facing == ((center.Facing + 1) & 3)
-                ? StairCorner.InnerLeft : StairCorner.InnerRight;
+        bool SameHalf(BlockState state) =>
+            state.Shape == BlockShape.Stair &&
+            state.Upper == center.Upper;
+        bool Perpendicular(BlockState state) =>
+            SameHalf(state) &&
+            ((state.Facing ^ center.Facing) & 1) != 0;
+        bool StraightSide(BlockState state) =>
+            SameHalf(state) && state.Facing == center.Facing;
+
+        if (Perpendicular(front))
+        {
+            bool turningRight = front.Facing == ((center.Facing + 1) & 3);
+            // Preserve continuous stair rows even if another stair turns
+            // immediately in front of a piece of the row.
+            if (!StraightSide(turningRight ? left : right))
+                return turningRight ? StairCorner.OuterLeft : StairCorner.OuterRight;
+        }
+        if (Perpendicular(behind))
+        {
+            bool turningRight = behind.Facing == ((center.Facing + 1) & 3);
+            if (!StraightSide(turningRight ? right : left))
+                return turningRight ? StairCorner.InnerLeft : StairCorner.InnerRight;
+        }
         return StairCorner.Straight;
     }
+
+    // Compatibility for isolated/test cases with no side-neighbor context.
+    public static StairCorner Choose(BlockState center,
+        BlockState front, BlockState behind) =>
+        Choose(center, front, behind, default, default);
 }
