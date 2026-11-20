@@ -38,11 +38,16 @@ public sealed class TallowcraftUI : Script
     private bool _moveHalf;
     private string _page = "craft";
     private float _refreshClock;
+    private const int VisibleRecipes = 4;
+    private static readonly int[] RecipeIds = { 1, 2, 3, 6, 7, 8, 9, 10 };
+    private int _recipeScroll;
+    private bool _recipeScrollInitialized;
     private bool _initialized;
     private bool _settingsLoaded;
     private WaypointBook _waypoints = new();
     private readonly int[] _compassPrevious = { -1, -1, -1, -1 };
     private bool _compassInitialized;
+    private GameObject? _compassCamera;
     private string _waypointWorldId = "";
     private string _waypointToken = "";
     private bool _waypointLoadError;
@@ -254,9 +259,13 @@ public sealed class TallowcraftUI : Script
             _compassInitialized = true;
         }
 
-        GameObject? camera = Scene.Find("Main Camera");
-        Vector3 look = camera is { } validCamera && validCamera.IsValid
-            ? validCamera.Transform.Forward : editor.Transform.Forward;
+        // Read the locally owned camera every frame, never replicated
+        // player yaw or a 200ms timer. Cache the handle, not its rotation.
+        if (_compassCamera is not { IsValid: true })
+            _compassCamera = Scene.Find("Main Camera");
+        Vector3 look = _compassCamera is { } validCamera &&
+            validCamera.IsValid
+                ? validCamera.Transform.Forward : editor.Transform.Forward;
         Vector3 here = editor.Transform.Position;
         for (int bin = 0; bin < WaypointCompass.Slots; bin++)
             Text("compass-tick-" + bin, WaypointCompass.TickLabel(look, bin));
@@ -280,7 +289,6 @@ public sealed class TallowcraftUI : Script
     {
         if (_owner is not { } editor) return;
         Vector3 here = editor.Transform.Position;
-        UpdateCompass();
         Text("hud-coordinates", $"XYZ {MathF.Floor(here.X):F0}, " +
             $"{MathF.Floor(here.Y):F0}, {MathF.Floor(here.Z):F0}");
         int tracked = _waypoints.Tracked;
@@ -544,6 +552,7 @@ public sealed class TallowcraftUI : Script
 
     private void RefreshPage()
     {
+        UpdateRecipeScroll();
         Visible("page_craft", _page == "craft");
         Visible("page_forge", _page == "forge");
         Visible("page_chest", _page == "chest");
@@ -704,8 +713,17 @@ public sealed class TallowcraftUI : Script
             RefreshPage();
         }
 
-        // Text labels and forge proximity are inexpensive; item-image
-        // visibility is refreshed only after network snapshots change.
+        // Compass must reflect the *current* local camera frame. Updating
+        // only with slow inventory snapshots made left/right bearings lag.
+        if (!editor.UiGameMenuVisible && !editor.IsInventoryVisible)
+            UpdateCompass();
+        // Tallow's .tui has no native scroll container. The slider above is
+        // a bounded scroll window, and the inventory wheel advances rows.
+        if (editor.IsInventoryVisible && _page == "craft" &&
+            Input.MouseWheel != 0f)
+            ScrollRecipes(_recipeScroll +
+                (Input.MouseWheel < 0f ? 1 : -1));
+        // Item-image visibility is refreshed only after snapshots change.
         _refreshClock -= Time.DeltaTime;
         if (_refreshClock <= 0)
         {
@@ -882,6 +900,44 @@ public sealed class TallowcraftUI : Script
         UpdateChest();
         UpdateSelection();
     }
+
+    private void UpdateRecipeScroll()
+    {
+        int maxStart = Math.Max(0, RecipeIds.Length - VisibleRecipes);
+        _recipeScroll = Math.Clamp(_recipeScroll, 0, maxStart);
+        if (!_recipeScrollInitialized)
+        {
+            _recipeScrollInitialized = true;
+            // Hide first so initial UI layout never flashes all 8 recipes.
+            foreach (int id in RecipeIds)
+                Visible("recipe_" + id, false);
+        }
+        for (int i = 0; i < RecipeIds.Length; i++)
+            Visible("recipe_" + RecipeIds[i],
+                i >= _recipeScroll && i < _recipeScroll + VisibleRecipes);
+        Text("recipe-scroll-status",
+            $"Recipes {_recipeScroll + 1}–{Math.Min(RecipeIds.Length,
+                _recipeScroll + VisibleRecipes)} of {RecipeIds.Length}");
+        if (Document.Find("recipe-scrollbar") is { } slider &&
+            MathF.Abs(slider.Value - _recipeScroll) > 0.01f)
+            slider.Value = _recipeScroll;
+        Visible("recipe-scroll-up", _recipeScroll > 0);
+        Visible("recipe-scroll-down", _recipeScroll < maxStart);
+    }
+
+    private void ScrollRecipes(int offset)
+    {
+        int next = Math.Clamp(offset, 0,
+            Math.Max(0, RecipeIds.Length - VisibleRecipes));
+        if (next == _recipeScroll && _recipeScrollInitialized) return;
+        _recipeScroll = next;
+        UpdateRecipeScroll();
+    }
+
+    public void OnRecipeScroll(UIElement element) =>
+        ScrollRecipes((int)MathF.Round(element.Value));
+    public void OnRecipeScrollUp() => ScrollRecipes(_recipeScroll - 1);
+    public void OnRecipeScrollDown() => ScrollRecipes(_recipeScroll + 1);
 
     public void OnRecipe(string id)
     {
