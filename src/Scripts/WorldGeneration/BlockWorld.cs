@@ -2077,11 +2077,18 @@ public class BlockWorld : Script
     {
         if (raw.Shape != BlockShape.Stair) return raw;
         var (fx, fz) = StairCornerResolver.Forward(raw.Facing);
+        var (lx, lz) = StairCornerResolver.Forward((raw.Facing + 3) & 3);
+        var (rx, rz) = StairCornerResolver.Forward((raw.Facing + 1) & 3);
         BlockState front = new(BlockAt(new BlockPosition(
             position.X + fx, position.Y, position.Z + fz)));
         BlockState behind = new(BlockAt(new BlockPosition(
             position.X - fx, position.Y, position.Z - fz)));
-        return raw.WithCorner(StairCornerResolver.Choose(raw, front, behind));
+        BlockState left = new(BlockAt(new BlockPosition(
+            position.X + lx, position.Y, position.Z + lz)));
+        BlockState right = new(BlockAt(new BlockPosition(
+            position.X + rx, position.Y, position.Z + rz)));
+        return raw.WithCorner(StairCornerResolver.Choose(raw,
+            front, behind, left, right));
     }
 
     /// <summary>
