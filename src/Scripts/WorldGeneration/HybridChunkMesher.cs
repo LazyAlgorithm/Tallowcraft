@@ -33,17 +33,24 @@ public static class HybridChunkMesher
                 key.Z * ChunkGenerator.Size + z, seed, edits));
         }
 
+        // Detailed meshing probes the same stair half-cells repeatedly.
+        // Memoize derived corners per job, not globally or per frame.
+        var cornerCache = new Dictionary<(int X, int Y, int Z), BlockState>();
+
         BlockState At(int x, int y, int z)
         {
             BlockState raw = RawAt(x, y, z);
             if (raw.Shape != BlockShape.Stair) return raw;
+            if (cornerCache.TryGetValue((x, y, z), out BlockState resolved))
+                return resolved;
             var (fx, fz) = StairCornerResolver.Forward(raw.Facing);
-            // Derive the same corner on every peer from authoritative
-            // neighbor states. This also works across signed chunk seams.
+            // Derive identically on every peer, including signed boundaries.
             StairCorner corner = StairCornerResolver.Choose(raw,
                 RawAt(x + fx, y, z + fz),
                 RawAt(x - fx, y, z - fz));
-            return raw.WithCorner(corner);
+            resolved = raw.WithCorner(corner);
+            cornerCache.Add((x, y, z), resolved);
+            return resolved;
         }
 
         bool Occupied(int bx, int by, int bz, int mx, int my, int mz)
