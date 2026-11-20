@@ -192,10 +192,12 @@ public class BlockWorld : Script
                 // profile, finish both writes before exposing world objects.
                 if (PickupTransactionStore.Recover(SaveFolder, _worldId,
                         Seed, _edits.Snapshot, _edits.Revisions,
-                        _chests.Snapshot, out var recoveredDrops))
+                        _chests.Snapshot, out var recoveredDrops,
+                        out var recoveredChests))
                 {
                     drops = recoveredDrops;
-                    Console.WriteLine("Tallowcraft completed an interrupted pickup.");
+                    _chests.Restore(recoveredChests);
+                    Console.WriteLine("Tallowcraft completed an interrupted inventory transfer.");
                 }
             }
             catch (Exception exception)
@@ -270,27 +272,20 @@ public class BlockWorld : Script
         _appliedSnapshot = EditState;
     }
 
-    /// <summary>
-    /// Redo-logged pickup: precheckpoint existing block edits, write a durable
-    /// receipt with BOTH post-pickup snapshots, then persist both sides.
-    /// No gameplay inventory or drop mutation happens before this succeeds.
-    /// A crash after receipt creation is completed at next world startup.
-    /// This synchronous path is deliberate; optimize with batched journaling
-    /// only after validating crash-recovery and dedicated-server behavior.
-    /// </summary>
-    public bool TryCommitDropPickup(WorldDrop drop, string token,
-        BlockInventory inventoryAfter, PlayerTools tools,
-        int selectedType, int selectedShape, int facing, int selectedSlot)
+    /// <summary>One durable cross-file commit shared by ground pickup
+    /// and player/chest transfers. A receipt is written before either file,
+    /// and startup replays it if any subsequent step fails or is interrupted.
+    /// The receipt and world checkpoint represent a single game-thread tick.</summary>
+    private bool CommitInventoryWorld(PickupReceipt receipt,
+        IReadOnlyDictionary<BlockPosition, ChestContents> afterChests)
     {
         if (!Scene.IsServer || _saveLoadFailed ||
-            !PlayerIdentity.Valid(token) || _worldId.Length == 0 ||
-            !drop.GameObject.IsValid || drop.Scene.SessionId != Scene.SessionId)
+            receipt.WorldId != _worldId ||
+            !PlayerIdentity.Valid(receipt.PlayerToken))
             return false;
-
         try
         {
-            // A previous 30-second save may still be writing. Its completion
-            // and any unsaved voxel/chest edits must precede the receipt.
+            // Do not let an old asynchronous snapshot land after this commit.
             if (_saveTask != null)
             {
                 _saveTask.GetAwaiter().GetResult();
@@ -299,29 +294,23 @@ public class BlockWorld : Script
             }
             if (_generation != _savedGeneration)
             {
+                // Precheckpoint all earlier voxel, chest, and drop changes
+                // before journaling this new transaction.
                 WorldEditSave.Save(SaveFolder, _worldId, Seed,
                     _edits.Snapshot, _edits.Revisions, _chests.Snapshot,
                     WorldDrop.Capture(Scene));
                 _savedGeneration = _generation;
             }
 
-            IReadOnlyList<SavedWorldDrop> afterDrops =
-                WorldDrop.Capture(Scene, drop);
-            var receipt = new PickupReceipt(_worldId, token,
-                inventoryAfter, tools, selectedType, selectedShape,
-                facing, selectedSlot, afterDrops);
             PickupTransactionStore.Prepare(SaveFolder, receipt);
-
-            // The receipt is now the durable source of truth. Either write
-            // may be interrupted: recovery always redoes BOTH full states.
             WorldEditSave.Save(SaveFolder, _worldId, Seed,
-                _edits.Snapshot, _edits.Revisions, _chests.Snapshot,
-                afterDrops);
-            PlayerProfileStore.Save(PlayerProfilesFolder, _worldId, token,
-                inventoryAfter, tools, selectedType, selectedShape, facing,
-                selectedSlot);
+                _edits.Snapshot, _edits.Revisions,
+                afterChests, receipt.Drops);
+            PlayerProfileStore.Save(PlayerProfilesFolder, _worldId,
+                receipt.PlayerToken, receipt.Inventory, receipt.Tools,
+                receipt.SelectedType, receipt.SelectedShape, receipt.Facing,
+                receipt.SelectedSlot);
             PickupTransactionStore.Complete(SaveFolder);
-            _savedGeneration = _generation;
             _saveClock = 0f;
             return true;
         }
@@ -329,14 +318,62 @@ public class BlockWorld : Script
         {
             if (PickupTransactionStore.HasPending(SaveFolder))
             {
+                // A partial cross-file commit must never be overwritten.
                 _saveLoadFailed = true;
-                Console.WriteLine(
-                    "Tallowcraft pickup receipt is pending; world writes " +
-                    "are halted until startup can recover it.");
+                Console.WriteLine("Tallowcraft inventory transaction pending; " +
+                    "world writes are locked until next-start recovery.");
             }
-            Console.WriteLine($"Tallowcraft pickup persistence failed: {exception}");
+            Console.WriteLine($"Tallowcraft inventory transaction failed: {exception}");
             return false;
         }
+    }
+
+    /// <summary>A physical item may be removed only after its receiving
+    /// player profile and the remaining drops have been committed to disk.</summary>
+    public bool TryCommitDropPickup(WorldDrop drop, string token,
+        BlockInventory inventoryAfter, PlayerTools tools,
+        int selectedType, int selectedShape, int facing, int selectedSlot)
+    {
+        if (!Scene.IsServer || _saveLoadFailed ||
+            !drop.GameObject.IsValid || drop.Scene.SessionId != Scene.SessionId)
+            return false;
+        var receipt = new PickupReceipt(_worldId, token,
+            inventoryAfter, tools, selectedType, selectedShape,
+            facing, selectedSlot, WorldDrop.Capture(Scene, drop));
+        return CommitInventoryWorld(receipt, _chests.Snapshot);
+    }
+
+    /// <summary>Stage both inventories in memory, then atomically journal
+    /// the player's post-transfer profile and only the affected chest slot.
+    /// A failed disk write cannot modify either live inventory.</summary>
+    public bool TryCommitChestTransfer(BlockPosition position,
+        BlockInventory player, int playerSlot, int chestSlot,
+        bool fromPlayer, bool split, string token, PlayerTools tools,
+        int selectedType, int selectedShape, int facing, int selectedSlot,
+        out BlockInventory inventoryAfter)
+    {
+        inventoryAfter = new BlockInventory();
+        if (!TryReadChest(position, out _) ||
+            !inventoryAfter.TryLoad(player.Serialize()))
+            return false;
+
+        var stagedStorage = new WorldChestStorage();
+        stagedStorage.Restore(_chests.Snapshot);
+        if (!stagedStorage.TryTransfer(position, inventoryAfter, playerSlot,
+                chestSlot, fromPlayer, split))
+            return false;
+
+        var receipt = new PickupReceipt(_worldId, token,
+            inventoryAfter, tools, selectedType, selectedShape, facing,
+            selectedSlot, WorldDrop.Capture(Scene), position,
+            stagedStorage.At(position));
+        if (!CommitInventoryWorld(receipt, stagedStorage.Snapshot))
+            return false;
+
+        _chests.Restore(stagedStorage.Snapshot);
+        _generation++;
+        _savedGeneration = _generation;
+        return true;
     }
 
     // Server-owned spawn, merge, pickup and despawn events mark saves dirty.
@@ -1427,17 +1464,6 @@ public class BlockWorld : Script
             new BlockState(BlockAt(position)).Type != BlockInventory.Chest)
             return false;
         contents = _chests.At(position);
-        return true;
-    }
-
-    public bool TryMoveChestItem(BlockPosition position, BlockInventory player,
-        int playerSlot, int chestSlot, bool fromPlayer, bool split)
-    {
-        if (!TryReadChest(position, out _)) return false;
-        if (!_chests.TryTransfer(position, player, playerSlot,
-                chestSlot, fromPlayer, split))
-            return false;
-        _generation++; // A chest-only change needs a world autosave too.
         return true;
     }
 

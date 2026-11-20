@@ -186,7 +186,8 @@ public class BlockEditor : Script
 
     private void SaveProfile()
     {
-        if (!Scene.IsServer || !ProfileReady || !_profileDirty)
+        if (!Scene.IsServer || !ProfileReady || !_profileDirty ||
+            _world?.PersistenceLocked == true)
             return;
         try
         {
@@ -633,20 +634,26 @@ public class BlockEditor : Script
         }
         BlockPosition pos = new(ChestX, ChestY, ChestZ);
         bool changed, playerChanged = false;
+        BlockInventory after = new();
         if (from < 36 && to >= 36)
         {
-            changed = _world.TryMoveChestItem(pos, _inventory,
-                from, to-36, true, split);
+            changed = _world.TryCommitChestTransfer(pos, _inventory,
+                from, to - 36, true, split, _profileToken, _tools,
+                PlaceType, PlaceShape, FacingOffset, SelectedHotbar,
+                out after);
             playerChanged = changed;
         }
         else if (from >= 36 && to < 36)
         {
-            changed = _world.TryMoveChestItem(pos, _inventory,
-                to, from-36, false, split);
+            changed = _world.TryCommitChestTransfer(pos, _inventory,
+                to, from - 36, false, split, _profileToken, _tools,
+                PlaceType, PlaceShape, FacingOffset, SelectedHotbar,
+                out after);
             playerChanged = changed;
         }
         else if (from >= 36 && to >= 36)
-            changed = _world.TryRearrangeChest(pos, from-36, to-36, split);
+            changed = _world.TryRearrangeChest(pos, from - 36,
+                to - 36, split);
         else
         {
             ChestStatus = "Select one storage slot and one player slot.";
@@ -660,8 +667,12 @@ public class BlockEditor : Script
         }
         if (playerChanged)
         {
+            if (!_inventory.TryLoad(after.Serialize()))
+                throw new InvalidOperationException(
+                    "Durably transferred chest items but live inventory rejected.");
             InventoryState = _inventory.Serialize();
-            _profileDirty = true;
+            _profileDirty = false;
+            _profileSaveClock = 0f;
         }
         ChestStatus = from < 36 && to >= 36 ? "Items stored." :
             from >= 36 && to < 36 ? "Items withdrawn." :

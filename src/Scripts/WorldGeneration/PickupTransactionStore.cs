@@ -8,14 +8,16 @@ using System.Text;
 namespace WorldGeneration;
 
 /// <summary>
-/// Durable redo record for one server-authorized ground-item pickup.
-/// While it exists, the entire post-pickup drop list and the receiving
-/// player's post-pickup profile are the authoritative recovery target.
+/// Durable redo record for one server-authorized inventory/world transfer.
+/// Includes the complete post-transaction player state and drop list.
+/// Chest transfers use a bounded optional changed-chest record, not the
+/// full world chest snapshot, so journals stay small as worlds grow.
 /// </summary>
 public sealed record PickupReceipt(
     string WorldId, string PlayerToken, BlockInventory Inventory,
     PlayerTools Tools, int SelectedType, int SelectedShape,
-    int Facing, int SelectedSlot, IReadOnlyList<SavedWorldDrop> Drops);
+    int Facing, int SelectedSlot, IReadOnlyList<SavedWorldDrop> Drops,
+    BlockPosition? ChestPosition = null, ChestContents? ChestAfter = null);
 
 public static class PickupTransactionStore
 {
@@ -42,19 +44,40 @@ public static class PickupTransactionStore
             !tools.TryLoad(receipt.Tools.Serialize()))
             throw new InvalidDataException("Invalid pickup profile.");
         WorldDropSaveCodec.Encode(receipt.Drops);
+        if (receipt.ChestPosition.HasValue != (receipt.ChestAfter != null))
+            throw new InvalidDataException("Incomplete chest transaction fields.");
+        if (receipt.ChestPosition is BlockPosition position &&
+            !BlockEdits.ValidPosition(position))
+            throw new InvalidDataException("Invalid journaled chest position.");
+        if (receipt.ChestAfter != null &&
+            !ChestContents.TryLoad(receipt.ChestAfter.Serialize(), out _))
+            throw new InvalidDataException("Invalid journaled chest state.");
     }
 
     private static string Encode(PickupReceipt receipt)
     {
         Validate(receipt);
-        string payload = string.Join(";", "1", receipt.WorldId,
-            receipt.PlayerToken, receipt.Inventory.Serialize(),
+        var fields = new List<string>
+        {
+            receipt.ChestPosition.HasValue ? "2" : "1",
+            receipt.WorldId,
+            receipt.PlayerToken,
+            receipt.Inventory.Serialize(),
             receipt.Tools.Serialize(),
             receipt.SelectedType.ToString(Invariant),
             receipt.SelectedShape.ToString(Invariant),
             receipt.Facing.ToString(Invariant),
             receipt.SelectedSlot.ToString(Invariant),
-            Convert.ToBase64String(WorldDropSaveCodec.Encode(receipt.Drops)));
+            Convert.ToBase64String(WorldDropSaveCodec.Encode(receipt.Drops))
+        };
+        if (receipt.ChestPosition is BlockPosition position &&
+            receipt.ChestAfter is ChestContents chest)
+        {
+            fields.Add(string.Join(",", position.X.ToString(Invariant),
+                position.Y.ToString(Invariant), position.Z.ToString(Invariant)));
+            fields.Add(chest.Serialize());
+        }
+        string payload = string.Join(";", fields);
         string hash = Convert.ToHexString(SHA256.HashData(
             Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
         return hash + "\n" + payload + "\n";
@@ -110,7 +133,9 @@ public static class PickupTransactionStore
         if (!string.Equals(actualHash, lines[0], StringComparison.Ordinal))
             throw new InvalidDataException("Pickup receipt checksum mismatch.");
         string[] fields = lines[1].Split(';');
-        if (fields.Length != 10 || fields[0] != "1" ||
+        bool dropOnly = fields.Length == 10 && fields[0] == "1";
+        bool chestTransfer = fields.Length == 12 && fields[0] == "2";
+        if ((!dropOnly && !chestTransfer) ||
             fields[1] != expectedWorldId ||
             !PlayerIdentity.Valid(fields[1]) ||
             !PlayerIdentity.Valid(fields[2]) ||
@@ -131,8 +156,25 @@ public static class PickupTransactionStore
         }
         if (!WorldDropSaveCodec.TryDecode(dropsData, out var drops))
             throw new InvalidDataException("Pickup receipt drop snapshot is invalid.");
+        BlockPosition? chestPosition = null;
+        ChestContents? chestAfter = null;
+        if (chestTransfer)
+        {
+            string[] parts = fields[10].Split(',');
+            if (parts.Length != 3 ||
+                !int.TryParse(parts[0], NumberStyles.Integer, Invariant,
+                    out int x) ||
+                !int.TryParse(parts[1], NumberStyles.Integer, Invariant,
+                    out int y) ||
+                !int.TryParse(parts[2], NumberStyles.Integer, Invariant,
+                    out int z) ||
+                !ChestContents.TryLoad(fields[11], out ChestContents decoded))
+                throw new InvalidDataException("Invalid journaled chest transfer.");
+            chestPosition = new BlockPosition(x, y, z);
+            chestAfter = decoded;
+        }
         receipt = new PickupReceipt(fields[1], fields[2], inventory, tools,
-            type, shape, facing, slot, drops);
+            type, shape, facing, slot, drops, chestPosition, chestAfter);
         Validate(receipt);
         return true;
     }
@@ -146,15 +188,49 @@ public static class PickupTransactionStore
         SectionedEditSnapshot edits,
         IReadOnlyDictionary<ChunkKey, int> revisions,
         IReadOnlyDictionary<BlockPosition, ChestContents> chests,
-        out IReadOnlyList<SavedWorldDrop> drops)
+        out IReadOnlyList<SavedWorldDrop> drops) =>
+        Recover(root, worldId, seed, edits, revisions, chests,
+            out drops, out _);
+
+    /// <summary>Replay the post-transaction profile and world snapshots.
+    /// A chest v2 receipt replaces only the changed chest; reapplying the
+    /// same update to either the old or already-committed world is safe.</summary>
+    public static bool Recover(string root, string worldId, int seed,
+        SectionedEditSnapshot edits,
+        IReadOnlyDictionary<ChunkKey, int> revisions,
+        IReadOnlyDictionary<BlockPosition, ChestContents> chests,
+        out IReadOnlyList<SavedWorldDrop> drops,
+        out IReadOnlyDictionary<BlockPosition, ChestContents> restoredChests)
     {
         drops = Array.Empty<SavedWorldDrop>();
+        restoredChests = chests;
         if (!TryRead(root, worldId, out PickupReceipt? receipt))
             return false;
         if (receipt == null)
-            throw new InvalidDataException("Missing committed pickup payload.");
+            throw new InvalidDataException("Missing committed inventory receipt.");
+
+        if (receipt.ChestPosition is BlockPosition position &&
+            receipt.ChestAfter is ChestContents after)
+        {
+            // Refuse orphan chest data before modifying either save file.
+            var world = new BlockEdits();
+            foreach (ChunkKey key in revisions.Keys)
+                world.ReplaceSection(key, edits.InSection(key),
+                    revisions[key], seed);
+            if (new BlockState(world.Get(position.X, position.Y,
+                    position.Z, seed)).Type != BlockInventory.Chest)
+                throw new InvalidDataException(
+                    "Journaled storage is no longer a chest voxel.");
+            var updated = new Dictionary<BlockPosition, ChestContents>(chests);
+            if (after.IsEmpty) updated.Remove(position);
+            else updated[position] = after;
+            if (updated.Count > WorldChestStorage.MaxNonemptyChests)
+                throw new InvalidDataException("Journaled chest limit exceeded.");
+            restoredChests = updated;
+        }
+
         WorldEditSave.Save(root, worldId, seed, edits, revisions,
-            chests, receipt.Drops);
+            restoredChests, receipt.Drops);
         PlayerProfileStore.Save(Path.Combine(root, "players", worldId),
             worldId, receipt.PlayerToken, receipt.Inventory, receipt.Tools,
             receipt.SelectedType, receipt.SelectedShape, receipt.Facing,

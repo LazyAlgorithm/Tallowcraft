@@ -122,13 +122,21 @@ Corrupt pending receipts block world startup instead of silently discarding
 items. This prevents a crash between the two pickup saves from duplicating
 or losing the collected ground item.
 
+**Crash-recoverable chest transfers:** moving items between the player
+inventory and an opened chest now uses the same durable redo mechanism.
+The server first stages both inventories, then journals the full post-transfer
+player profile plus just the affected chest record. Restart recovery applies
+that chest record to the saved world, even if the final withdrawal emptied
+the chest, and replays the player profile exactly once. Transfers are not
+accepted if the journal or either save fails; the existing recovery evidence
+is preserved. Moves between slots within a single chest stay world-only.
+
 **Known limits:** this correctness-first path writes a full world generation
-synchronously for each successful physical pickup, which can cause hitches
-on large worlds. It still needs Linux/Windows host/client verification and
-write-failure testing. Chest-to-player transfers, direct-credit fallback
-rewards when the drop entity cap is hit, and other inventory operations
-are not yet covered by this redo journal. User tokens remain prototype
-bearer identities, not authenticated public multiplayer accounts.
+synchronously for every physical pickup or cross-inventory chest transfer,
+which may hitch on large worlds. Linux/Windows host/client and write-failure
+tests have not yet been run. Direct-credit mining rewards when the drop cap
+is hit, other independent inventory mutations and authenticated public
+multiplayer accounts are not covered by this transaction mechanism.
 
 ### Chests and world save v4 (supported by v5)
 

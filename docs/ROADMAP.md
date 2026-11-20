@@ -20,10 +20,16 @@ before updating either file. On restart, an interrupted transaction replays
 both states and is removed only after both writes succeed. Corrupt receipts
 halt loading instead of being discarded.
 
-**Next implementation priority:** benchmark the synchronous pickup checkpoint
-path, validate host/client crash recovery in Play mode, and extend transactional
-consistency to chest transfers and the direct-credit mining fallback. Full
-public multiplayer account authentication is still out of scope. **Still blocked on engine verification:** character
+**Current implementation:** redo-logged physical pickups and chest-to-player
+transfers now commit post-transaction player profiles and world records
+before acknowledging an inventory change. The chest receipt stores one
+changed chest record, and recovery replays the same result safely whether
+the interrupted transfer was a deposit or withdrawal.
+
+**Next implementation priority:** verify both paths in host/client Play mode,
+replace per-transaction whole-world snapshots with compact/batched writes,
+and cover the direct-credit mining fallback plus other independent
+inventory mutations. Full public multiplayer authentication is out of scope. **Still blocked on engine verification:** character
 animation/occlusion, collision accuracy for partial blocks, and sustained
 high-radius performance.
 
@@ -129,7 +135,8 @@ high-radius performance.
 - [x] Persist live ground drops with terrain/chest world-save v5, including age/position and corrupt-generation rollback (regression tests added; runtime testing pending)
 - [x] Redo-log physical drop pickups across world/player saves; recover both post-pickup states after abrupt crashes (unit tests added; Play-mode verification pending)
 - [ ] Batch pickup journal/checkpoint writes without degrading large-world performance; current transactional path saves the world synchronously
-- [ ] Extend equivalent crash safety to chest-to-player transfers, direct-credit mining fallback, and other inventory mutations
+- [x] Redo-log chest-to-player transfers, including empty-chest withdrawals and crash recovery from both save directions (unit tests added; runtime testing pending)
+- [ ] Extend equivalent crash safety to direct-credit mining fallback and other independent inventory mutations
 - [ ] Health/damage, simple wildlife and AI, weather/day–night polish
 
 ## Verification and release gates
@@ -144,7 +151,7 @@ high-radius performance.
 
 - The world currently uses signed 16-block vertical sections (Y=-32..47); bounds and world settings are not user-configurable yet.
 - Versioned chunk pages and deltas replace the original 512-edit global snapshot, but the RPC bridge still lacks true per-recipient filtering.
-- Physical ground-item pickups now have a crash-recoverable redo journal; chests and other inventory operations still use independent profile/world saves. This is not a general multi-player transaction system.
+- Physical item pickups and player/chest deposits and withdrawals share a crash-recoverable redo journal. Other inventory operations still use independent profile/world saves; this is not a general multi-player transaction system.
 - The .tui hotbar, inventory, crafting, and chest UI exist. Rendering, chest interaction and replicated animation still require hands-on editor/host/client verification.
 - Player identity is a local bearer token rather than authenticated multiplayer account ownership.
 
@@ -166,6 +173,33 @@ resetting inventory. Recovery is repeatable across subsequent restarts, and
 new unit tests simulate interruption before either save, after only the world
 write, after only the player write, and after both writes but before receipt
 deletion. They also test checksum tampering and duplicate pending pickups.
+
+### M6: crash-recoverable chest transfers — November 19, 2026
+
+Moving items between a 36-slot player inventory and a 27-slot world chest
+now uses the same durable receipt as physical drop pickups. The server first
+simulates the transfer against a private copy of the player inventory and a
+copy-on-write chest record, without changing either live container. It writes
+a checksummed v2 receipt with the post-transfer player profile, a single
+changed chest position/contents, and the current ground drops.
+
+The receipt is fsynced before a full world v5 checkpoint and player profile
+save. Startup replays an interrupted receipt against the loaded world,
+including if the changed chest was emptied (zero nonempty chest records).
+Recovery validates that the chest block still exists in the saved world,
+and applies only that chest record so other chests are not overwritten.
+v1 drop-only receipts remain backward compatible. Failed or invalid
+transactions never delete the recovery evidence. Storage-only moves
+between slots within the same chest remain world-only transactions.
+
+The dedicated regression suite covers both deposit and withdrawal for
+four interruption points each: after the journal, after the world save,
+after the player save, and after both saves. It also rejects receipts
+targeting a nonexistent chest. Runtime testing is still required.
+
+**Known cost:** each successful player/chest transfer writes a full
+world-generation checkpoint synchronously. Batching and incremental
+redo logs are the next performance work before multiplayer-scale use.
 
 **Important performance limit:** each successful physical pickup forces a
 synchronous world-save generation (plus a precheckpoint if world edits are

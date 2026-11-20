@@ -33,6 +33,7 @@ static class Program
             WorldDropTests.Run(Check);
             WorldDropSaveTests.Run(Check);
             PickupTransactionTests.Run(Check);
+            ChestTransactionTests.Run(Check);
             ChestStorageTests.Run(Check);
             InventoryMenuTests.Run(Check);
             SectionEditTests.Run(Check);
