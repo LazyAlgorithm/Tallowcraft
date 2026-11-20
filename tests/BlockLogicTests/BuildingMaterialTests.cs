@@ -93,6 +93,28 @@ internal static class WaypointCompassTests
         check(WaypointCompass.TickLabel(-Vector3.UnitZ, 6) == "N" &&
             WaypointCompass.TickLabel(Vector3.UnitX, 6) == "E",
             "Center tick label matches camera direction");
+        // Tallow camera.Transform.Forward is local +Z rotated by yaw.
+        // Test every quarter-turn using that axis convention, not a
+        // fixed player heading or the replicated body rotation.
+        for (int quarter = 0; quarter < 4; quarter++)
+        {
+            float yaw = quarter * MathF.PI / 2f;
+            Vector3 forward = Vector3.Transform(Vector3.UnitZ,
+                Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw));
+            Vector3 left = new(-forward.Z, 0f, forward.X);
+            Vector3 right = -left;
+            check(WaypointCompass.Slot(origin, forward,
+                    origin + forward * 75f) == 6,
+                "Waypoints ahead stay in the center as the camera turns");
+            check(WaypointCompass.Slot(origin, forward,
+                    origin + left * 75f) == 0 &&
+                WaypointCompass.Slot(origin, forward,
+                    origin + right * 75f) == 12,
+                "Compass left/right markers align with camera yaw");
+            check(WaypointCompass.Slot(origin, forward,
+                    origin - forward * 75f) == -1,
+                "Behind-camera markers are excluded at all orientations");
+        }
         Console.WriteLine("PASS: signed camera-relative waypoint compass bearings");
     }
 }
