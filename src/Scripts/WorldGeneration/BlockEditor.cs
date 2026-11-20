@@ -90,6 +90,7 @@ public class BlockEditor : Script
     private bool _cursorInitialized;
     private bool _cursorMenuOpen;
     private bool _cursorGameMenuOpen;
+    private bool _cursorReturnLockBefore;
     private readonly InventoryMenuState _menu = new();
     private string _profileToken = "";
     private string _profileWorldId = "";
@@ -103,6 +104,19 @@ public class BlockEditor : Script
     private bool _settingsOpen;
     private Vector2 _serverSpawnXZ;
     private float _returnToSpawnCooldown;
+    [Sync] public bool ReturnToSpawnPending;
+    private Vector3 _returnDestination;
+    private float _returnSecondsLeft;
+    private int _returnSequence;
+    private bool _returnClientReady;
+    private bool _returnLocalPending;
+    private float _returnLocalSeconds;
+    private int _returnLocalSequence;
+    private bool _returnReadySent;
+
+    /// <summary>Blocks movement, look, mining and tools until both peers
+    /// confirm that the destination is generated and collidable.</summary>
+    public bool ReturnToSpawnLocked => ReturnToSpawnPending || _returnLocalPending;
 
     private bool IsLocal =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -119,7 +133,15 @@ public class BlockEditor : Script
     internal void UiResumeGame() { _paused = false; _settingsOpen = false; }
     internal void UiToggleSettings() => _settingsOpen = !_settingsOpen;
     internal void UiQuitGame() => Application.Quit();
-    internal void UiReturnToSpawn() => Rpc(nameof(RequestReturnToSpawn));
+    internal void UiReturnToSpawn()
+    {
+        if (_returnLocalPending || ReturnToSpawnPending) return;
+        _returnLocalPending = true;
+        _returnLocalSeconds = 45f;
+        _returnLocalSequence = 0;
+        _returnReadySent = false;
+        Rpc(nameof(RequestReturnToSpawn));
+    }
 
     /// <summary>Voluntary, server-authorized return to the original spawn
     /// point. No health, death or inventory loss is involved. Clients cannot
@@ -127,27 +149,138 @@ public class BlockEditor : Script
     [Rpc(RpcTarget.Server)]
     private void RequestReturnToSpawn()
     {
-        if (!Scene.IsServer || !ProfileReady ||
+        if (!Scene.IsServer) return;
+        int owner = GameObject.OwnerClientId;
+        if (!ProfileReady || ReturnToSpawnPending ||
             _returnToSpawnCooldown > 0f ||
-            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            (Scene.IsNetworked && RpcSender != owner))
+        {
+            Rpc(nameof(NotifyReturnFinished), owner, 0, false);
+            if (IsLocal) ResetLocalReturn();
             return;
+        }
+
         _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
         if (_world == null || _world.PersistenceLocked ||
-            _world.WorldIdentity.Length == 0)
-            return;
-        // GetCharacterController returns CharacterController? (a nullable
-        // value type). The pattern unwraps it before accessing its methods.
-        if (GetCharacterController() is not { } controller ||
+            _world.WorldIdentity.Length == 0 ||
+            GetCharacterController() is not { } controller ||
             !controller.HasCharacter)
+        {
+            Rpc(nameof(NotifyReturnFinished), owner, 0, false);
+            if (IsLocal) ResetLocalReturn();
             return;
+        }
+
         Vector3 destination = new(_serverSpawnXZ.X, 0f, _serverSpawnXZ.Y);
-        destination.Y = _world.SafeSpawnHeight(destination.X,
-            destination.Z, 2f);
-        if (!WaypointBook.ValidPosition(destination) ||
-            !controller.Teleport(destination))
+        destination.Y = _world.SafeSpawnHeight(destination.X, destination.Z, 2f);
+        if (!WaypointBook.ValidPosition(destination))
+        {
+            Rpc(nameof(NotifyReturnFinished), owner, 0, false);
+            if (IsLocal) ResetLocalReturn();
             return;
-        Transform.Position = destination;
-        _returnToSpawnCooldown = 10f;
+        }
+
+        _returnSequence = _returnSequence == int.MaxValue ? 1 : _returnSequence + 1;
+        _returnDestination = destination;
+        _returnSecondsLeft = 40f;
+        ReturnToSpawnPending = true;
+        _returnClientReady = !Scene.IsNetworked || owner == 0;
+        // This reservation keeps full 16³ chunks and Jolt colliders loaded
+        // around the destination, regardless of the host camera's LOD.
+        _world.BeginServerReturnPreload(owner, destination);
+        if (_returnClientReady)
+        {
+            _returnLocalPending = true; // local host also stays input locked
+            _returnLocalSeconds = 45f;
+            _returnLocalSequence = _returnSequence;
+        }
+        else
+            Rpc(nameof(NotifyReturnStarted), owner, _returnSequence,
+                destination.X, destination.Y, destination.Z);
+    }
+
+    [Rpc(RpcTarget.Everyone)]
+    private void NotifyReturnStarted(int owner, int sequence,
+        float x, float y, float z)
+    {
+        if (Scene.IsServer || Scene.LocalClientId != owner || !IsLocal)
+            return;
+        Vector3 destination = new(x, y, z);
+        if (!WaypointBook.ValidPosition(destination)) return;
+        _returnLocalPending = true;
+        _returnLocalSeconds = 45f;
+        _returnLocalSequence = sequence;
+        _returnReadySent = false;
+        _returnDestination = destination;
+        _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+        _world?.BeginLocalReturnPreload(destination);
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void ConfirmReturnAreaReady(int sequence)
+    {
+        if (!Scene.IsServer || !ReturnToSpawnPending ||
+            sequence != _returnSequence ||
+            RpcSender != GameObject.OwnerClientId)
+            return;
+        _returnClientReady = true;
+    }
+
+    [Rpc(RpcTarget.Everyone)]
+    private void NotifyReturnFinished(int owner, int sequence, bool succeeded)
+    {
+        if (Scene.IsServer || !IsLocal || Scene.LocalClientId != owner ||
+            (sequence != 0 && sequence != _returnLocalSequence))
+            return;
+        ResetLocalReturn();
+        if (!succeeded)
+            Console.WriteLine("Return to spawn canceled: destination was not ready.");
+    }
+
+    private void ResetLocalReturn()
+    {
+        _returnLocalPending = false;
+        _returnReadySent = false;
+        _returnLocalSequence = 0;
+        _returnLocalSeconds = 0;
+        _world?.EndLocalReturnPreload();
+        // LocalUpdate updates Player input-map state on its next pass.
+        _cursorInitialized = false;
+    }
+
+    private void FinishReturn(bool success)
+    {
+        if (!ReturnToSpawnPending) return;
+        ReturnToSpawnPending = false;
+        _world?.EndServerReturnPreload(GameObject.OwnerClientId);
+        if (success) _returnToSpawnCooldown = 10f;
+        Rpc(nameof(NotifyReturnFinished), GameObject.OwnerClientId,
+            _returnSequence, success);
+        if (Scene.IsServer && IsLocal)
+            ResetLocalReturn();
+    }
+
+    private void TickReturn(float deltaTime)
+    {
+        if (!ReturnToSpawnPending) return;
+        _returnSecondsLeft -= MathF.Max(0f, deltaTime);
+        if (_returnSecondsLeft <= 0f)
+        {
+            FinishReturn(false); // never teleport into unloaded or stale meshes
+            return;
+        }
+        if (!_returnClientReady || _world == null ||
+            !_world.ReturnAreaReady(_returnDestination))
+            return;
+        if (GetCharacterController() is not { } controller ||
+            !controller.HasCharacter ||
+            !controller.Teleport(_returnDestination))
+        {
+            FinishReturn(false);
+            return;
+        }
+        Transform.Position = _returnDestination;
+        FinishReturn(true);
     }
 
     public override void Start()
@@ -323,6 +456,25 @@ public class BlockEditor : Script
     {
         if (!IsLocal)
             return;
+        if (_returnLocalPending)
+        {
+            _returnLocalSeconds -= MathF.Max(0f, deltaTime);
+            if (_returnLocalSeconds <= 0f)
+            {
+                Console.WriteLine("Return to spawn: local terrain preload timed out.");
+                ResetLocalReturn();
+            }
+            else if (!Scene.IsServer && _returnLocalSequence != 0 &&
+                !_returnReadySent)
+            {
+                _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+                if (_world != null && _world.ReturnAreaReady(_returnDestination))
+                {
+                    _returnReadySent = true;
+                    Rpc(nameof(ConfirmReturnAreaReady), _returnLocalSequence);
+                }
+            }
+        }
 
         if (_uiObject is not { IsValid: true })
         {
@@ -397,7 +549,7 @@ public class BlockEditor : Script
                         position => _world.BlockAt(position));
             }
         }
-        if (!open && !_mainMenu && !_paused)
+        if (!open && !_mainMenu && !_paused && !ReturnToSpawnLocked)
         {
             // Middle-click reads only the local camera direction, not an
             // untrusted client block coordinate. The server raycasts its
@@ -430,12 +582,16 @@ public class BlockEditor : Script
         _ui?.Refresh();
 
         if (!_cursorInitialized || _cursorMenuOpen != open ||
-            _cursorGameMenuOpen != UiGameMenuVisible)
+            _cursorGameMenuOpen != UiGameMenuVisible ||
+            _cursorReturnLockBefore != ReturnToSpawnLocked)
         {
             // Set the input map before unlocking/locking the mouse. The engine
             // clears relative mouse motion when changing cursor-lock mode.
-            InputActions.SetMapEnabled("Player", !open && !_mainMenu && !_paused);
-            Cursor.Locked = !open && !_mainMenu && !_paused;
+            bool gameplay = !open && !_mainMenu && !_paused &&
+                !ReturnToSpawnLocked;
+            InputActions.SetMapEnabled("Player", gameplay);
+            Cursor.Locked = gameplay;
+            _cursorReturnLockBefore = ReturnToSpawnLocked;
             _cursorMenuOpen = open;
             _cursorGameMenuOpen = UiGameMenuVisible;
             _cursorInitialized = true;
@@ -1046,6 +1202,12 @@ public class BlockEditor : Script
 
         _cooldown = MathF.Max(0f, _cooldown - deltaTime);
         _returnToSpawnCooldown = MathF.Max(0f, _returnToSpawnCooldown - deltaTime);
+        if (ReturnToSpawnPending)
+        {
+            ResetMining();
+            TickReturn(deltaTime);
+            return;
+        }
         _pickCooldown = MathF.Max(0f, _pickCooldown - deltaTime);
         if (_pickFeedbackSeconds > 0f)
         {
