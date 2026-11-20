@@ -46,6 +46,7 @@ public sealed class TallowcraftUI : Script
     private bool _settingsLoaded;
     private WaypointBook _waypoints = new();
     private readonly int[] _compassPrevious = { -1, -1, -1, -1 };
+    private readonly string[] _compassTickLabels = new string[WaypointCompass.Slots];
     private bool _compassInitialized;
     private GameObject? _compassCamera;
     private string _waypointWorldId = "";
@@ -253,9 +254,10 @@ public sealed class TallowcraftUI : Script
         if (!_compassInitialized)
         {
             for (int index = 0; index < WaypointBook.SlotCount; index++)
-            for (int bin = 0; bin < WaypointCompass.Slots; bin++)
+            for (int bin = 0; bin < WaypointCompass.MarkerSlots; bin++)
                 Visible($"compass-marker-{index}-{bin}", false);
             Array.Fill(_compassPrevious, -1);
+            Array.Fill(_compassTickLabels, "");
             _compassInitialized = true;
         }
 
@@ -267,8 +269,15 @@ public sealed class TallowcraftUI : Script
             validCamera.IsValid
                 ? validCamera.Transform.Forward : editor.Transform.Forward;
         Vector3 here = editor.Transform.Position;
+        // No native UI reads are needed on frames where a label is stable.
+        // Only the compass' few changed icons toggle visibility on a turn.
         for (int bin = 0; bin < WaypointCompass.Slots; bin++)
-            Text("compass-tick-" + bin, WaypointCompass.TickLabel(look, bin));
+        {
+            string label = WaypointCompass.TickLabel(look, bin);
+            if (_compassTickLabels[bin] == label) continue;
+            Text("compass-tick-" + bin, label);
+            _compassTickLabels[bin] = label;
+        }
 
         for (int index = 0; index < WaypointBook.SlotCount; index++)
         {
