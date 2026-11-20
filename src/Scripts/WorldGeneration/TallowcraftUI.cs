@@ -85,7 +85,7 @@ public sealed class TallowcraftUI : Script
                 _shadows = shadows;
                 if (lines.Length >= 4 && int.TryParse(lines[3], out int workers))
                     _workerSelection = Math.Clamp(workers, 0, MaxWorkers());
-                if (lines.Length >= 6 &&
+                if ((lines.Length == 6 || lines.Length >= 8) &&
                     bool.TryParse(lines[4], out bool lodEnabled) &&
                     int.TryParse(lines[5], out int quality))
                 {
@@ -93,7 +93,7 @@ public sealed class TallowcraftUI : Script
                     _lodQualityChoice = Math.Clamp(quality, 0, LodScales.Length - 1);
                 }
                 // Preserve the effective settings from older Auto quality saves.
-                if (lines.Length >= 7 && bool.TryParse(lines[4], out bool automatic) && automatic)
+                if (lines.Length == 7 && bool.TryParse(lines[4], out bool automatic) && automatic)
                 {
                     if (int.TryParse(lines[5], out int distance))
                         _viewChoice = Math.Clamp(distance, 0, WorldDisplaySettings.Distances.Length - 1);
