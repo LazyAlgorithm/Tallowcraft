@@ -2,6 +2,20 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Multiplayer wildlife regions and world exploration expansion — 20 November 2026
+
+- [x] Rework the single host-following animal habitat into up to **four independently spawned navigation regions**. Players within 34 m share one region, separate players receive different regions, each with at most 10 animals.
+- [x] Stream in/out region-specific animal GameObjects with server authority, shared herd-spacing checks and kill-site cooldowns, while letting orphaned dying animals finish and drop loot before cleanup.
+- [x] Use region-owned navigation surfaces and game-side local steering (sampled reachable points / raycasts + native CharacterController SimpleMove) so animal movement never accidentally chooses another player's default navigation surface.
+- [x] Coalesce terrain edits on the authoritative BlockWorld and defer navigation-surface rebakes until affected voxel geometry has uploaded, limited to intersecting wildlife regions.
+- [x] Add **Wetlands** and **Badlands** to biome climate classification and palettes; extend Wetlands flora/animal sampling while keeping materials and existing block IDs.
+- [x] Add reproducible winding river channels, sparse lake bowls, and shallow visually transparent water sheets batched per near chunk. Water is decorative, not a physics/fluid simulation.
+- [x] Enlarge deep cave chambers outside spawn and add deterministic **stone circles** and **timber observation lookouts**, cross-compatible with chunk seaming and old edit data.
+- [x] Add pure C# regressions for new biome distribution, water carving/spawn safety, procedural landmark block queries/chunk arrays and mineable landmark floors.
+- [ ] **Linux runtime:** compile `dotnet run --project tests/BlockLogicTests -c Release`, build and run the C# game player, verify water texture import, transparent shoreline and chunk-seam visuals, two-client animal movement, editable block navigation rebuilds and existing profile/world edit preservation.
+- [ ] **Follow-up:** measure 20/32/48/64 render-radius generation CPU and frame times. Water decoration is near-LOD only and animal movement currently uses local surface steering rather than full A* routefinding; improve after profiling.
+- [ ] **Save-format follow-up:** add an explicit generation-version pin for worlds that must retain their exact unedited procedural landscape across future generator changes. Current update preserves saved edits but can change unedited terrain outside protected spawn.
+
 ## Wildlife roaming, fleeing and drops — 20 November 2026
 
 - [x] Move the single active 48 m wildlife navigation region in bounded steps with the host's exploration position, creating it only after nearby voxel collision is ready. Despawn distant non-dying mobs to bound population and bake cost.
