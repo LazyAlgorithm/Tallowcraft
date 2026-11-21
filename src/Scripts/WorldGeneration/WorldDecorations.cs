@@ -102,6 +102,7 @@ public static class WorldDecorations
         uint chance = biome switch
         {
             WorldBiomes.Biome.Woodland => 210u,
+            WorldBiomes.Biome.Wetlands => 290u,
             WorldBiomes.Biome.Meadow => 85u,
             _ => 0u
         };
@@ -118,7 +119,9 @@ public static class WorldDecorations
             Math.Abs(ChunkGenerator.Height(x, z - 1, seed) - ground) > 1 ||
             Math.Abs(ChunkGenerator.Height(x, z + 1, seed) - ground) > 1)
             return false;
-        if (NearRuin(x, z, seed, RuinRadius + 2))
+        if (NearRuin(x, z, seed, RuinRadius + 2) ||
+            WorldLandmarks.TryNear(x, z, seed, out _) ||
+            WorldWater.HasSurface(x, z, seed))
             return false;
 
         bush = new Bush(x, z, ground);
@@ -195,6 +198,7 @@ public static class WorldDecorations
         {
             WorldBiomes.Biome.Meadow => sample < 9 ? 2 : 1,
             WorldBiomes.Biome.Woodland when sample < 24 => 1,
+            WorldBiomes.Biome.Wetlands when sample < 35 => 1,
             _ => 0
         };
     }
