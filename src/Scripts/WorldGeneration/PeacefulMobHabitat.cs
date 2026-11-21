@@ -21,6 +21,7 @@ public sealed class PeacefulMobHabitat : Script
     private readonly List<GameObject> _animals = new();
     private Vector3 _center;
     private float _spawnClock;
+    private int _spawnSequence;
 
     public override void Start()
     {
@@ -54,7 +55,7 @@ public sealed class PeacefulMobHabitat : Script
             surface.CellSize = .6f;
             surface.AgentRadius = .4f;
             surface.AgentHeight = 1.3f;
-            surface.MaxStep = .6f;
+            surface.MaxStep = AnimalCombatRules.StairClimbHeight;
             surface.MaxSlope = 48f;
             surface.IncludeRenderMeshes = false; // mesh colliders, not distant LOD
             surface.RebuildOnStart = true; // component's Start bakes after creation
@@ -62,6 +63,11 @@ public sealed class PeacefulMobHabitat : Script
             _spawnClock = 2f;
             return;
         }
+
+        // A server-despawned animal leaves a slot for a new animal;
+        // do not let destroyed GameObject handles exhaust the habitat.
+        for (int i = _animals.Count - 1; i >= 0; i--)
+            if (!_animals[i].IsValid) _animals.RemoveAt(i);
 
         _spawnClock -= deltaTime;
         if (_spawnClock > 0 || _animals.Count >= Math.Clamp(MaxAnimals, 0, 12))
@@ -72,7 +78,7 @@ public sealed class PeacefulMobHabitat : Script
         if (!navigation.IsValid) return;
 
         // A reproducible sequence: animals do not depend on render worker order.
-        int index = _animals.Count;
+        int index = _spawnSequence++;
         var random = new Random(unchecked(world.Seed * 157 + index * 719 + 117));
         if (!navigation.RandomPoint(_center, Math.Clamp(RoamRadius, 2f, 16f),
                 random, out Vector3 onGround))
