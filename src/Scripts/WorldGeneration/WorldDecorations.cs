@@ -226,9 +226,13 @@ public static class WorldDecorations
 
     // A zero override clears terrain intruding into the walkable interior.
     // Null leaves the terrain and vegetation at this position untouched.
-    internal static ushort? StructureOverrideAt(int x, int y, int z, int seed) =>
-        y >= 0 && y <= ChunkGenerator.MaxWorldY && TryNearbyRuin(x, z, seed, out Ruin ruin)
-            ? RuinShape(ruin, x, y, z, seed) : null;
+    internal static ushort? StructureOverrideAt(int x, int y, int z, int seed)
+    {
+        if (y < 0 || y > ChunkGenerator.MaxWorldY) return null;
+        if (TryNearbyRuin(x, z, seed, out Ruin ruin))
+            return RuinShape(ruin, x, y, z, seed);
+        return WorldLandmarks.Override(x, y, z, seed);
+    }
 
     public static ushort StructureAt(int x, int y, int z, int seed) =>
         StructureOverrideAt(x, y, z, seed) ?? 0;
@@ -361,7 +365,7 @@ public static class WorldDecorations
                 ruin.Z - RuinRadius < (key.Z + 1) * ChunkGenerator.Size)
                 found = true;
         });
-        if (found) return true;
+        if (found || WorldLandmarks.HasBlocksInChunk(key, seed)) return true;
         NearbyBushes(key, seed, bush =>
         {
             if (!found && bush.GroundY <= maxY &&
@@ -408,6 +412,8 @@ public static class WorldDecorations
                     Write(x, y, z, type, true);
             }
         });
+
+        WorldLandmarks.DecorateChunk(key, seed, blocks);
 
         NearbyBushes(key, seed, bush =>
         {
