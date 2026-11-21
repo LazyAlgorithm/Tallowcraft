@@ -145,6 +145,41 @@ public sealed class BlockInventory
         return true;
     }
 
+    /// <summary>Creative catalog items are placeable block types, not the
+    /// iron-ingot crafting resource. The server separately checks CreativeMode.</summary>
+    public static bool IsCreativeBlock(int type) =>
+        type is >= 1 and <= MaxType && type != IronIngot;
+
+    /// <summary>
+    /// Add a creative block grant entirely into physical inventory slots.
+    /// Unlike TryCollect this must not silently overflow into the legacy
+    /// reserve when the backpack is full. Never mutate on a failed request.
+    /// The catalog can give only a single block or a full 64-item stack.
+    /// </summary>
+    public bool TryGrantCreativeBlock(int type, int quantity)
+    {
+        if (!IsCreativeBlock(type) || quantity is not (1 or StackLimit) ||
+            quantity > MaxPerType - Count(type))
+            return false;
+
+        int freeSpace = 0;
+        for (int slot = 0; slot < SlotCount; slot++)
+        {
+            ItemStack current = _slots[slot];
+            if (current.IsEmpty)
+                freeSpace += StackLimit;
+            else if (current.Type == type)
+                freeSpace += StackLimit - current.Quantity;
+            if (freeSpace >= quantity)
+                break;
+        }
+        if (freeSpace < quantity)
+            return false;
+
+        AddUnchecked(type, quantity);
+        return true;
+    }
+
     /// <summary>Harvest, crafting output and future pickups use this API.</summary>
     public bool TryCollect(int type, int quantity = 1)
     {
