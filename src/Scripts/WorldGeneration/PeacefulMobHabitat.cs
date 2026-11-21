@@ -33,6 +33,16 @@ public sealed class PeacefulMobHabitat : Script
         Network.RegisterPrefab("TallowcraftPig", "Prefabs/Pig.tprefab");
     }
 
+    /// <summary>Called immediately when the server resolves a lethal hit,
+    /// not during the spawn timer: a 0.72-second death pose could otherwise
+    /// finish between the habitat's periodic population checks.</summary>
+    public void NoteKill(Vector3 position)
+    {
+        if (!Scene.IsServer) return;
+        _recentKills[CellKey(position.X, position.Z)] =
+            _elapsed + 45f;
+    }
+
     private static long CellKey(float x, float z)
     {
         int cx = (int)MathF.Floor(x / WildlifeRules.SpatialCell);
