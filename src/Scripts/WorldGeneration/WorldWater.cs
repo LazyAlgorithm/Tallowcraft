@@ -35,23 +35,19 @@ public static class WorldWater
     {
         int cx = ChunkGenerator.FloorDiv(x, LakeCell);
         int cz = ChunkGenerator.FloorDiv(z, LakeCell);
-        float best = 100000f, radius = 0f;
-        // Only one seeded lake candidate per cell. A 20m maximum footprint
-        // may cross one cell boundary, so inspect immediate neighbours.
-        for (int dz = -1; dz <= 1; dz++)
-        for (int dx = -1; dx <= 1; dx++)
-        {
-            int gx = cx + dx, gz = cz + dz;
-            uint hash = WildlifeRules.Hash(seed, gx, gz, 0x1A6E);
-            if ((hash & 255u) > 85u) continue;
-            int centerX = gx * LakeCell + 24 + (int)((hash >> 8) % 112u);
-            int centerZ = gz * LakeCell + 24 + (int)((hash >> 16) % 112u);
-            float distance = MathF.Sqrt((float)((long)x - centerX) *
-                ((long)x - centerX) + (float)((long)z - centerZ) * ((long)z - centerZ));
-            float localRadius = 11f + (hash >> 24) % 10u;
-            if (distance < best) { best = distance; radius = localRadius; }
-        }
-        return (best, radius);
+        // Candidate centers are inset at least 24m into 160m cells and
+        // lakes have at most a 20m radius. They cannot cross a cell edge:
+        // sampling 3x3 neighbours did nine hashes per height query for no
+        // visible benefit, particularly expensive at 64-chunk far LOD.
+        uint hash = WildlifeRules.Hash(seed, cx, cz, 0x1A6E);
+        if ((hash & 255u) > 85u)
+            return (100000f, 0f);
+        int centerX = cx * LakeCell + 24 + (int)((hash >> 8) % 112u);
+        int centerZ = cz * LakeCell + 24 + (int)((hash >> 16) % 112u);
+        float dx = (float)((long)x - centerX);
+        float dz = (float)((long)z - centerZ);
+        float radius = 11f + (hash >> 24) % 10u;
+        return (MathF.Sqrt(dx * dx + dz * dz), radius);
     }
 
     /// <summary>How much of the natural heightmap is carved at a column.
