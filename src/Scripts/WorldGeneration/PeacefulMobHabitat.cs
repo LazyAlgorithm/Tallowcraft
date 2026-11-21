@@ -47,6 +47,7 @@ public sealed class PeacefulMobHabitat : Script
     private readonly Dictionary<long, float> _recentKills = new();
     private float _elapsed;
     private float _scanClock;
+    private string _activeWorldId = "";
 
     public override void Start()
     {
@@ -303,6 +304,21 @@ public sealed class PeacefulMobHabitat : Script
         BlockWorld? world =
             Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
         if (world == null || world.WorldIdentity.Length == 0) return;
+        if (_activeWorldId != world.WorldIdentity)
+        {
+            // Changing the world seed/identity invalidates every previous
+            // animal and baked navigation surface, even without a Play restart.
+            foreach (Region previous in _regions.Values)
+                RemoveRegion(previous);
+            foreach (GameObject dying in _dyingOrphans)
+                if (dying.IsValid) dying.Destroy();
+            _regions.Clear();
+            _dyingOrphans.Clear();
+            _recentKills.Clear();
+            _desired.Clear();
+            _activeWorldId = world.WorldIdentity;
+            _scanClock = 0f;
+        }
         float dt = Math.Clamp(deltaTime, 0f, .25f);
         _elapsed += dt;
         NoticeEdits(world);
