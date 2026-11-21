@@ -65,7 +65,7 @@ public static class DistantTerrainMesher
                 {
                     ushort packed = ChunkGenerator.GetBlock(x, y, z, seed, edits);
                     BlockState state = new(packed);
-                    if (state.IsAir || state.Type is 4 or 9)
+                    if (state.IsAir || state.Type is 4 or 9 or BlockInventory.Glass)
                         continue;
                     return y + (state.Shape == BlockShape.Slab && !state.Upper
                         ? 0.5f : 1f);
