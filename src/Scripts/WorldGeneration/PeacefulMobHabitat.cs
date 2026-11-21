@@ -70,7 +70,7 @@ public sealed class PeacefulMobHabitat : Script
     }
 
     private static float DistanceXZ(Vector3 a, Vector3 b) =>
-        Vector2.Distance(new Vector2(a.X, a.Z), new Vector2(b.X, b.Z));
+        WildlifeRegionRules.DistanceXZ(a, b);
 
     private void FindPlayerRegions()
     {
@@ -96,23 +96,20 @@ public sealed class PeacefulMobHabitat : Script
         {
             bool covered = false;
             foreach (var existing in _desired)
-                if (DistanceXZ(existing.Position, player.Position) < 34f)
+                if (WildlifeRegionRules.Share(
+                    existing.Position, player.Position))
                 {
                     covered = true;
                     break;
                 }
-            if (!covered && _desired.Count < Math.Clamp(MaxRegions, 1, 4))
+            if (!covered && _desired.Count <
+                Math.Clamp(MaxRegions, 1, WildlifeRegionRules.MaxRegions))
                 _desired.Add(player);
         }
     }
 
-    private static bool Intersects(Region region, Vector3 min, Vector3 max)
-    {
-        float half = 24f;
-        return max.X >= region.Center.X-half && min.X <= region.Center.X+half &&
-            max.Z >= region.Center.Z-half && min.Z <= region.Center.Z+half &&
-            max.Y >= region.Center.Y-13f && min.Y <= region.Center.Y+13f;
-    }
+    private static bool Intersects(Region region, Vector3 min, Vector3 max) =>
+        WildlifeRegionRules.IntersectsEdit(region.Center, min, max);
 
     private void NoticeEdits(BlockWorld world)
     {
@@ -192,8 +189,8 @@ public sealed class PeacefulMobHabitat : Script
         region.RecenterClock = MathF.Max(0f, region.RecenterClock - dt);
         region.RebuildClock = MathF.Max(0f, region.RebuildClock - dt);
         bool needsCenter = region.Navigation is not { IsValid: true } ||
-            (DistanceXZ(region.Center, focus) > 21f &&
-             region.RecenterClock <= 0f);
+            WildlifeRegionRules.Recenter(region.Center, focus,
+                region.RecenterClock);
         if (needsCenter)
         {
             if (!world.ImmediateMobTerrainReady(focus)) return;
@@ -234,7 +231,8 @@ public sealed class PeacefulMobHabitat : Script
                 continue;
             }
             bool dying = animal.GetComponent<PeacefulAnimal>()?.Dying == true;
-            if (!dying && DistanceXZ(animal.Transform.Position, region.Center) > 34f)
+            if (!dying && DistanceXZ(animal.Transform.Position, region.Center) >
+                WildlifeRegionRules.CullDistance)
             {
                 animal.Destroy();
                 region.Animals.RemoveAt(i);
