@@ -133,4 +133,4 @@ object 30 parent 0 active 1 name "Peaceful Mob Habitat"
 transform 0 0 0 0 0 0 1 1 1 1
 component Tallow.CSharpBehaviour enabled 1
 field scriptType "WorldGeneration.PeacefulMobHabitat"
-field fieldOverrides "MaxAnimals	6\nRoamRadius	13\n"
+field fieldOverrides "MaxAnimals	10\nRoamRadius	19\nSurfaceWidth	48\n"
