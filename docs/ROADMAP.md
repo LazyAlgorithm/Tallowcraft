@@ -2,6 +2,15 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Creative block catalog — 20 November 2026
+
+- [x] Add a **Creative** inventory tab to the existing .tui panel, visible in Creative Mode but hidden in Survival or while a chest is open.
+- [x] Show all 18 placeable blocks (types 1–9 and 11–19) using existing pixel-art icons and counts; deliberately omit non-placeable iron ingots (type 10).
+- [x] Offer "Add 64" and "Add 1" modes; add chosen blocks through the owning player's server-authoritative inventory RPC with normal profile synchronization and persistence.
+- [x] Reject invalid and forged grants, full inventories, and 999-item cap violations without overflowing into the legacy reserve.
+- [x] Add isolated .NET tests for every creative type, stack behavior, invalid request values, full bags and serialized save round-trips.
+- [ ] **Runtime gate:** build Linux player, confirm .tui layout and icon visibility, test single-player/multiplayer owner grants, survival/chest restrictions, inventory persistence and whether UI status changes reflect server results.
+
 ## Frame-rate camera presentation and faster animal deaths — 20 November 2026
 
 - [x] Move the local camera's final position/rotation writes out of replayable `Update(TickInput)` into per-render-frame `LocalLateUpdate`.
