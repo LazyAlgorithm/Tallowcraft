@@ -2,6 +2,16 @@
 
 A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# gameplay, Jolt physics, ECS and networking APIs.
 
+## Creative inventory catalog (20 November)
+
+Open the inventory with **Tab**, then choose the **Creative** tab (visible only when the server has Creative Mode enabled for your player). The grid includes all **18 placeable block types** available in the current game: grass, dirt, stone, log, forge, planks, coal, iron ore, leaves, chest, cobblestone, stone bricks, mossy stone, dark timber, glass, red bricks, sandstone and slate. Iron ingots are a crafting resource, not a block, so they are not included.
+
+Click an illustrated block to add **64 items** to your normal inventory. The quantity toggle can switch to **1 item per click**. The card shows how many you own; the server reports whether the grant succeeded. Items stack normally, prefer compatible stacks, and fill empty hotbar/backpack slots. Move blocks from your backpack to the hotbar with the existing slot controls. Creative placement still doesn't consume materials.
+
+The catalog is not a client-side inventory editor: each request goes through an owner-checked, server-authoritative RPC. Survival mode, an open chest, invalid types/quantities, and insufficient physical slot capacity all prevent creative grants. The existing maximum of 999 items per type applies; no grants spill into hidden legacy reserves. Changes sync to clients and save in the existing v5 player profile. Pure .NET inventory tests cover all catalog IDs, stack additions, full inventories, caps and save round-trips.
+
+**Runtime check needed:** verify the catalog looks correct in the engine's .tui editor, images render sharply, clicks update multiplayer inventories, hotbar movement works, and the catalog hides outside Creative Mode. This was committed without a local Tallow player build.
+
 ## Camera feel and faster animal deaths (20 November)
 
 The local first-person camera no longer receives position and view-rotation updates solely from `FirstPersonCharacter.Update(TickInput)`, which can run at a different rate from rendering. Predicted player motion and gun aim still use the original network tick. The presentation camera now follows that simulated pose in `LocalLateUpdate` every rendered frame, with frame-rate-independent interpolation and snap handling for spawn/teleport changes. Default camera tuning fields on `FirstPersonCharacter`: `CameraTurnResponse = 48`, `CameraPositionResponse = 75`. Higher response follows the simulated pose more tightly; lower response hides tick steps more aggressively but increases visible latency. This is a game-side smoothing experiment, not a claim that engine-level frame pacing or input sampling was fixed.
