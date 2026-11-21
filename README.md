@@ -2,6 +2,14 @@
 
 A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# gameplay, Jolt physics, ECS and networking APIs.
 
+## Camera feel and faster animal deaths (20 November)
+
+The local first-person camera no longer receives position and view-rotation updates solely from `FirstPersonCharacter.Update(TickInput)`, which can run at a different rate from rendering. Predicted player motion and gun aim still use the original network tick. The presentation camera now follows that simulated pose in `LocalLateUpdate` every rendered frame, with frame-rate-independent interpolation and snap handling for spawn/teleport changes. Default camera tuning fields on `FirstPersonCharacter`: `CameraTurnResponse = 48`, `CameraPositionResponse = 75`. Higher response follows the simulated pose more tightly; lower response hides tick steps more aggressively but increases visible latency. This is a game-side smoothing experiment, not a claim that engine-level frame pacing or input sampling was fixed.
+
+Peaceful animal death rolls now complete in about **0.72 seconds**, with the existing short additional despawn hold (~0.18 seconds). Gameplay health, server authority, and navmesh behavior are unchanged. The isolated test project includes camera damping, teleport, rotation, and death-timing checks.
+
+**Test in Linux Play mode:** rotate the mouse slowly and quickly at stable FPS, observe 60 vs 120+ FPS camera feel and aim agreement with the crosshair/guns, move over one-block steps, crouch, teleport to spawn, open/close menus, and compare two network clients. If turning still feels jerky, investigate native mouse sampling or engine tick pacing rather than adding more filtering.
+
 ## Peaceful animal animation (prototype)
 
 Sheep and pigs now animate their voxel-model pieces locally as they move: alternate diagonal legs and hooves, subtle body bobbing and tail motion. When the server detects an idle animal, it occasionally sets a synchronized eating state; the muzzle dips toward the grass and chews for a few seconds, then returns upright. The existing behavior tree keeps its navigation/wait loop, with longer idle pauses for grazing. Lethal gun damage stops navigation, briefly flashes the animal, and rolls the model onto its side before replicated despawn. The root CharacterController is never posed, so art doesn't affect collisions or pathfinding. Sheep wool tufts have been reduced in size.
