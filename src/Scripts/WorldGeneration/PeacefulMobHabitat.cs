@@ -181,7 +181,7 @@ public sealed class PeacefulMobHabitat : Script
         float centerY = world.SafeSpawnHeight(ground.X, ground.Z, 1.2f, .35f);
         if (MathF.Abs(centerY - (ground.Y + .6f)) > 2.3f)
             return; // A steep edge, cave or missing collider is unsafe.
-        int floorY = (int)MathF.Floor(centerY - .75f);
+        int floorY = (int)MathF.Floor(centerY - .85f);
         int groundType = new BlockState(world.BlockAt(new BlockPosition(
             x, floorY, z))).Type;
         if (!WildlifeRules.CanSpawnOn(species, groundType, x, z, world.Seed))
