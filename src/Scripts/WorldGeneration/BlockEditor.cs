@@ -1254,7 +1254,7 @@ public class BlockEditor : Script
                 if (animal != null)
                 {
                     int damage = AnimalCombatRules.Damage(weapon);
-                    if (animal.TryTakeDamage(damage, out int remaining))
+                    if (animal.TryTakeDamage(damage, origin, out int remaining))
                     {
                         PickFeedback = remaining == 0
                             ? $"{animal.Species} defeated"
