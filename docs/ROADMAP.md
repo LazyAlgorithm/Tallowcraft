@@ -10,6 +10,16 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [ ] Verify transparent sorting, in-game material import, alpha on Linux/Windows, glass collision/picking, stair/glass boundaries and late-join state on the actual Tallow engine.
 - [ ] Add transparent slab/pane shapes after the cube-only implementation is validated. Distant LOD still intentionally approximates new building materials.
 
+## Peaceful mobs and test-gun combat — 20 November 2026
+
+- [x] Detail sheep and pig voxel-model prefabs with wool, ears, eye highlights, snout/nostrils, tails and hooves, without adding new textures or changing the approved original block atlas.
+- [x] Raise animal CharacterController stepHeight and bounded NavigationSurface MaxStep to 1.05 metres so the AI can traverse full-height block steps.
+- [x] Add a server-only hitscan on the existing Z/X test guns: the Spark pistol deals 18 damage and the Pulse repeater deals 9. The closest world obstruction determines whether an animal can be hit.
+- [x] Give sheep 40 HP and pigs 48 HP; replicate health/damage/death, show a short hit flash and target feedback, and free habitat population slots when animals die.
+- [x] Add pure C# regression checks for weapon values, damage validation, lethal damage, and step-height policy.
+- [ ] **Runtime gate:** confirm that Jolt raycasts hit the animal CharacterControllers, that clients see health flashes and deaths, and that a one-metre wall/step is traversable with both NavigationAgent and CharacterController. These were not executed in the editor here.
+- [ ] Grow habitat/navmesh streaming beyond the initial small server-owned area, including rebakes for edited voxel geometry. Improve animation and species-specific roaming later.
+
 ## Peaceful animals — prototype habitat (20 November 2026)
 
 - [x] Add two simple voxel-style animal prefabs (sheep and pigs) and a shared `.tbt` grazing/wandering behavior tree.
