@@ -67,7 +67,8 @@ public static class HybridChunkMesher
             while (mx >= 2) { bx++; mx -= 2; }
             while (my >= 2) { by++; my -= 2; }
             while (mz >= 2) { bz++; mz -= 2; }
-            return At(bx, by, bz).ContainsMicro(mx, my, mz);
+            BlockState at = At(bx, by, bz);
+            return !AdditionalBlockMesher.IsGlass(at.Type) && at.ContainsMicro(mx, my, mz);
         }
 
         void Quad(int bx, int by, int bz, int faceId, float planeInset,
@@ -131,7 +132,7 @@ public static class HybridChunkMesher
             for (int x = 0; x < ChunkGenerator.Size; x++)
             {
                 BlockState state = At(x, y, z);
-                if (state.IsAir) continue;
+                if (state.IsAir || AdditionalBlockMesher.IsAdditional(state.Type)) continue;
                 bool cube = state.Shape == BlockShape.Cube;
 
                 for (int faceId = 0; faceId < ChunkFace.All.Length; faceId++)
@@ -141,7 +142,8 @@ public static class HybridChunkMesher
                     // Adjacent cubes cover the entire outside face.
                     // An ordinary cube against air exposes one whole face,
                     // without checking any individual half-cells.
-                    if (cube && adjacent.Shape == BlockShape.Cube && !adjacent.IsAir)
+                    if (cube && adjacent.Shape == BlockShape.Cube && !adjacent.IsAir &&
+                        !AdditionalBlockMesher.IsGlass(adjacent.Type))
                         continue;
                     int tile = BlockTextureAtlas.TileFor(state, faceId);
                     if (cube && adjacent.IsAir)
