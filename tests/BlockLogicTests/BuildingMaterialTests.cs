@@ -37,6 +37,16 @@ internal static class BuildingMaterialTests
                 "Each new block uses its own approved atlas slot");
         }
 
+        check(BlockState.Create(BlockInventory.Glass).Type == BlockInventory.Glass &&
+            BlockState.IsValid(BlockState.Create(BlockInventory.Glass).Packed) &&
+            BlockState.Create(BlockInventory.Glass, BlockShape.Stair).IsAir,
+            "Glass remains a cube-only block until partial transparent meshing is validated");
+        check(inventory.TryCollect(7, 4) && inventory.TryCraft(11) &&
+            inventory.Count(BlockInventory.Glass) == 4,
+            "Craft transparent glass from stone and coal");
+        check(inventory.TryCraft(13) &&
+            inventory.Count(BlockInventory.Sandstone) == 4,
+            "Craft sandstone without changing the original block IDs");
         string saved = inventory.Serialize();
         var restored = new BlockInventory();
         check(restored.TryLoad(saved) && restored.Serialize() == saved,
@@ -47,7 +57,7 @@ internal static class BuildingMaterialTests
         var old = new BlockInventory();
         old.FillStarter();
         string[] segments = old.Serialize().Split('|');
-        string legacy = segments[0] + "|" + segments[1] + "|" +
+        string legacy = "4|" + segments[1] + "|" +
             string.Join(",", segments[2].Split(',').Take(11));
         var migrated = new BlockInventory();
         check(migrated.TryLoad(legacy) && migrated.Count(3) == 64 &&
@@ -61,7 +71,7 @@ internal static class BuildingMaterialTests
                 out int slot, out bool changed) && changed &&
             creative.Slot(slot).Type == BlockInventory.DarkTimber,
             "Creative pick-block must support all new materials");
-        Console.WriteLine("PASS: four new building blocks, recipes, atlas and legacy save compatibility");
+        Console.WriteLine("PASS: building blocks, glass, recipes and legacy save compatibility");
     }
 }
 
