@@ -2,6 +2,14 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Transparent glass and companion building materials — 20 November 2026
+
+- [x] Add four cube-only block types (IDs 16–19): glass, red bricks, sandstone and slate; preserve existing block IDs and the original pixel atlas.
+- [x] Create matching nearest-neighbor, noncompressed pixel-art textures, separate alpha-blended glass and opaque masonry render layers, and game-local child MeshColliders for close chunks.
+- [x] Extend crafting, 72 inventory/chest/hotbar image slots, mining drops and inventory v5 migration (v3/v4 accepted).
+- [ ] Verify transparent sorting, in-game material import, alpha on Linux/Windows, glass collision/picking, stair/glass boundaries and late-join state on the actual Tallow engine.
+- [ ] Add transparent slab/pane shapes after the cube-only implementation is validated. Distant LOD still intentionally approximates new building materials.
+
 ## Peaceful animals — prototype habitat (20 November 2026)
 
 - [x] Add two simple voxel-style animal prefabs (sheep and pigs) and a shared `.tbt` grazing/wandering behavior tree.
