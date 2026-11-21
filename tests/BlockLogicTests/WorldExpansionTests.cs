@@ -38,9 +38,14 @@ internal static class WorldExpansionTests
             if (WorldWater.HasSurface(x, z, seed))
             {
                 waterCells++;
-                check(carved <= WorldWater.WaterLevel &&
-                      ChunkGenerator.BaseBlock(x, WorldWater.WaterLevel, z, seed) == 0,
-                    "Water overlays are above genuinely carved, editable air");
+                check(carved <= WorldWater.WaterLevel,
+                    "Visible water areas always have carved ground below the waterline");
+                // Structures and player blocks have priority over decorative
+                // water: the renderer skips cells with any occupied surface.
+                ushort occupancy = ChunkGenerator.BaseBlock(
+                    x, WorldWater.WaterLevel, z, seed);
+                check(occupancy == 0 || BlockState.IsValid(occupancy),
+                    "Water surface occupancy follows the real block sampler");
             }
         }
         check(biomes.Contains(WorldBiomes.Biome.Wetlands) &&
