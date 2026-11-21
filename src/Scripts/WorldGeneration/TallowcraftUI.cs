@@ -19,7 +19,8 @@ public sealed class TallowcraftUI : Script
         "", "grass", "dirt", "stone", "log", "forge", "planks",
         "coal", "iron_ore", "leaves", "iron_ingot", "chest",
         "cobblestone", "stone_bricks", "mossy_stone", "dark_timber",
-        "glass", "red_bricks", "sandstone", "slate"
+        "glass", "red_bricks", "sandstone", "slate",
+        "wool", "raw_pork"
     };
 
     private BlockEditor? _owner;
