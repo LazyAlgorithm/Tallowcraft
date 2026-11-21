@@ -247,7 +247,21 @@ public sealed class WorldDrop : Script
         GameObject child = _visualObject.Value;
         if (_renderType != ItemType)
         {
-            if (BlockDropMesh.IsCube(ItemType))
+            if (ItemType is BlockInventory.Wool or BlockInventory.RawPork)
+            {
+                // Soft voxel-style resource pickups need no extra material
+                // atlas or individual Rigidbody. The same small actor is
+                // server-owned and saved exactly like mined block drops.
+                _visualRenderer.Mesh = "builtin:cube";
+                _visualRenderer.Material = "";
+                _visualRenderer.Color = ItemType == BlockInventory.Wool ?
+                    new Color(.91f, .87f, .77f, 1f) :
+                    new Color(.84f, .43f, .43f, 1f);
+                child.Transform.LocalScale = ItemType == BlockInventory.Wool ?
+                    new Vector3(.25f, .22f, .24f) :
+                    new Vector3(.30f, .18f, .23f);
+            }
+            else if (BlockDropMesh.IsCube(ItemType))
             {
                 BlockDropMesh mesh = BlockDropMesh.ForType(ItemType);
                 _visualRenderer.Material = ItemType == BlockInventory.Glass
