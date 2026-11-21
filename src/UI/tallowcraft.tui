@@ -497,6 +497,7 @@
         <panel class="tabs">
           <button id="tab_craft" class="tab" onclick="OnTab">Crafting</button>
           <button id="tab_forge" class="tab" onclick="OnTab">Forge</button>
+          <button id="tab_creative" class="tab" onclick="OnTab">Creative</button>
           <button id="close_menu" class="close" onclick="OnClose">X</button>
         </panel>
       </panel>
@@ -570,6 +571,44 @@
               <panel class="tool-row"><text id="tool_info_5">Iron axe</text><button id="tool_equip_5" onclick="OnEquip">Equip</button><button id="tool_make_5" onclick="OnTool">Craft</button></panel>
               <panel class="tool-row"><text id="tool_info_6">Iron shovel</text><button id="tool_equip_6" onclick="OnEquip">Equip</button><button id="tool_make_6" onclick="OnTool">Craft</button></panel>
             </panel>
+          </panel>
+          <panel id="page_creative" class="detail creative-page">
+            <text class="section-title">CREATIVE BLOCK CATALOG</text>
+            <text class="subtle">Choose any placeable block for your backpack or hotbar.</text>
+            <panel class="creative-toolbar">
+              <button id="creative-amount-button" class="secondary creative-amount-button" onclick="OnCreativeAmount">Add 64 per click</button>
+            </panel>
+            <panel class="creative-grid">
+            <panel class="creative-row">
+              <button id="creative_1" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/grass.png" /><text class="creative-label">Grass</text><text id="creative-count-1" class="creative-owned">0 owned</text></button>
+              <button id="creative_2" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/dirt.png" /><text class="creative-label">Dirt</text><text id="creative-count-2" class="creative-owned">0 owned</text></button>
+              <button id="creative_3" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/stone.png" /><text class="creative-label">Stone</text><text id="creative-count-3" class="creative-owned">0 owned</text></button>
+              <button id="creative_4" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/log.png" /><text class="creative-label">Log</text><text id="creative-count-4" class="creative-owned">0 owned</text></button>
+            </panel>
+            <panel class="creative-row">
+              <button id="creative_5" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/forge.png" /><text class="creative-label">Forge</text><text id="creative-count-5" class="creative-owned">0 owned</text></button>
+              <button id="creative_6" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/planks.png" /><text class="creative-label">Planks</text><text id="creative-count-6" class="creative-owned">0 owned</text></button>
+              <button id="creative_7" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/coal.png" /><text class="creative-label">Coal</text><text id="creative-count-7" class="creative-owned">0 owned</text></button>
+              <button id="creative_8" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/iron_ore.png" /><text class="creative-label">Iron ore</text><text id="creative-count-8" class="creative-owned">0 owned</text></button>
+            </panel>
+            <panel class="creative-row">
+              <button id="creative_9" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/leaves.png" /><text class="creative-label">Leaves</text><text id="creative-count-9" class="creative-owned">0 owned</text></button>
+              <button id="creative_11" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/chest_item.png" /><text class="creative-label">Chest</text><text id="creative-count-11" class="creative-owned">0 owned</text></button>
+              <button id="creative_12" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/cobblestone.png" /><text class="creative-label">Cobble</text><text id="creative-count-12" class="creative-owned">0 owned</text></button>
+              <button id="creative_13" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/stone_bricks.png" /><text class="creative-label">Stone brick</text><text id="creative-count-13" class="creative-owned">0 owned</text></button>
+            </panel>
+            <panel class="creative-row">
+              <button id="creative_14" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/mossy_stone.png" /><text class="creative-label">Mossy stone</text><text id="creative-count-14" class="creative-owned">0 owned</text></button>
+              <button id="creative_15" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/dark_timber.png" /><text class="creative-label">Dark timber</text><text id="creative-count-15" class="creative-owned">0 owned</text></button>
+              <button id="creative_16" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/glass.png" /><text class="creative-label">Glass</text><text id="creative-count-16" class="creative-owned">0 owned</text></button>
+              <button id="creative_17" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/red_bricks.png" /><text class="creative-label">Red bricks</text><text id="creative-count-17" class="creative-owned">0 owned</text></button>
+            </panel>
+            <panel class="creative-row">
+              <button id="creative_18" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/sandstone.png" /><text class="creative-label">Sandstone</text><text id="creative-count-18" class="creative-owned">0 owned</text></button>
+              <button id="creative_19" class="creative-item" onclick="OnCreativeBlock"><image class="creative-image" src="Textures/UI/slate.png" /><text class="creative-label">Slate</text><text id="creative-count-19" class="creative-owned">0 owned</text></button>
+            </panel>
+            </panel>
+            <text id="creative-status" class="creative-status">Choose any block above to add it to your inventory.</text>
           </panel>
           <panel id="page_chest" class="detail">
             <text class="section-title">CHEST CONTENTS</text>
