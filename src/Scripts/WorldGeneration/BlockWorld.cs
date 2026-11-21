@@ -1077,6 +1077,7 @@ public class BlockWorld : Script
 
             if (pair.Value.Object.IsValid)
             {
+                ForgetAdditionalObjects(pair.Value);
                 pair.Value.Renderer.ClearMesh();
                 pair.Value.Object.Destroy();
             }
@@ -1227,7 +1228,9 @@ public class BlockWorld : Script
             ChunkMesh data = job.Task.Result;
             RecordStreamLatency(job);
 
-            if (data.Triangles.Length == 0)
+            if (data.Triangles.Length == 0 &&
+                data.Additional.Triangles.Length == 0 &&
+                data.Glass.Triangles.Length == 0)
             {
                 // No exposed faces means no visible mesh and no useful mesh
                 // collider. Remember the empty generation to avoid repeating
@@ -1237,6 +1240,7 @@ public class BlockWorld : Script
                 {
                     if (old.Object.IsValid)
                     {
+                        ForgetAdditionalObjects(old);
                         old.Renderer.ClearMesh();
                         old.Object.Destroy();
                     }
@@ -1258,23 +1262,28 @@ public class BlockWorld : Script
                 live.Renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
                 RefreshChunkDecorations(pair.Key, live, data.Blocks);
                 RecordChunkProfile(0, meshStart);
-                if (_colliders.Contains(pair.Key) &&
-                    live.Object.GetComponent<MeshCollider>() is { } collider &&
+                bool needsCollision = ShouldHaveCollider(pair.Key, cx, cy, cz);
+                SetChunkCollider(live.Object, needsCollision && data.Triangles.Length > 0);
+                if (needsCollision && live.Object.GetComponent<MeshCollider>() is { } collider &&
                     collider.IsValid)
-                {
-                    long refreshStart = ProfileStart();
                     collider.Refresh();
-                    RecordChunkProfile(2, refreshStart);
-                }
+                SyncAdditionalLayer(pair.Key, live, data.Additional, false, needsCollision);
+                SyncAdditionalLayer(pair.Key, live, data.Glass, true, needsCollision);
+                if (needsCollision) _colliders.Add(pair.Key);
+                else _colliders.Remove(pair.Key);
 
                 live.Object.Entity.Set(new ChunkInfo
                 {
                     X = pair.Key.X, Y = pair.Key.Y, Z = pair.Key.Z,
-                    FaceCount = data.Triangles.Length / 6
+                    FaceCount = (data.Triangles.Length +
+                        data.Additional.Triangles.Length + data.Glass.Triangles.Length) / 6
                 });
                 live.Blocks = ShouldHaveCollider(pair.Key, cx, cy, cz) ? data.Blocks : null;
-                live.VertexCount = data.Vertices.Length;
-                live.TriangleCount = data.Triangles.Length / 3;
+                live.VertexCount = data.Vertices.Length + data.Additional.Vertices.Length +
+                    data.Glass.Vertices.Length;
+                live.TriangleCount = (data.Triangles.Length + data.Additional.Triangles.Length +
+                    data.Glass.Triangles.Length) / 3;
+                live.OpaqueTriangleCount = data.Triangles.Length / 3;
                 live.Dirty = false;
                 continue;
             }
@@ -1299,29 +1308,102 @@ public class BlockWorld : Script
             bool collision = ShouldHaveCollider(pair.Key, cx, cy, cz);
             if (collision)
             {
-                long colliderStart = ProfileStart();
-                obj.AddComponent<MeshCollider>();
-                RecordChunkProfile(1, colliderStart);
+                if (data.Triangles.Length > 0)
+                {
+                    long colliderStart = ProfileStart();
+                    obj.AddComponent<MeshCollider>();
+                    RecordChunkProfile(1, colliderStart);
+                }
                 _colliders.Add(pair.Key);
             }
 
             obj.Entity.Set(new ChunkInfo
             {
                 X = pair.Key.X, Y = pair.Key.Y, Z = pair.Key.Z,
-                FaceCount = data.Triangles.Length / 6
+                FaceCount = (data.Triangles.Length +
+                    data.Additional.Triangles.Length + data.Glass.Triangles.Length) / 6
             });
             _chunkObjects[obj.Id] = pair.Key;
             var newChunk=new LiveChunk(obj,renderer,
                 collision ? data.Blocks : null);
-            newChunk.VertexCount = data.Vertices.Length;
-            newChunk.TriangleCount = data.Triangles.Length / 3;
+            newChunk.VertexCount = data.Vertices.Length +
+                data.Additional.Vertices.Length + data.Glass.Vertices.Length;
+            newChunk.TriangleCount = (data.Triangles.Length +
+                data.Additional.Triangles.Length + data.Glass.Triangles.Length) / 3;
+            newChunk.OpaqueTriangleCount = data.Triangles.Length / 3;
             _loaded.Add(pair.Key,newChunk);
+            SyncAdditionalLayer(pair.Key, newChunk, data.Additional, false, collision);
+            SyncAdditionalLayer(pair.Key, newChunk, data.Glass, true, collision);
             RefreshChunkDecorations(pair.Key,newChunk,data.Blocks);
         }
 
         foreach (ChunkKey key in _scratch)
             _jobs.Remove(key);
         return processed;
+    }
+
+    private void SetChunkCollider(GameObject? target, bool wanted)
+    {
+        if (target is not { IsValid: true } obj) return;
+        if (obj.GetComponent<MeshCollider>() is { } collider && collider.IsValid)
+        {
+            if (!wanted) obj.RemoveComponent<MeshCollider>();
+        }
+        else if (wanted)
+            obj.AddComponent<MeshCollider>();
+    }
+
+    private void SyncAdditionalLayer(ChunkKey key, LiveChunk chunk,
+        ChunkMeshLayer data, bool glass, bool collision)
+    {
+        GameObject? current = glass ? chunk.GlassObject : chunk.AdditionalObject;
+        if (data.Triangles.Length == 0)
+        {
+            if (current is { IsValid: true } old)
+            {
+                _chunkObjects.Remove(old.Id);
+                old.Destroy();
+            }
+            if (glass) { chunk.GlassObject = null; chunk.GlassRenderer = default; }
+            else { chunk.AdditionalObject = null; chunk.AdditionalRenderer = default; }
+            return;
+        }
+
+        MeshRenderer renderer;
+        if (current is not { IsValid: true })
+        {
+            GameObject child = Scene.CreateGameObject(glass ? "Chunk glass" : "Chunk masonry");
+            child.Transient = true;
+            if (!child.SetParent(chunk.Object, keepWorldPose: false))
+            {
+                child.Destroy();
+                return;
+            }
+            renderer = child.AddComponent<MeshRenderer>();
+            renderer.FlatShading = true;
+            renderer.CastShadows = !glass && chunk.Renderer.CastShadows;
+            renderer.BackFaceCulling = !glass;
+            renderer.Material = glass ? "Materials/glass.tmat" :
+                "Materials/extra_blocks.tmat";
+            _chunkObjects[child.Id] = key;
+            if (glass) { chunk.GlassObject = child; chunk.GlassRenderer = renderer; }
+            else { chunk.AdditionalObject = child; chunk.AdditionalRenderer = renderer; }
+            current = child;
+        }
+        else
+            renderer = glass ? chunk.GlassRenderer : chunk.AdditionalRenderer;
+
+        renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
+        SetChunkCollider(current, collision);
+        if (collision && current is { IsValid: true } obj &&
+            obj.GetComponent<MeshCollider>() is { } collider && collider.IsValid)
+            collider.Refresh();
+    }
+
+    private void ForgetAdditionalObjects(LiveChunk chunk)
+    {
+        if (chunk.GlassObject is { } glass) _chunkObjects.Remove(glass.Id);
+        if (chunk.AdditionalObject is { } extra) _chunkObjects.Remove(extra.Id);
     }
 
     private void UpdateColliders(int cx, int cy, int cz)
@@ -1344,20 +1426,14 @@ public class BlockWorld : Script
             }
 
             bool has = _colliders.Contains(key);
-            if (!has && ShouldHaveCollider(key, cx, cy, cz))
-            {
-                long colliderStart = ProfileStart();
-                obj.AddComponent<MeshCollider>();
-                RecordChunkProfile(1, colliderStart);
-                _colliders.Add(key);
-            }
-            else if (has && !ShouldHaveCollider(key, cx, cy, cz, 1))
-            {
-                long removeStart = ProfileStart();
-                obj.RemoveComponent<MeshCollider>();
-                RecordChunkProfile(3, removeStart);
-                _colliders.Remove(key);
-            }
+            bool wants = ShouldHaveCollider(key, cx, cy, cz,
+                has ? 1 : 0);
+            if (has == wants) continue;
+            SetChunkCollider(obj, wants && pair.Value.OpaqueTriangleCount > 0);
+            SetChunkCollider(pair.Value.AdditionalObject, wants);
+            SetChunkCollider(pair.Value.GlassObject, wants);
+            if (wants) _colliders.Add(key);
+            else _colliders.Remove(key);
         }
     }
 
@@ -2360,6 +2436,7 @@ public class BlockWorld : Script
         {
             if (!chunk.Object.IsValid)
                 continue;
+            ForgetAdditionalObjects(chunk);
             chunk.Renderer.ClearMesh();
             chunk.Object.Destroy();
         }
