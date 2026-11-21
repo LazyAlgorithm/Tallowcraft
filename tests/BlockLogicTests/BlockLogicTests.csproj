@@ -29,6 +29,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/AnimalCombatRules.cs" Link="AnimalCombatRules.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/AnimalAnimationRules.cs" Link="AnimalAnimationRules.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WildlifeRules.cs" Link="WildlifeRules.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WildlifeRegionRules.cs" Link="WildlifeRegionRules.cs" />
     <Compile Include="../../src/Scripts/CameraPresentationMath.cs" Link="CameraPresentationMath.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockDamageMesh.cs" Link="BlockDamageMesh.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/PlayerTools.cs" Link="PlayerTools.cs" />
