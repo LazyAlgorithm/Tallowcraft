@@ -40,6 +40,12 @@ public sealed class TallowcraftUI : Script
     private int _source = -1;
     private bool _moveHalf;
     private string _page = "craft";
+    private int _creativeQuantity = BlockInventory.StackLimit;
+    private static readonly int[] CreativeTypes =
+    {
+        1, 2, 3, 4, 5, 6, 7, 8, 9,
+        11, 12, 13, 14, 15, 16, 17, 18, 19
+    };
     private float _refreshClock;
     private const int VisibleRecipes = 4;
     private static readonly int[] RecipeIds = { 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
@@ -581,15 +587,27 @@ public sealed class TallowcraftUI : Script
 
     private void RefreshPage()
     {
-        bool storage = _owner?.ChestOpen == true;
-        Text("inventory-title", storage ? "Chest inventory" : "Inventory");
+        if (_owner is not { } editor) return;
+        bool storage = editor.ChestOpen;
+        if (_page == "creative" && (!editor.CreativeMode || storage))
+            _page = storage ? "chest" : "craft";
+        Text("inventory-title", storage ? "Chest inventory" :
+            _page == "creative" ? "Creative inventory" : "Inventory");
         Visible("tab_craft", !storage);
         Visible("tab_forge", !storage);
+        Visible("tab_creative", !storage && editor.CreativeMode);
         UpdateRecipeScroll();
-        Visible("page_craft", _page == "craft");
-        Visible("page_forge", _page == "forge");
-        Visible("page_chest", _page == "chest");
-        if (_owner is not { } editor) return;
+        Visible("page_craft", !storage && _page == "craft");
+        Visible("page_forge", !storage && _page == "forge");
+        Visible("page_creative", !storage && editor.CreativeMode && _page == "creative");
+        Visible("page_chest", storage && _page == "chest");
+        Text("creative-amount-button",
+            _creativeQuantity == BlockInventory.StackLimit ?
+                "Add 64 per click" : "Add 1 per click");
+        Text("creative-status", editor.CreativeStatus.Length > 0 ?
+            editor.CreativeStatus :
+            "Choose any block below. Click to add it to your inventory.");
+        UpdateCreativeCounts(editor.UiInventory);
         Text("forge-status", editor.UiNearForge ?
             "Forge within reach - smelting available" :
             "Place a forge and stand within 3.5m to smelt.");
@@ -615,6 +633,8 @@ public sealed class TallowcraftUI : Script
                 PlayerTools.MaxDurability(tool));
         Text("menu-hint", _page == "chest" ?
             "Pick a source and destination. Empty a chest before mining." :
+            _page == "creative" ?
+            "Choose a block to add. Toggle between 1 and 64 per click." :
             "Click source then destination. Toggle Move half to split.");
         Text("inventory-total",
             $"36 slots / {editor.UiInventory.Count(10)} iron ingots");
@@ -921,11 +941,46 @@ public sealed class TallowcraftUI : Script
         UpdateSelection();
     }
 
+    /// <summary>Purely visual catalog selection; the owning player's
+    /// server-validated RPC performs any actual inventory mutation.</summary>
+    public void OnCreativeBlock(string id)
+    {
+        if (_owner is not { } editor || !editor.IsInventoryVisible ||
+            !editor.CreativeMode || editor.ChestOpen || _page != "creative" ||
+            !id.StartsWith("creative_", StringComparison.Ordinal) ||
+            !int.TryParse(id.AsSpan("creative_".Length), out int type) ||
+            !BlockInventory.IsCreativeBlock(type))
+            return;
+        editor.UiGiveCreativeBlock(type, _creativeQuantity);
+        Audio.PlayOneShot2D("Audio/tap.wav", .32f);
+    }
+
+    public void OnCreativeAmount()
+    {
+        if (_owner is not { IsInventoryVisible: true, CreativeMode: true } ||
+            _page != "creative")
+            return;
+        _creativeQuantity = _creativeQuantity == BlockInventory.StackLimit ?
+            1 : BlockInventory.StackLimit;
+        RefreshPage();
+    }
+
+    private void UpdateCreativeCounts(BlockInventory inventory)
+    {
+        foreach (int type in CreativeTypes)
+            Text("creative-count-" + type, inventory.Count(type) + " owned");
+    }
+
     public void OnTab(string id)
     {
-        if (_owner is not { } editor) return;
-        if (editor.ChestOpen) return;
-        _page = id == "tab_forge" ? "forge" : "craft";
+        if (_owner is not { } editor || editor.ChestOpen) return;
+        if (id == "tab_creative")
+        {
+            if (!editor.CreativeMode) return;
+            _page = "creative";
+        }
+        else
+            _page = id == "tab_forge" ? "forge" : "craft";
         _source = -1;
         Audio.PlayOneShot2D("Audio/tap.wav", .32f);
         RefreshPage();
