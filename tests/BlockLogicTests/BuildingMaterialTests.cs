@@ -47,6 +47,24 @@ internal static class BuildingMaterialTests
         check(inventory.TryCraft(13) &&
             inventory.Count(BlockInventory.Sandstone) == 4,
             "Craft sandstone without changing the original block IDs");
+        // New blocks live on independent render layers: glass cannot be
+        // silently mixed into an opaque atlas mesh with no alpha blending.
+        var blocks = new ushort[ChunkGenerator.Size * ChunkGenerator.Size * ChunkGenerator.Size];
+        var sceneKey = new ChunkKey(0, 2, 0); // well above natural terrain for this test
+        blocks[ChunkGenerator.Index(1, 8, 1)] = BlockState.Create(BlockInventory.Glass).Packed;
+        blocks[ChunkGenerator.Index(4, 8, 4)] = BlockState.Create(BlockInventory.RedBricks).Packed;
+        var layers = new ChunkMesh(Array.Empty<Vector3>(), Array.Empty<int>(),
+            Array.Empty<Vector3>(), Array.Empty<Vector2>(), blocks);
+        AdditionalBlockMesher.Populate(layers, sceneKey, 42, blocks,
+            new System.Collections.Generic.Dictionary<BlockPosition, ushort>(),
+            System.Threading.CancellationToken.None);
+        check(layers.Glass.Triangles.Length == 36 &&
+            layers.Additional.Triangles.Length == 36,
+            "Each isolated transparent/opaque new cube needs six visible faces");
+        check(layers.Glass.Vertices.Length == 24 &&
+            layers.Additional.Vertices.Length == 24,
+            "Glass and masonry geometry is batched separately in one chunk");
+
         string saved = inventory.Serialize();
         var restored = new BlockInventory();
         check(restored.TryLoad(saved) && restored.Serialize() == saved,
