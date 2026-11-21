@@ -2,6 +2,12 @@
 
 A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# gameplay, Jolt physics, ECS and networking APIs.
 
+## Peaceful animal animation (prototype)
+
+Sheep and pigs now animate their voxel-model pieces locally as they move: alternate diagonal legs and hooves, subtle body bobbing and tail motion. When the server detects an idle animal, it occasionally sets a synchronized eating state; the muzzle dips toward the grass and chews for a few seconds, then returns upright. The existing behavior tree keeps its navigation/wait loop, with longer idle pauses for grazing. Lethal gun damage stops navigation, briefly flashes the animal, and rolls the model onto its side before replicated despawn. The root CharacterController is never posed, so art doesn't affect collisions or pathfinding. Sheep wool tufts have been reduced in size.
+
+These animations are code-driven in `PeacefulAnimal.cs` with pure math in `AnimalAnimationRules.cs`. They are unverified in a live editor build; multiplayer motion smoothing and the falling pose should be checked in Play mode.
+
 ## Peaceful mob gunplay (prototype)
 
 Two test guns can hurt peaceful mobs in Creative mode. Press **Z** for the Spark pistol (18 damage) or **X** for the Pulse repeater (9 damage); fire with **left mouse button**. Shoot the first unobstructed animal in your crosshair. Sheep have 40 HP; pigs have 48 HP. Server-only raycasts apply damage, update the hit-feedback HUD, briefly flash the animal red, and replicate its death. The bounded habitat refills freed slots. Animal CharacterControllers and the habitat NavMesh have 1.05-metre step settings to allow climbing one full voxel block.
