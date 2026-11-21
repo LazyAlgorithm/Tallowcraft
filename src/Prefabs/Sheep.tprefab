@@ -7,7 +7,7 @@ field shape Capsule
 field radius 0.35
 field height 1.2
 field center 0 0 0
-field stepHeight 0.6
+field stepHeight 1.05
 field maxSlope 48
 field mass 30
 field softCharacterContact 1
@@ -21,6 +21,10 @@ component Tallow.BehaviorTreeRunner enabled 1
 field tree "AI/PeacefulGrazer.tbt"
 field tickInterval 0.35
 field restartWhenDone 1
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "WorldGeneration.PeacefulAnimal"
+field fieldOverrides "Species\tSheep\nMaxHealth\t40\nHealth\t40\n"
+
 object 2 parent 1 active 1 name "Body"
 transform 0 0.05 -0.05 0 0 0 1 1.25 0.75 0.82
 component Tallow.MeshRenderer enabled 1
@@ -90,6 +94,158 @@ transform 0.16 0.29 .898 0 0 0 1 .072 .092 .07
 component Tallow.MeshRenderer enabled 1
 field mesh "builtin:cube"
 field color 0.09 0.11 0.14 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 11 parent 1 active 1 name "Wool tuft top left"
+transform -0.36 0.47 -0.33 0 0 0 1 0.48 0.18 0.42
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.89 0.87 0.77 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 12 parent 1 active 1 name "Wool tuft top right"
+transform 0.36 0.47 -0.33 0 0 0 1 0.48 0.18 0.42
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.84 0.83 0.74 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 13 parent 1 active 1 name "Wool tuft top back"
+transform 0 0.46 -0.56 0 0 0 1 0.56 0.20 0.36
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.90 0.87 0.78 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 14 parent 1 active 1 name "Wool tuft top front"
+transform 0 0.45 0.27 0 0 0 1 0.60 0.22 0.32
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.89 0.85 0.76 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 15 parent 1 active 1 name "Wool tuft left back"
+transform -0.62 0.10 -0.35 0 0 0 1 0.16 0.42 0.40
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.86 0.83 0.74 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 16 parent 1 active 1 name "Wool tuft right back"
+transform 0.62 0.10 -0.35 0 0 0 1 0.16 0.42 0.40
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.86 0.83 0.74 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 17 parent 1 active 1 name "Wool tuft left front"
+transform -0.62 0.09 0.16 0 0 0 1 0.16 0.40 0.33
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.89 0.86 0.78 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 18 parent 1 active 1 name "Wool tuft right front"
+transform 0.62 0.09 0.16 0 0 0 1 0.16 0.40 0.33
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.89 0.86 0.78 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 19 parent 1 active 1 name "Wool fringe"
+transform 0 0.56 0.59 0 0 0 1 0.60 0.18 0.36
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.91 0.89 0.80 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 20 parent 1 active 1 name "Left ear"
+transform -0.43 0.35 0.55 0 0 0 1 0.32 0.17 0.23
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.55 0.48 0.44 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 21 parent 1 active 1 name "Right ear"
+transform 0.43 0.35 0.55 0 0 0 1 0.32 0.17 0.23
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.55 0.48 0.44 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 22 parent 1 active 1 name "Left inner ear"
+transform -0.44 0.36 0.675 0 0 0 1 0.22 0.10 0.025
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.68 0.53 0.51 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 23 parent 1 active 1 name "Right inner ear"
+transform 0.44 0.36 0.675 0 0 0 1 0.22 0.10 0.025
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.68 0.53 0.51 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 24 parent 1 active 1 name "Tail"
+transform 0 0.12 -0.61 0 0 0 1 0.30 0.32 0.26
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.88 0.87 0.79 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 25 parent 1 active 1 name "Left eye shine"
+transform -0.175 0.32 0.940 0 0 0 1 0.026 0.030 0.018
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.96 0.96 0.89 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 26 parent 1 active 1 name "Right eye shine"
+transform 0.145 0.32 0.940 0 0 0 1 0.026 0.030 0.018
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.96 0.96 0.89 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 27 parent 1 active 1 name "Mouth"
+transform 0 -0.083 1.013 0 0 0 1 0.15 0.032 0.019
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.26 0.22 0.21 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 28 parent 1 active 1 name "Front left hoof"
+transform -0.39 -0.708 0.32 0 0 0 1 0.24 0.09 0.24
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.23 0.23 0.23 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 29 parent 1 active 1 name "Front right hoof"
+transform 0.39 -0.708 0.32 0 0 0 1 0.24 0.09 0.24
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.23 0.23 0.23 1
 field roughness 0.94
 field flatShading 1
 field castShadows 1
