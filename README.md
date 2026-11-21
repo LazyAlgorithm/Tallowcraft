@@ -2,6 +2,12 @@
 
 A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# gameplay, Jolt physics, ECS and networking APIs.
 
+## Peaceful mob gunplay (prototype)
+
+Two test guns can hurt peaceful mobs in Creative mode. Press **Z** for the Spark pistol (18 damage) or **X** for the Pulse repeater (9 damage); fire with **left mouse button**. Shoot the first unobstructed animal in your crosshair. Sheep have 40 HP; pigs have 48 HP. Server-only raycasts apply damage, update the hit-feedback HUD, briefly flash the animal red, and replicate its death. The bounded habitat refills freed slots. Animal CharacterControllers and the habitat NavMesh have 1.05-metre step settings to allow climbing one full voxel block.
+
+Animal prefabs now include additional eyes, ears, snouts, wool, hooves, and tails. Model and hit feedback are still a first pass; verify collision, navmesh baking, and multiplayer in a real Tallow Play-mode session before treating this feature as finished.
+
 ## Peaceful animals (prototype)
 
 The main scene includes a small, server-controlled sheep/pig habitat using Tallow's built-in NavigationAgent, BehaviorTreeRunner and CharacterController. A bounded navmesh is created once the immediate terrain meshes exist, and animals use a shared wander/wait behavior tree. This is a first Play-mode integration pass, not a world-streamed mob system; movement/spawn/network behavior still need runtime verification. No engine changes are required.
