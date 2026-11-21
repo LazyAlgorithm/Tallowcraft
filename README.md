@@ -6,6 +6,10 @@ A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# ga
 
 The main scene includes a small, server-controlled sheep/pig habitat using Tallow's built-in NavigationAgent, BehaviorTreeRunner and CharacterController. A bounded navmesh is created once the immediate terrain meshes exist, and animals use a shared wander/wait behavior tree. This is a first Play-mode integration pass, not a world-streamed mob system; movement/spawn/network behavior still need runtime verification. No engine changes are required.
 
+## Additional building blocks (prototype)
+
+Four new full-cube materials are available in crafting and storage: **glass**, **red bricks**, **sandstone**, and **slate**. Recipes respectively use 2 stone + 1 coal, 4 dirt + 1 coal, 4 stone, and 4 stone + 1 coal (four blocks per craft). The old 4x4 pixel-art atlas is untouched. New masonry is drawn from a separate nearest-filtered 2x2 companion atlas; glass uses a separate genuinely alpha-blended 32px tile, with its own locally streamed collision mesh. Legacy inventory v3/v4 saves are readable; new saves are v5. This feature requires Linux/Windows play-mode testing for rendering, collisions and multiplayer.
+
 ## Running
 
 Requires the current Tallow **feature/csharp-gameplay** engine branch (including the raycast-normal and MeshCollider.Refresh physics update). The local engine path in project.tallow is machine-specific; change it if you clone this project elsewhere.
