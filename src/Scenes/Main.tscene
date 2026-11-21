@@ -128,3 +128,9 @@ component Tallow.UIDocument enabled 1
 field referenceWidth 1200
 field referenceHeight 900
 field document "UI/connection.tui"
+
+object 30 parent 0 active 1 name "Peaceful Mob Habitat"
+transform 0 0 0 0 0 0 1 1 1 1
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "WorldGeneration.PeacefulMobHabitat"
+field fieldOverrides "MaxAnimals	6\nRoamRadius	13\n"

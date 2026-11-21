@@ -1,0 +1,95 @@
+object 1 parent 0 active 1 name "Sheep"
+transform 0 1 0 0 0 0 1 1 1 1
+component Tallow.NetworkIdentity enabled 1
+field automatic 1
+component Tallow.CharacterController enabled 1
+field shape Capsule
+field radius 0.35
+field height 1.2
+field center 0 0 0
+field stepHeight 0.6
+field maxSlope 48
+field mass 30
+field softCharacterContact 1
+component Tallow.NavigationAgent enabled 1
+field baseOffset 0 -0.6 0
+field radius 0.4
+field avoidOthers 1
+field faceMovement 1
+field turnSpeed 210
+component Tallow.BehaviorTreeRunner enabled 1
+field tree "AI/PeacefulGrazer.tbt"
+field tickInterval 0.35
+field restartWhenDone 1
+object 2 parent 1 active 1 name "Body"
+transform 0 0.05 -0.05 0 0 0 1 1.25 0.75 0.82
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.84 0.82 0.73 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 3 parent 1 active 1 name "Head"
+transform 0 0.22 0.59 0 0 0 1 0.67 0.64 0.61
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.45 0.42 0.38 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 4 parent 1 active 1 name "Nose"
+transform 0 0.04 0.91 0 0 0 1 0.34 0.25 0.18
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.45 0.39 0.34 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 5 parent 1 active 1 name "Leg"
+transform -0.39 -0.48 -0.36 0 0 0 1 0.22 0.52 0.22
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.30 0.29 0.27 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 6 parent 1 active 1 name "Leg"
+transform -0.39 -0.48 0.32 0 0 0 1 0.22 0.52 0.22
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.30 0.29 0.27 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 7 parent 1 active 1 name "Leg"
+transform 0.39 -0.48 -0.36 0 0 0 1 0.22 0.52 0.22
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.30 0.29 0.27 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 8 parent 1 active 1 name "Leg"
+transform 0.39 -0.48 0.32 0 0 0 1 0.22 0.52 0.22
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.30 0.29 0.27 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 9 parent 1 active 1 name "Eye"
+transform -0.16 0.29 .898 0 0 0 1 .072 .092 .07
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.09 0.11 0.14 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1
+object 10 parent 1 active 1 name "Eye"
+transform 0.16 0.29 .898 0 0 0 1 .072 .092 .07
+component Tallow.MeshRenderer enabled 1
+field mesh "builtin:cube"
+field color 0.09 0.11 0.14 1
+field roughness 0.94
+field flatShading 1
+field castShadows 1

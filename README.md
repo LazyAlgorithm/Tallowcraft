@@ -2,6 +2,10 @@
 
 A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# gameplay, Jolt physics, ECS and networking APIs.
 
+## Peaceful animals (prototype)
+
+The main scene includes a small, server-controlled sheep/pig habitat using Tallow's built-in NavigationAgent, BehaviorTreeRunner and CharacterController. A bounded navmesh is created once the immediate terrain meshes exist, and animals use a shared wander/wait behavior tree. This is a first Play-mode integration pass, not a world-streamed mob system; movement/spawn/network behavior still need runtime verification. No engine changes are required.
+
 ## Running
 
 Requires the current Tallow **feature/csharp-gameplay** engine branch (including the raycast-normal and MeshCollider.Refresh physics update). The local engine path in project.tallow is machine-specific; change it if you clone this project elsewhere.

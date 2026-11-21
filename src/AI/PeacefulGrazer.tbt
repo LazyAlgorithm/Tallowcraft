@@ -1,0 +1,8 @@
+tree "Peaceful Grazer"
+node 1 root 0 0
+node 2 sequence 0 110
+node 3 nav.wander -120 240 "9" "1.35"
+node 4 wait 120 240 "1" "4"
+link 1 2
+link 2 3
+link 2 4

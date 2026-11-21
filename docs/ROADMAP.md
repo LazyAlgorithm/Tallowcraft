@@ -2,6 +2,15 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Peaceful animals — prototype habitat (20 November 2026)
+
+- [x] Add two simple voxel-style animal prefabs (sheep and pigs) and a shared `.tbt` grazing/wandering behavior tree.
+- [x] Register network prefabs on each peer; server alone spawns animals and Tallow owns movement replication.
+- [x] Use a bounded NavigationSurface built after near terrain is loaded, with NavigationAgent + CharacterController to follow the tree.
+- [ ] **Runtime gate:** confirm runtime navmesh bake, spawn placement, tree movement, stairs and client replication in actual Play mode; these are unverified.
+- [ ] Stream/replace navigation surfaces as players move and edited voxel geometry changes. Current habitat is intentionally a fixed limited area near the first host/player spawn.
+- [ ] Upgrade animal visual meshes/animation, idle grazing animation, spawn persistence and species-biome rules.
+
 ## Building, exploration and multiplayer playtest — 20 November 2026
 
 - **Building.** Q now cycles through six shapes. Corner posts and horizontal beams use the same half-cell geometry for rendering, picking and collision. F rotates them, and Ctrl raises a beam. A translucent preview shows the shape that will be placed, including merged slabs and derived stair corners.
