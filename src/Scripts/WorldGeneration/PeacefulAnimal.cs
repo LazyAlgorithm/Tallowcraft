@@ -43,6 +43,13 @@ public sealed class PeacefulAnimal : Script
     private int _grazeCycle;
     private float _fleeSeconds;
     private bool _lootSpawned;
+    // Explicit per-region navigation avoids the engine agent's default
+    // first-surface binding when players are in separate parts of the world.
+    private GameObject? _regionSurface;
+    private Random? _wanderRandom;
+    private Vector3 _wanderTarget;
+    private bool _hasWanderTarget;
+    private float _wanderWait;
     private Vector3 _lastPosition;
     private bool _showingFlash;
     private bool _initialized;
@@ -99,6 +106,84 @@ public sealed class PeacefulAnimal : Script
         return VisualKind.Body;
     }
 
+    /// <summary>Bind this server-owned animal to exactly one nearby habitat.
+    /// Use its navigation queries for walking targets, while the native
+    /// CharacterController handles slope, collision, gravity and steps.
+    /// The legacy built-in NavAgent is removed so it cannot select another
+    /// player's unrelated navigation surface and overwrite this movement.
+    /// </summary>
+    public void BindRegion(GameObject navigation, int seed)
+    {
+        if (!Scene.IsServer || !navigation.IsValid) return;
+        _regionSurface = navigation;
+        _wanderRandom = new Random(unchecked(seed * 811 +
+            (int)(GameObject.Id ^ (GameObject.Id >> 32))));
+        _hasWanderTarget = false;
+        _wanderWait = 1.5f;
+        GameObject.RemoveComponent<BehaviorTreeRunner>();
+        GameObject.RemoveComponent<NavigationAgent>();
+    }
+
+    private bool RegionNavigation => _regionSurface is { IsValid: true };
+
+    private void TickRegionMovement(float dt)
+    {
+        if (!Scene.IsServer || Dying || !RegionNavigation) return;
+        NavigationSurface surface =
+            _regionSurface!.Value.GetComponent<NavigationSurface>();
+        CharacterController controller = GetComponent<CharacterController>();
+        if (!surface.IsValid || !controller.IsValid) return;
+        Vector3 position = Transform.Position;
+        Vector3 heading = _wanderTarget - position;
+        heading.Y = 0f;
+        if (_hasWanderTarget && heading.LengthSquared() < .75f * .75f)
+        {
+            _hasWanderTarget = false;
+            _wanderWait = 1.5f +
+                (float)(_wanderRandom?.NextDouble() ?? .5f) * 3f;
+        }
+        if (!Frightened && !_hasWanderTarget)
+        {
+            _wanderWait = MathF.Max(0f, _wanderWait - dt);
+            if (_wanderWait <= 0f && !Eating &&
+                _wanderRandom is { } random &&
+                surface.RandomPoint(position, 8.5f, random, out Vector3 next))
+            {
+                _wanderTarget = next;
+                _hasWanderTarget = true;
+            }
+        }
+        if (!_hasWanderTarget || (Eating && !Frightened))
+        {
+            controller.SimpleMove(Vector3.Zero, dt);
+            return;
+        }
+        heading = _wanderTarget - position;
+        heading.Y = 0;
+        if (heading.LengthSquared() < .001f) return;
+        if (!surface.Raycast(position, _wanderTarget,
+            out Vector3 obstruction))
+        {
+            // An edited wall or newly loaded cliff can invalidate a route.
+            // Try a closer point on the walkable surface next movement tick.
+            _hasWanderTarget = false;
+            _wanderWait = .3f;
+            controller.SimpleMove(Vector3.Zero, dt);
+            return;
+        }
+        Vector3 direction = Vector3.Normalize(heading);
+        float speed = Frightened ? 3.8f : 1.35f;
+        controller.SimpleMove(direction * speed, dt);
+        Transform.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY,
+            MathF.Atan2(direction.X, direction.Z));
+    }
+
+    public override void Update(TickInput input, float deltaTime)
+    {
+        if (RegionNavigation)
+            TickRegionMovement(Math.Clamp(deltaTime, 0f, .1f));
+    }
+
     /// <summary>Only the server may change replicated health.</summary>
     public bool TryTakeDamage(int amount, Vector3 attacker, out int remaining)
     {
@@ -131,13 +216,20 @@ public sealed class PeacefulAnimal : Script
         {
             Frightened = true;
             _fleeSeconds = WildlifeRules.FleeSeconds;
-            if (agent.IsValid)
+            Vector3 target = WildlifeRules.FleeTarget(
+                Transform.Position, attacker, (int)GameObject.Id);
+            NavigationSurface surface = RegionNavigation
+                ? _regionSurface!.Value.GetComponent<NavigationSurface>()
+                : NavigationSurface.Find(Scene);
+            if (surface.IsValid &&
+                surface.SamplePosition(target, 6f, out Vector3 reachable))
             {
-                Vector3 target = WildlifeRules.FleeTarget(
-                    Transform.Position, attacker, (int)GameObject.Id);
-                NavigationSurface surface = NavigationSurface.Find(Scene);
-                if (surface.IsValid &&
-                    surface.SamplePosition(target, 6f, out Vector3 reachable))
+                if (RegionNavigation)
+                {
+                    _wanderTarget = reachable;
+                    _hasWanderTarget = true;
+                }
+                else if (agent.IsValid)
                     agent.SetDestination(reachable, 3.8f, .35f);
             }
         }
@@ -256,7 +348,12 @@ public sealed class PeacefulAnimal : Script
                     Frightened = false;
                     NavigationAgent agent = GetComponent<NavigationAgent>();
                     if (agent.IsValid) agent.StopMovement();
-                    if (!GameObject.GetComponent<BehaviorTreeRunner>().IsValid)
+                    if (RegionNavigation)
+                    {
+                        _hasWanderTarget = false;
+                        _wanderWait = .6f;
+                    }
+                    else if (!GameObject.GetComponent<BehaviorTreeRunner>().IsValid)
                     {
                         BehaviorTreeRunner runner =
                             GameObject.AddComponent<BehaviorTreeRunner>();
