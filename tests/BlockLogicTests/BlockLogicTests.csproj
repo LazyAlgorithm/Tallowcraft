@@ -26,6 +26,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/CraftingRecipes.cs" Link="CraftingRecipes.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ForgeCrafting.cs" Link="ForgeCrafting.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockMining.cs" Link="BlockMining.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/AnimalCombatRules.cs" Link="AnimalCombatRules.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/BlockDamageMesh.cs" Link="BlockDamageMesh.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/PlayerTools.cs" Link="PlayerTools.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/PlayerProfileStore.cs" Link="PlayerProfileStore.cs" />
