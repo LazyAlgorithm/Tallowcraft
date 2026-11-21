@@ -90,9 +90,16 @@ public static class WorldLandmarks
         site = default;
         int cx = ChunkGenerator.FloorDiv(x, CellSize);
         int cz = ChunkGenerator.FloorDiv(z, CellSize);
-        if (!TryRoot(cx, cz, seed, out Landmark root) ||
-            Math.Abs(x - root.X) > Radius ||
-            Math.Abs(z - root.Z) > Radius)
+        // Hot path: this query runs for every world-space voxel. Reject
+        // cells outside the footprint BEFORE slope/biome/water checks in
+        // TryRoot, otherwise even ordinary air becomes expensive to query.
+        uint hash = WildlifeRules.Hash(seed, cx, cz, 0x1A7E);
+        if (hash % 100u >= 48u) return false;
+        int rootX = cx * CellSize + 16 + (int)((hash >> 8) % 80u);
+        int rootZ = cz * CellSize + 16 + (int)((hash >> 16) % 80u);
+        if (Math.Abs(x - rootX) > Radius ||
+            Math.Abs(z - rootZ) > Radius ||
+            !TryRoot(cx, cz, seed, out Landmark root))
             return false;
         site = root;
         return true;
