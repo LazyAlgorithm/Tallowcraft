@@ -34,10 +34,20 @@ internal static class WorldDropTests
                 check(DroppedItemMesh.ForType(type).Triangles.Length == 0,
                     "Block items do not create a billboard sprite");
             }
+            else if (type is BlockInventory.Wool or BlockInventory.RawPork)
+            {
+                // Animal resources use tiny, locally colored prefab cubes,
+                // not atlas block faces or ore/ingot billboard UV tiles.
+                check(!BlockDropMesh.IsCube(type) &&
+                      !DroppedItemMesh.IsBillboard(type) &&
+                      BlockDropMesh.ForType(type).Triangles.Length == 0 &&
+                      DroppedItemMesh.ForType(type).Triangles.Length == 0,
+                    "Wool and raw pork are rendered by the WorldDrop cosmetic cube path");
+            }
             else
             {
                 check(DroppedItemMesh.IsBillboard(type),
-                    "Non-block resources use camera-facing sprites");
+                    "Ore and ingot resources use camera-facing sprites");
                 DroppedItemMesh sprite = DroppedItemMesh.ForType(type);
                 check(sprite.Positions.Length == 4 &&
                     sprite.Normals.Length == 4 &&
