@@ -27,7 +27,11 @@ Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp
 - [x] Use a bounded NavigationSurface built after near terrain is loaded, with NavigationAgent + CharacterController to follow the tree.
 - [ ] **Runtime gate:** confirm runtime navmesh bake, spawn placement, tree movement, stairs and client replication in actual Play mode; these are unverified.
 - [ ] Stream/replace navigation surfaces as players move and edited voxel geometry changes. Current habitat is intentionally a fixed limited area near the first host/player spawn.
-- [ ] Upgrade animal visual meshes/animation, idle grazing animation, spawn persistence and species-biome rules.
+- [x] Add smaller sheep wool tufts and code-driven walk, occasional grazing, and death poses that animate prefab mesh children rather than affecting Jolt navigation/collisions.
+- [x] Replicate grazing state from the server, extend the behavior tree's wait segment to make eating visible, and preserve synchronized health/death with a full falling animation before despawn.
+- [x] Add pure C# pose tests for diagonal gait, matching hooves, head dip, smooth blending and death timing.
+- [ ] **Runtime gate:** test animation blending, fall direction, grazing cadence, and synchronized death visibility with two clients in Linux Play mode (not yet run here).
+- [ ] Stream habitats and navigation surfaces, and add species-specific biome spawning and richer animations/sounds later.
 
 ## Building, exploration and multiplayer playtest — 20 November 2026
 
