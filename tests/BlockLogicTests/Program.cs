@@ -51,6 +51,7 @@ static class Program
             TerrainLodTests.Run(Check);
             BuildingMaterialTests.Run(Check);
             AnimalCombatTests.Run(Check);
+            AnimalAnimationTests.Run(Check);
             WaypointCompassTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
