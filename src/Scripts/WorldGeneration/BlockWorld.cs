@@ -1594,6 +1594,20 @@ public class BlockWorld : Script
     /// Successful readiness is cached until camera-center movement, a
     /// changed world snapshot or a dirtied section invalidates it.
     /// </summary>
+    /// <summary>Only begin a bounded mob navigation bake once nearby voxel
+    /// mesh uploads have completed. The surface itself is game-owned.</summary>
+    public bool ImmediateMobTerrainReady(Vector3 position)
+    {
+        if (!Scene.IsServer || _saveLoadFailed) return false;
+        int cx = ChunkGenerator.FloorDiv((int)MathF.Floor(position.X),
+            ChunkGenerator.Size);
+        int cy = ChunkGenerator.FloorDiv((int)MathF.Floor(position.Y),
+            ChunkGenerator.Size);
+        int cz = ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z),
+            ChunkGenerator.Size);
+        return ImmediateTerrainReady(cx, cy, cz);
+    }
+
     private bool ImmediateTerrainReady(int cx, int cy, int cz)
     {
         if (_immediateTerrainReady)
