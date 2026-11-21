@@ -64,8 +64,8 @@ public static class WorldLandmarks
             bool pillar = (ax == 3 && (az == 0 || az == 2)) ||
                 (az == 3 && (ax == 0 || ax == 2));
             if (pillar && height >= 0 && height <= (ax == az ? 4 : 3))
-                return height == 3 ? BlockInventory.MossyStone :
-                    BlockInventory.StoneBricks;
+                return (ushort)(height == 3 ? BlockInventory.MossyStone :
+                    BlockInventory.StoneBricks);
             if (height == 0 && dx == 0 && dz == 0)
                 return BlockInventory.Slate;
             return null;
