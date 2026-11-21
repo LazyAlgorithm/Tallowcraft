@@ -765,8 +765,7 @@ public class BlockEditor : Script
         get
         {
             ItemStack held = DisplayInventory().Slot(SelectedHotbar);
-            return held.Type is >= 1 and <= BlockInventory.MaxType &&
-                held.Type != BlockInventory.IronIngot &&
+            return BlockInventory.IsPlaceableBlock(held.Type) &&
                 (CreativeMode || held.Quantity > 0);
         }
     }
@@ -1352,8 +1351,7 @@ public class BlockEditor : Script
             PickedUpper = false;
         }
         int heldType = _inventory.Slot(SelectedHotbar).Type;
-        PlaceType = heldType is >= 1 and <= BlockInventory.MaxType &&
-            heldType != BlockInventory.IronIngot ?
+        PlaceType = BlockInventory.IsPlaceableBlock(heldType) ?
             heldType : 0;
         if (PlaceType == BlockInventory.Chest) PlaceShape = 0;
         PlaceShape = Math.Clamp(PlaceShape, 0, BlockState.MaxShape);
@@ -1441,8 +1439,7 @@ public class BlockEditor : Script
                 return;
         }
         else if (placing &&
-            (PlaceType is < 1 or > BlockInventory.MaxType ||
-               PlaceType == BlockInventory.IronIngot ||
+            (!BlockInventory.IsPlaceableBlock(PlaceType) ||
              (!CreativeMode &&
               _inventory.Slot(SelectedHotbar).Quantity == 0)))
             return;
