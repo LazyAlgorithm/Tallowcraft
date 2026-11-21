@@ -246,9 +246,15 @@ public sealed class PeacefulAnimal : Script
         {
             _showingFlash = flash;
             foreach (VisualPart part in _parts)
-                if (part.CanFlash && part.Mesh.IsValid)
-                    part.Mesh.Color = flash ?
+            {
+                // MeshRenderer is a value-type native component handle. The
+                // VisualPart record exposes it as a property, so assign
+                // through a local variable instead of mutating that value.
+                MeshRenderer mesh = part.Mesh;
+                if (part.CanFlash && mesh.IsValid)
+                    mesh.Color = flash ?
                         new Color(1f, .43f, .43f, 1f) : part.RestColor;
+            }
         }
 
         if (Dying)
