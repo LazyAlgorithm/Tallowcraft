@@ -1151,11 +1151,58 @@ public class BlockWorld : Script
         chunk.Decorations.Add(cover);
     }
 
+    /// <summary>
+    /// Batched visual-only water, one render child per nearby terrain chunk.
+    /// The collision remains the real carved terrain; swimming and fluid
+    /// physics are intentionally not implemented by this creative milestone.
+    /// Player edits displace the local surface rather than being submerged.
+    /// </summary>
+    private void AddWaterSurface(ChunkKey key, LiveChunk chunk, ushort[] blocks)
+    {
+        if (key.Y != 0) return;
+        var vertices = new List<Vector3>();
+        var normals = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var indices = new List<int>();
+        float y = WorldWater.SurfaceY - key.Y * ChunkGenerator.Size;
+        for (int z = 0; z < ChunkGenerator.Size; z++)
+        for (int x = 0; x < ChunkGenerator.Size; x++)
+        {
+            int wx = key.X * ChunkGenerator.Size + x;
+            int wz = key.Z * ChunkGenerator.Size + z;
+            if (!WorldWater.HasSurface(wx, wz, Seed) ||
+                blocks[ChunkGenerator.Index(x, WorldWater.WaterLevel, z)] != 0)
+                continue;
+            int start = vertices.Count;
+            vertices.Add(new Vector3(x, y, z));
+            vertices.Add(new Vector3(x+1, y, z));
+            vertices.Add(new Vector3(x+1, y, z+1));
+            vertices.Add(new Vector3(x, y, z+1));
+            for (int face = 0; face < 4; face++) normals.Add(Vector3.UnitY);
+            uvs.Add(new Vector2(0, 0)); uvs.Add(new Vector2(1, 0));
+            uvs.Add(new Vector2(1, 1)); uvs.Add(new Vector2(0, 1));
+            indices.Add(start); indices.Add(start+2); indices.Add(start+1);
+            indices.Add(start); indices.Add(start+3); indices.Add(start+2);
+        }
+        if (vertices.Count == 0) return;
+        GameObject surface = Scene.CreateGameObject("Shallow decorative water");
+        surface.Transient = true;
+        surface.SetParent(chunk.Object, false);
+        MeshRenderer renderer = surface.AddComponent<MeshRenderer>();
+        renderer.Material = "Materials/water.tmat";
+        renderer.CastShadows = false;
+        renderer.BackFaceCulling = false;
+        renderer.SetMesh(vertices.ToArray(), indices.ToArray(),
+            normals.ToArray(), uvs.ToArray());
+        chunk.Decorations.Add(surface);
+    }
+
     private void RefreshChunkDecorations(ChunkKey key, LiveChunk chunk,
         ushort[] blocks)
     {
         chunk.ClearDecorations();
         AddGroundCover(key, chunk, blocks);
+        AddWaterSurface(key, chunk, blocks);
         for (int y=0;y<16;y++)
         for (int z=0;z<16;z++)
         for (int x=0;x<16;x++)
