@@ -1681,13 +1681,21 @@ public class BlockWorld : Script
             ChunkGenerator.Size);
         int cz = ChunkGenerator.FloorDiv((int)MathF.Floor(position.Z),
             ChunkGenerator.Size);
-        return ImmediateTerrainReady(cx, cy, cz);
+        // Mob habitats follow the player instead of staying at the
+        // original spawn. Re-check the actual area instead of reusing the
+        // fixed-spawn readiness cache when a habitat is recentered.
+        return CheckMobTerrainReady(cx, cy, cz);
     }
 
     private bool ImmediateTerrainReady(int cx, int cy, int cz)
     {
         if (_immediateTerrainReady)
             return true;
+        return CheckMobTerrainReady(cx, cy, cz);
+    }
+
+    private bool CheckMobTerrainReady(int cx, int cy, int cz)
+    {
         var edits = _edits.Snapshot;
         int minY = Math.Max(ChunkGenerator.MinChunkY, cy - 1);
         int maxY = Math.Min(ChunkGenerator.MaxChunkY, Math.Max(0, cy + 1));
