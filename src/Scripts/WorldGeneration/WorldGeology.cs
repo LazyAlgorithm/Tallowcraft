@@ -65,7 +65,15 @@ public static class WorldGeology
             return false;
         float broad = Noise(x * 0.067f, y * 0.085f, z * 0.067f, seed, 0xCA5E5u);
         float detail = Noise(x * 0.145f, y * 0.14f, z * 0.145f, seed, 0xC0FFEEu);
-        return broad * 0.8f + detail * 0.2f > 0.605f;
+        if (broad * 0.8f + detail * 0.2f > 0.605f)
+            return true;
+        // Larger, connected chambers in deeper exploration terrain.
+        // Keep the existing underground layout within 128m of origin.
+        if ((long)x * x + (long)z * z < 128L * 128L || y > -9)
+            return false;
+        float cavern = Noise(x * .029f, y * .041f, z * .029f, seed, 0x1A73Fu);
+        float rough = Noise(x * .097f, y * .09f, z * .097f, seed, 0xC0A7Eu);
+        return cavern * .83f + rough * .17f > .637f;
     }
 
     /// <summary>Compact local ore pockets in remaining stone; depth-limited.</summary>
