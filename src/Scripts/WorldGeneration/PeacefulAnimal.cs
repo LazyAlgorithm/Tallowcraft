@@ -122,6 +122,8 @@ public sealed class PeacefulAnimal : Script
             Dying = true;
             Frightened = false;
             _fleeSeconds = 0f;
+            Scene.Find("Peaceful Mob Habitat")?
+                .GetComponent<PeacefulMobHabitat>()?.NoteKill(Transform.Position);
             _deathSeconds = AnimalAnimationRules.DeathDuration + 0.18f;
             if (agent.IsValid) agent.StopMovement();
         }
