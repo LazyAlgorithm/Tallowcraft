@@ -12,6 +12,11 @@ public sealed class LiveChunk
     public bool Dirty;
     public int VertexCount;
     public int TriangleCount;
+    public int OpaqueTriangleCount;
+    public GameObject? AdditionalObject;
+    public MeshRenderer AdditionalRenderer;
+    public GameObject? GlassObject;
+    public MeshRenderer GlassRenderer;
     public readonly List<GameObject> Decorations = new();
 
     public void ClearDecorations()
