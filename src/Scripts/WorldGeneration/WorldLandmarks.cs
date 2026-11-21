@@ -81,7 +81,7 @@ public static class WorldLandmarks
         if (height == 6 && (ax == 3 || az == 3))
             return BlockInventory.DarkTimber;
         if (height == 7 && ax <= 1 && az <= 1)
-            return BlockInventory.Planks;
+            return (ushort)6;
         return null;
     }
 
