@@ -18,7 +18,8 @@ public sealed class TallowcraftUI : Script
     {
         "", "grass", "dirt", "stone", "log", "forge", "planks",
         "coal", "iron_ore", "leaves", "iron_ingot", "chest",
-        "cobblestone", "stone_bricks", "mossy_stone", "dark_timber"
+        "cobblestone", "stone_bricks", "mossy_stone", "dark_timber",
+        "glass", "red_bricks", "sandstone", "slate"
     };
 
     private BlockEditor? _owner;
@@ -41,7 +42,7 @@ public sealed class TallowcraftUI : Script
     private string _page = "craft";
     private float _refreshClock;
     private const int VisibleRecipes = 4;
-    private static readonly int[] RecipeIds = { 1, 2, 3, 6, 7, 8, 9, 10 };
+    private static readonly int[] RecipeIds = { 1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
     private int _recipeScroll;
     private bool _recipeScrollInitialized;
     private bool _initialized;
