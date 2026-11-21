@@ -52,6 +52,7 @@ static class Program
             BuildingMaterialTests.Run(Check);
             AnimalCombatTests.Run(Check);
             AnimalAnimationTests.Run(Check);
+            CameraPresentationTests.Run(Check);
             WaypointCompassTests.Run(Check);
             if (Array.Exists(Environment.GetCommandLineArgs(), value => value == "--bench"))
                 MeshBenchmarks.Run();
