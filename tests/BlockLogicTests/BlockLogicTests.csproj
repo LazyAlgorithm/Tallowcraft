@@ -35,6 +35,7 @@
     <Compile Include="../../src/Scripts/WorldGeneration/BlockTextureAtlas.cs" Link="BlockTextureAtlas.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkKey.cs" Link="ChunkKey.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkMesh.cs" Link="ChunkMesh.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/AdditionalBlockMesher.cs" Link="AdditionalBlockMesher.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkFace.cs" Link="ChunkFace.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkGenerator.cs" Link="ChunkGenerator.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldGeology.cs" Link="WorldGeology.cs" />
