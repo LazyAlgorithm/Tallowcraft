@@ -230,7 +230,11 @@ public static class ChunkGenerator
         // Mixed chunks use a sparse half-cell path instead of scanning
         // every 0.5m cell in the entire 16m chunk.
         if (detail == HalfCellDetail)
-            return HybridChunkMesher.Generate(key, seed, blocks, edits, token);
+        {
+            ChunkMesh partial = HybridChunkMesher.Generate(key, seed, blocks, edits, token);
+            AdditionalBlockMesher.Populate(partial, key, seed, blocks, edits, token);
+            return partial;
+        }
         int grid = Size * detail;
         var vertices = new List<Vector3>();
         var normals = new List<Vector3>();
@@ -256,7 +260,7 @@ public static class ChunkGenerator
             int worldY = key.Y * Size + FloorDiv(y, detail);
             if (!InWorld(worldY)) return false;
             var state = new BlockState(StateAt(x, y, z));
-            if (state.IsAir) return false;
+            if (state.IsAir || AdditionalBlockMesher.IsGlass(state.Type)) return false;
             if (detail == 1)
                 return true; // All nearby visible shapes are whole cubes.
             int innerX = x - FloorDiv(x, detail) * detail;
@@ -280,6 +284,7 @@ public static class ChunkGenerator
                         Vector3 cell = axis * slice + stepU * u + stepV * v;
                         int x = (int)cell.X, y = (int)cell.Y, z = (int)cell.Z;
                         mask[v * grid + u] =
+                            !AdditionalBlockMesher.IsAdditional(new BlockState(StateAt(x, y, z)).Type) &&
                             Occupied(x, y, z) &&
                             !Occupied(x + face.DX, y + face.DY, z + face.DZ)
                             ? BlockTextureAtlas.TileFor(new BlockState(StateAt(x, y, z)), faceId) + 1
@@ -340,7 +345,9 @@ public static class ChunkGenerator
             }
         }
 
-        return new ChunkMesh(vertices.ToArray(), triangles.ToArray(),
+        var output = new ChunkMesh(vertices.ToArray(), triangles.ToArray(),
             normals.ToArray(), uvs.ToArray(), blocks);
+        AdditionalBlockMesher.Populate(output, key, seed, blocks, edits, token);
+        return output;
     }
 }
