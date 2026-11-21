@@ -42,7 +42,8 @@ public readonly record struct BlockState(ushort Packed)
     {
         if (type < 1 || type > BlockInventory.MaxType ||
             type == BlockInventory.IronIngot || (uint)shape > MaxShape ||
-            (type == BlockInventory.Chest && shape != BlockShape.Cube))
+            ((type == BlockInventory.Chest || type >= BlockInventory.Glass) &&
+             shape != BlockShape.Cube))
             return default;
         if (shape != BlockShape.Slab && shape != BlockShape.Stair && shape != BlockShape.Beam)
             upper = false;
@@ -66,14 +67,16 @@ public readonly record struct BlockState(ushort Packed)
         if (corner is 5 or 6)
             return shape == 0 && (packed & 255) != BlockInventory.Chest &&
                 (packed & 255) != BlockInventory.IronIngot &&
+                (packed & 255) < BlockInventory.Glass &&
                 (corner == 6 || (packed & 0x1000) == 0);
         if ((shape != (int)BlockShape.Stair && corner != 0) ||
             corner > (int)StairCorner.OuterRight)
             return false;
         if ((packed & 255) == BlockInventory.IronIngot)
             return false;
-        if ((packed & 255) == BlockInventory.Chest && shape != 0)
-            return false;
+        if (((packed & 255) == BlockInventory.Chest ||
+             (packed & 255) >= BlockInventory.Glass) &&
+            (shape != 0 || corner != 0)) return false;
         return (packed & 0x1000) == 0 || shape == 1 || shape == 2;
     }
 
