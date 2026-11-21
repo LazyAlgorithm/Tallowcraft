@@ -19,6 +19,10 @@ public class FirstPersonCharacter : Script
     public float EyeHeight = 0.7f;
     public float CrouchTransitionSeconds = 0.2f;
     public string CameraName = "Main Camera";
+    // Presentation only: the predicted simulation still uses TickInput
+    // unchanged. Camera follows on render frames, not just network ticks.
+    public float CameraTurnResponse = 48f;
+    public float CameraPositionResponse = 75f;
 
     private GameObject? _camera;
     private float _eyeNow;
@@ -26,6 +30,11 @@ public class FirstPersonCharacter : Script
     private float _eyeTarget;
     private float _eyeTransitionTime;
     private bool _spawnAligned;
+    private Quaternion _simulatedLook = Quaternion.Identity;
+    private Quaternion _displayLook = Quaternion.Identity;
+    private Vector3 _displayCameraPosition;
+    private bool _hasSimulatedLook;
+    private bool _hasDisplayPose;
 
     private bool ControlsCamera =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -33,6 +42,8 @@ public class FirstPersonCharacter : Script
     public override void Start()
     {
         _spawnAligned = false;
+        _hasSimulatedLook = false;
+        _hasDisplayPose = false;
         _eyeNow = EyeHeight;
         _eyeStart = EyeHeight;
         _eyeTarget = EyeHeight;
@@ -114,21 +125,58 @@ public class FirstPersonCharacter : Script
         if (!browsingInventory)
             Transform.Rotation = RotationMath.EulerDegrees(new Vector3(0f, input.Yaw, 0f));
 
+        // Network ticks own movement and the authoritative look direction,
+        // but must not write the view camera. Rendering may happen many
+        // times between ticks, or at a different cadence to the simulation.
+        if (ControlsCamera && !browsingInventory)
+        {
+            _simulatedLook = input.LookRotation;
+            _hasSimulatedLook = true;
+        }
+    }
+
+    public override void LocalLateUpdate(float deltaTime)
+    {
         if (!ControlsCamera)
             return;
 
-        // Ownership can arrive after Start on a joining client.
+        // Follow only this player's view after simulation and all local
+        // updates. This keeps mouse turning smooth at 90/120/144+ FPS even
+        // when network simulation uses a different fixed tick cadence.
+        var editor = GameObject.GetComponent<BlockEditor>();
+        bool browsingInventory = editor?.IsInventoryVisible == true ||
+            editor?.UiGameMenuVisible == true ||
+            editor?.ReturnToSpawnLocked == true;
+
         if (_camera is not { IsValid: true })
         {
             _camera = Scene.Find(CameraName);
+            _hasDisplayPose = false;
+            if (_camera is not { IsValid: true })
+                return;
             Cursor.Locked = !browsingInventory;
         }
 
-        if (_camera is { } camera && camera.IsValid)
+        GameObject camera = _camera.Value;
+        Vector3 targetPosition = Transform.Position + new Vector3(0f, _eyeNow, 0f);
+        if (!_hasDisplayPose)
         {
-            camera.Transform.Position = Transform.Position + new Vector3(0f, _eyeNow, 0f);
-            if (!browsingInventory)
-                camera.Transform.Rotation = input.LookRotation;
+            _displayCameraPosition = targetPosition;
+            _displayLook = _hasSimulatedLook ? _simulatedLook : camera.Transform.Rotation;
+            _hasDisplayPose = true;
         }
+        else
+        {
+            _displayCameraPosition = CameraPresentationMath.FollowPosition(
+                _displayCameraPosition, targetPosition, deltaTime,
+                CameraPositionResponse);
+            if (!browsingInventory && _hasSimulatedLook)
+                _displayLook = CameraPresentationMath.FollowRotation(
+                    _displayLook, _simulatedLook, deltaTime, CameraTurnResponse);
+        }
+
+        camera.Transform.Position = _displayCameraPosition;
+        if (!browsingInventory && _hasSimulatedLook)
+            camera.Transform.Rotation = _displayLook;
     }
 }
