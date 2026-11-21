@@ -143,8 +143,7 @@ public static class ChunkGenerator
         int height = Height(worldX, worldZ, seed);
         // Structures override surface blocks and trees; shrubs occupy only
         // natural air, after trees. These priorities match CreateBlocks.
-        ushort structure = WorldDecorations.StructureAt(worldX, y, worldZ, seed);
-        if (structure != 0)
+        if (WorldDecorations.StructureOverrideAt(worldX, y, worldZ, seed) is ushort structure)
             return structure;
         if (y >= height)
         {

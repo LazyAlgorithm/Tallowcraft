@@ -73,13 +73,7 @@ public static class DistantTerrainMesher
                 return ChunkGenerator.MinWorldY;
             }
 
-            float top = baseHeight;
-            // Retain recognizably raised portions of seeded stone ruins.
-            for (int y = baseHeight; y < Math.Min(baseHeight + 5,
-                ChunkGenerator.MaxWorldY + 1); y++)
-                if (WorldDecorations.StructureAt(x, y, z, seed) != 0)
-                    top = y + 1f;
-            return top;
+            return WorldDecorations.SurfaceWithRuin(x, z, seed, baseHeight);
         }
 
         var vertices = new List<Vector3>(2048);

@@ -364,6 +364,7 @@ public static class WorldSaveV6
         }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
+        catch (InvalidDataException) { return false; }
         catch (FormatException) { return false; }
         catch (ArgumentException) { return false; }
     }

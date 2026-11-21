@@ -15,13 +15,13 @@ public static class WorldDecorations
 
     private const int BushCell = 6;
     private const int RuinCell = 56;
-    private const int RuinRadius = 3;
+    private const int RuinRadius = 6;
     private const int SpawnClear = 112;
 
     private readonly record struct Bush(int X, int Z, int GroundY);
-    private readonly record struct Ruin(int X, int Z, int GroundY)
+    private readonly record struct Ruin(int X, int Z, int GroundY, WorldBiomes.Biome Biome, bool Extended)
     {
-        public int TopY => GroundY + 3;
+        public int TopY => GroundY + (Extended ? 6 : 3);
     }
 
     private static uint Hash(int x, int z, int seed, uint salt)
@@ -66,16 +66,26 @@ public static class WorldDecorations
 
         // Level or gently sloped ground. Do not bury half the walls or leave
         // half the foundation floating over a steep hillside.
-        for (int dz = -RuinRadius; dz <= RuinRadius; dz++)
-        for (int dx = -RuinRadius; dx <= RuinRadius; dx++)
+        for (int dz = -3; dz <= 3; dz++)
+        for (int dx = -3; dx <= 3; dx++)
             if (Math.Abs(ChunkGenerator.Height(x + dx, z + dz, seed) - ground) > 1)
                 return false;
         // The south-facing entrance must not be obstructed by a neighboring
         // terrain step even though the rest of the foundation is level enough.
-        if (ChunkGenerator.Height(x, z - RuinRadius, seed) > ground)
+        if (ChunkGenerator.Height(x, z - 3, seed) > ground)
             return false;
 
-        ruin = new Ruin(x, z, ground);
+        // Keep existing foundations on slopes. Build the second chamber
+        // only where it can share a walkable entrance with the courtyard.
+        bool extended = ground <= ChunkGenerator.MaxWorldY - 6;
+        for (int dz = 4; extended && dz <= RuinRadius; dz++)
+        for (int dx = -3; dx <= 3; dx++)
+            if (Math.Abs(ChunkGenerator.Height(x + dx, z + dz, seed) - ground) > 1)
+            {
+                extended = false;
+                break;
+            }
+        ruin = new Ruin(x, z, ground, biome, extended);
         return true;
     }
 
@@ -121,7 +131,7 @@ public static class WorldDecorations
         int cellX = ChunkGenerator.FloorDiv(x, RuinCell);
         int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
         // Candidate origins are inset 8m from cell borders. Callers of
-        // NearRuin use radii <= 5m, so only the containing cell is needed.
+        // NearRuin use radii <= 8m, so only the containing cell is needed.
         uint hash = Hash(cellX, cellZ, seed, 0x51A47B3u);
         if ((hash & 1023u) >= 370u) return false;
         int rootX = cellX * RuinCell + 8 + (int)((hash >> 10) % 40u);
@@ -131,33 +141,62 @@ public static class WorldDecorations
             TryRuinCell(cellX, cellZ, seed, out _);
     }
 
-    private static ushort RuinShape(Ruin ruin, int x, int y, int z, int seed)
+    private static ushort? RuinShape(Ruin ruin, int x, int y, int z, int seed)
     {
         int dx = x - ruin.X, dz = z - ruin.Z;
         int ax = Math.Abs(dx), az = Math.Abs(dz);
-        if (ax > RuinRadius || az > RuinRadius)
-            return 0;
-
-        // Flat, mineable 7x7 floor replaces only one layer at the surface.
-        if (y == ruin.GroundY - 1)
+        int level = y - ruin.GroundY;
+        if (ax > 3 || dz < -3 || dz > (ruin.Extended ? RuinRadius : 3) || level < -1 || y > ruin.TopY)
+            return null;
+        if (level == -1)
             return ax <= 2 && az <= 2 ? Planks : Stone;
-        if (y < ruin.GroundY || y > ruin.TopY)
-            return 0;
-        if (ax != RuinRadius && az != RuinRadius)
-            return 0;
 
-        // South-facing door, two blocks tall, with a ruined lintel above.
-        if (dz == -RuinRadius && dx == 0 && y < ruin.GroundY + 2)
+        // The rear chamber and courtyard share one continuous floor.
+        if (ruin.Extended && dz >= 3)
+        {
+            if (dz == 3 && ax <= 1) return 0;
+            bool corner = ax == 3 && (dz == 3 || dz == RuinRadius);
+            bool rear = dz == RuinRadius;
+            switch (ruin.Biome)
+            {
+                case WorldBiomes.Biome.Meadow:
+                    if (corner && level <= 4) return BlockInventory.DarkTimber;
+                    if (level == 4 && (rear || ax == 3)) return Planks;
+                    if (level == 5 && rear && ax <= 2) return Planks;
+                    break;
+                case WorldBiomes.Biome.Drylands:
+                    if (rear && (ax >= 2 || level >= 4) && level <= 5)
+                        return BlockInventory.StoneBricks;
+                    if (corner && level <= 2) return Stone;
+                    break;
+                case WorldBiomes.Biome.Highlands:
+                    if (rear && ax >= 2 && level <= (dx > 0 ? 6 : 4))
+                        return BlockInventory.Cobblestone;
+                    if (ax == 3 && level <= 2) return Stone;
+                    break;
+            }
             return 0;
+        }
 
-        // Uneven, partially collapsed stone wall. Hashing individual positions
-        // makes the exact same shape appear in direct and buffered queries.
-        int wallHeight = 1 + (int)(Hash(x, z, seed, 0x7A1105u) % 4u);
-        if (ax == RuinRadius && az == RuinRadius)
-            wallHeight = 3;
-        if (y - ruin.GroundY >= wallHeight)
-            return 0;
-        return Stone;
+        if (ax != 3 && az != 3) return 0;
+        if (dz == -3 && ax <= 1 && level < 3) return 0;
+        int wallHeight = ax == 3 && az == 3 ? 3 :
+            1 + (int)(Hash(x, z, seed, 0x7A1105u) % 4u);
+        return level < wallHeight ? Stone : (ushort)0;
+    }
+
+    // 0 is bare ground, 1 grass, 2 daisies. Selection is independent of
+    // chunk load order. The renderer additionally requires exposed turf.
+    public static int GroundCoverAt(int x, int z, int seed)
+    {
+        uint sample = Hash(x, z, seed, 0x7165Bu) & 255;
+        if (sample >= 44) return 0;
+        return WorldBiomes.At(x, z, seed) switch
+        {
+            WorldBiomes.Biome.Meadow => sample < 9 ? 2 : 1,
+            WorldBiomes.Biome.Woodland when sample < 24 => 1,
+            _ => 0
+        };
     }
 
     private static ushort BushShape(Bush bush, int x, int y, int z)
@@ -171,24 +210,36 @@ public static class WorldDecorations
         return 0;
     }
 
-    /// <summary>A stone or plank block of a natural ruin, or 0.</summary>
-    public static ushort StructureAt(int x, int y, int z, int seed)
+    private static bool TryNearbyRuin(int x, int z, int seed, out Ruin ruin)
     {
-        if (y < 0 || y > ChunkGenerator.MaxWorldY ||
-            !BeyondSpawn(x, z, SpawnClear - RuinRadius * 2))
-            return 0;
+        ruin = default;
+        if (!BeyondSpawn(x, z, SpawnClear - RuinRadius * 2)) return false;
         int cellX = ChunkGenerator.FloorDiv(x, RuinCell);
         int cellZ = ChunkGenerator.FloorDiv(z, RuinCell);
         uint hash = Hash(cellX, cellZ, seed, 0x51A47B3u);
-        if ((hash & 1023u) >= 370u)
-            return 0;
+        if ((hash & 1023u) >= 370u) return false;
         int rootX = cellX * RuinCell + 8 + (int)((hash >> 10) % 40u);
         int rootZ = cellZ * RuinCell + 8 + (int)((hash >> 18) % 40u);
-        if (Math.Abs(x - rootX) > RuinRadius ||
-            Math.Abs(z - rootZ) > RuinRadius)
-            return 0;
-        return TryRuinCell(cellX, cellZ, seed, out Ruin ruin)
-            ? RuinShape(ruin, x, y, z, seed) : (ushort)0;
+        return Math.Abs(x - rootX) <= 3 && z >= rootZ - 3 && z <= rootZ + RuinRadius &&
+            TryRuinCell(cellX, cellZ, seed, out ruin);
+    }
+
+    // A zero override clears terrain intruding into the walkable interior.
+    // Null leaves the terrain and vegetation at this position untouched.
+    internal static ushort? StructureOverrideAt(int x, int y, int z, int seed) =>
+        y >= 0 && y <= ChunkGenerator.MaxWorldY && TryNearbyRuin(x, z, seed, out Ruin ruin)
+            ? RuinShape(ruin, x, y, z, seed) : null;
+
+    public static ushort StructureAt(int x, int y, int z, int seed) =>
+        StructureOverrideAt(x, y, z, seed) ?? 0;
+
+    internal static int SurfaceWithRuin(int x, int z, int seed, int terrainHeight)
+    {
+        if (TryNearbyRuin(x, z, seed, out Ruin ruin))
+            for (int y = ruin.TopY; y >= ruin.GroundY - 1; y--)
+                if (RuinShape(ruin, x, y, z, seed) is > 0)
+                    return y + 1;
+        return terrainHeight;
     }
 
     /// <summary>A shrub leaf block, or 0, below tree and ruin precedence.</summary>
@@ -353,8 +404,7 @@ public static class WorldDecorations
             for (int z = ruin.Z - RuinRadius; z <= ruin.Z + RuinRadius; z++)
             for (int x = ruin.X - RuinRadius; x <= ruin.X + RuinRadius; x++)
             {
-                ushort type = RuinShape(ruin, x, y, z, seed);
-                if (type != 0)
+                if (RuinShape(ruin, x, y, z, seed) is ushort type)
                     Write(x, y, z, type, true);
             }
         });

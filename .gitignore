@@ -9,3 +9,11 @@ Packages/Downloads/
 Packages/Exports/
 BeefSpace.toml
 BeefProj.toml
+
+# Local Steamworks runtime dependencies
+/Libraries/libsteam_api.so
+/Libraries/libsteam_api.dylib
+/Libraries/steam_api64.dll
+
+# Tallow shader build output
+/src/Shaders/Compiled/

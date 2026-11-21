@@ -103,12 +103,6 @@ def verify() -> None:
               "Generated C# clip mapping does not match imported clips")
 
     prefab = PREFAB.read_text()
-    check('field model "Models/QuaterniusBaseCharacter.glb"' in prefab,
-          "Player prefab does not reference the CC0 Quaternius character")
-    check('field clipLibrary "Animations/QuaterniusUniversalLibrary.glb"' in prefab,
-          "Skinned character is missing the CC0 Universal Animation Library")
-    check("component Tallow.SkinnedMeshRenderer enabled 1" in prefab,
-          "Player is missing skinned model renderer")
     check("component Tallow.Animator enabled 1" not in prefab,
           "Old procedural Animator would conflict with Quaternius imported clips")
     check("component Tallow.CharacterController enabled 1" in prefab,
@@ -118,13 +112,20 @@ def verify() -> None:
     check('field scriptType "Tallowcraft.CharacterAnimation"' in prefab,
           "Character playback script is missing")
     animation = (ROOT / "src/Scripts/CharacterAnimation.cs").read_text()
-    check("GetComponentInChildren<SkinnedMeshRenderer>()" in animation
-          and "_rig.Clip = clip" in animation,
-          "Character script does not play native Quaternius clips")
-    character = (ROOT / "src/Scripts/FirstPersonCharacter.cs").read_text()
-    check("renderer.ShadowOnly = shadowOnly" in character
-          and "renderer.CastShadows = true;" in character,
+    check('Models/BlockCharacter/{name}.glb' in animation and
+          '_knees[i].Transform.LocalRotation' in animation and
+          '_elbows[i].Transform.LocalRotation' in animation,
+          "Playable explorer must animate articulated block meshes")
+    check("renderer.ShadowOnly = shadowOnly" in animation
+          and "renderer.CastShadows = true;" in animation,
           "Local first-person body should be hidden while keeping its shadow")
+    equipment = ROOT / "src/Models/Tools"
+    for name in ("stone_pick", "stone_axe", "stone_spade", "iron_pick",
+                 "iron_axe", "iron_spade", "spark_pistol", "pulse_repeater"):
+        model, _ = glb(equipment / (name + ".glb"))
+        check(len(model["meshes"]) == 1 and len(model["meshes"][0]["primitives"]) == 1,
+              f"{name} must render as one combined mesh and material")
+        check(model.get("images"), f"{name} is missing its palette")
 
     atlas_path = ROOT / "src/Textures/block_atlas.png"
     atlas_bytes = atlas_path.read_bytes()
@@ -189,12 +190,12 @@ def verify() -> None:
     check("action Inventory button\nbind key Tab\nbind pad West" in actions,
           "Menu must accept Tab/West while Player actions are disabled")
     menu_script = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
-    check('InputActions.SetMapEnabled("Player", !open && !_mainMenu && !_paused)' in menu_script
+    check('InputActions.SetMapEnabled("Player", gameplay)' in menu_script
           and 'InputActions.Pressed("Menu/Inventory")' in menu_script
           and "private void SetInventoryOpen(bool open)" in menu_script,
           "Menu focus must disable look input and use the server-authorized state RPC")
     check('[Sync] public bool ProfileReady = false' in menu_script
-          and 'private void BindPlayerProfile(string token)' in menu_script
+          and 'private void BindPlayerProfile(string token, string displayName)' in menu_script
           and 'PlayerProfileStore.Load(' in menu_script
           and 'PlayerProfileStore.Save(' in menu_script
           and 'if (!ProfileReady)' in menu_script
@@ -208,7 +209,7 @@ def verify() -> None:
     editor_src = (ROOT / "src/Scripts/WorldGeneration/BlockEditor.cs").read_text()
     inventory_src = (ROOT / "src/Scripts/WorldGeneration/BlockInventory.cs").read_text()
     tools_src = (ROOT / "src/Scripts/WorldGeneration/PlayerTools.cs").read_text()
-    check("public const int MaxType = 11" in inventory_src
+    check("public const int MaxType = 15" in inventory_src
           and 'encoded.StartsWith("1|"' in inventory_src
           and 'encoded.StartsWith("2|"' in inventory_src
           and 'encoded.StartsWith("3|"' in inventory_src
@@ -412,11 +413,11 @@ def verify() -> None:
           and "_editor is not { } editor" in preview,
           "Use supported GameObject.Destroy() and guard the nullable editor")
     check('public const int MaxActive = 256' in drop_script
-          and 'public const float DespawnAfter = 300f' in drop_script
+          and 'public const float DespawnAfter = WorldDropSaveCodec.MaxAgeSeconds' in drop_script
           and 'private bool TryPickup(GameObject? gameObject)' in drop_script
-          and 'inventory.TryReceiveWorldDrop(ItemType, Quantity)' in drop_script
+          and 'inventory.TryReceivePersistedDrop(this)' in drop_script
           and 'public static bool TrySpawn(Scene scene' in drop_script
-          and 'if (!WorldDrop.TrySpawn(Scene, material, droppedAt))' in editor_src
+          and 'if (WorldDrop.TrySpawn(Scene, material, droppedAt))' in editor_src
           and 'Scene.Despawn(GameObject)' in drop_script
           and 'DroppedItemMesh.ForType(ItemType)' in drop_script
           and 'BlockDropMesh.ForType(ItemType)' in drop_script
@@ -448,16 +449,13 @@ def verify() -> None:
               "fullResolution = 1")),name+" texture should remain pixel-sharp")
     check("component Tallow.CSharpBehaviour" in
           (ROOT / "src/Prefabs/WorldDrop.tprefab").read_text()
-          and 'Materials/chest_item.tmat' in
-          (ROOT / "src/Scripts/WorldGeneration/WorldDrop.cs").read_text()
+          and 'Textures/chest_item.png' in ui_file.read_text()
+          and 'or 11' in block_drop
           and 'Materials/chest_front.tmat' in
           (ROOT / "src/Scripts/WorldGeneration/BlockWorld.cs").read_text(),
           "Chest texture and dropped item art should be wired into the renderer")
-    # UI chest opening must wait for the server to acknowledge
-    # SetInventoryOpen. A one-shot open during that race silently fails.
-    check('editor.InventoryOpen && editor.ProfileReady' in ui_source
-          and '_chestOpenRequested = _page == "chest"' in ui_source
-          and 'editor.UiOpenChest();' in ui_source
+    # E selects storage from the authoritative world ray. Tab only opens the backpack.
+    check('tab_chest' not in ids and 'open-chest' not in ids
           and '_chestMessageBefore != editor.ChestStatus' in ui_source
           and 'public void OnDeposit()' in ui_source
           and 'public void OnWithdraw()' in ui_source
@@ -467,16 +465,15 @@ def verify() -> None:
           and 'id="chest-actions"' in ui_file.read_text()
           and 'Visible("chest-actions", editor.ChestOpen)' in ui_source
           and '[Sync] public string ChestStatus = "";' in editor_src
-          and 'ChestStatus = "No placed chest within 4.5m' in editor_src
           and 'ChestStatus = "Transfer failed:' in editor_src,
-          "Chest UI must await inventory acknowledgement, support one-click "
+          "Chest UI must reflect authoritative storage, support one-click "
           "store/take, and display server transfer errors")
     check('InputActions.Pressed("Player/Interact")' in editor_src
-          and 'private void InteractNearbyChest()' in editor_src
-          and 'private bool TryOpenChestNearPlayer()' in editor_src
-          and 'if (!TryOpenChestNearPlayer())' in editor_src
+          and 'private void InteractWithChest(float x, float y, float z)' in editor_src
+          and '_world.TryQueryFromRay(eye, new Vector3(x, y, z), 4.5f' in editor_src
+          and '_world.TryReadChest(pos, out ChestContents contents)' in editor_src
           and 'InventoryOpen = true;' in editor_src
-          and 'if (open && editor.ChestOpen && !_chestBefore)' in ui_source,
+          and '_page = editor.ChestOpen ? "chest" : "craft";' in ui_source,
           "E chest interaction must validate a real chest on the server, "
           "open menu and storage atomically, and switch to Storage UI")
     chest_code = (ROOT / "src/Scripts/WorldGeneration/WorldChestStorage.cs").read_text()
@@ -486,14 +483,14 @@ def verify() -> None:
           and 'public bool TryTransfer(BlockPosition position' in chest_code
           and 'ChestSaveCodec.Encode(chests)' in save_code
           and 'ChestSaveCodec.TryDecode(bytes' in save_code
-          and 'WorldEditSave.Save(folder, id, seed, snapshot, revisions, chests)' in world_code
+          and 'WorldEditSave.Save(folder, id, seed, snapshot, revisions, chests, drops)' in ' '.join(world_code.split())
           and '_chests.IsEmpty(target)' in world_code
           and 'TryReadChest(pos' in editor_src
           and 'private void MoveChestStack(int from,int to,bool split)' in editor_src
-          and 'private void OpenNearbyChest()' in editor_src,
+          and '_world.TryCommitChestTransfer(pos, _inventory' in editor_src,
           "Chest transfers must be server-owned and saved atomically with terrain")
     print(f"PASS: {len(joint_names)} joints, {vertices} skinned vertices, "
-          f"{triangles} triangles, 4 animation clips, player prefab and hotbar input")
+          f"{triangles} triangles, 4 animation clips, archived, block player and combined equipment meshes verified")
 
 
 if __name__ == "__main__":

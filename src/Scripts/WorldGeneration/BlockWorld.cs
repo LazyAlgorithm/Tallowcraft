@@ -111,6 +111,9 @@ public class BlockWorld : Script
 
     // Metadata only. No voxel list is ever sent in a [Sync] field.
     // "3|seed|worldId" arrives automatically for late joiners.
+    [Sync] public string PartyRoster = "";
+    private float _partyClock;
+
     [Sync] public string EditState = "";
 
     private BlockEdits _edits = new();
@@ -554,6 +557,19 @@ public class BlockWorld : Script
     // networked Update callback. Never run streaming during prediction replay.
     public override void LocalUpdate(float deltaTime)
     {
+        if (Scene.IsServer && (_partyClock -= deltaTime) <= 0)
+        {
+            _partyClock = 1f;
+            var party = new List<string>();
+            if (Network.PlayerObject(Scene, 0) != null)
+                party.Add(Steam.IsReady ? Steam.UserName + " (host)" : "Host");
+            foreach (int id in Network.ClientIds(Scene))
+            {
+                string? name = Network.PlayerObject(Scene, id)?.GetComponent<BlockEditor>()?.PartyName;
+                party.Add(string.IsNullOrWhiteSpace(name) ? $"Player {id}" : name);
+            }
+            PartyRoster = string.Join("   ·   ", party);
+        }
         // A client must have the authoritative seed before generating any
         // chunks, then must validate each requested section before meshing.
         if (Scene.IsServer)
@@ -1085,10 +1101,60 @@ public class BlockWorld : Script
             _emptyChunks.Remove(key);
     }
 
-    private void DecorateChestFronts(ChunkKey key, LiveChunk chunk,
+    private void AddGroundCover(ChunkKey key, LiveChunk chunk, ushort[] blocks)
+    {
+        if (key.Y < 0 || key.Y > 2) return;
+        var points = new List<Vector3>();
+        var normals = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var indices = new List<int>();
+        for (int z = 0; z < ChunkGenerator.Size; z++)
+        for (int x = 0; x < ChunkGenerator.Size; x++)
+        {
+            int wx = key.X * ChunkGenerator.Size + x, wz = key.Z * ChunkGenerator.Size + z;
+            int kind = WorldDecorations.GroundCoverAt(wx, wz, Seed);
+            if (kind == 0) continue;
+            int surface = ChunkGenerator.Height(wx, wz, Seed);
+            int y = surface - key.Y * ChunkGenerator.Size;
+            if (y < 1 || y > ChunkGenerator.Size ||
+                blocks[ChunkGenerator.Index(x, y - 1, z)] != 1) continue;
+            ushort above = y == ChunkGenerator.Size ? BlockAt(new BlockPosition(wx, surface, wz)) :
+                blocks[ChunkGenerator.Index(x, y, z)];
+            if (above != 0) continue;
+
+            float u0 = (kind - 1) * .5f + .5f / 32, u1 = kind * .5f - .5f / 32;
+            var center = new Vector3(x + .5f, y, z + .5f);
+            var height = Vector3.UnitY * (kind == 1 ? .46f : .62f);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                int start = points.Count;
+                var half = new Vector3(.27f, 0, side * .27f);
+                points.Add(center - half); points.Add(center + half);
+                points.Add(center + half + height); points.Add(center - half + height);
+                for (int v = 0; v < 4; v++) normals.Add(Vector3.UnitY);
+                uvs.Add(new Vector2(u0, 1)); uvs.Add(new Vector2(u1, 1));
+                uvs.Add(new Vector2(u1, 0)); uvs.Add(new Vector2(u0, 0));
+                indices.Add(start); indices.Add(start + 1); indices.Add(start + 2);
+                indices.Add(start); indices.Add(start + 2); indices.Add(start + 3);
+            }
+        }
+        if (points.Count == 0) return;
+        var cover = Scene.CreateGameObject("Grass and wildflowers");
+        cover.Transient = true;
+        cover.SetParent(chunk.Object, false);
+        var mesh = cover.AddComponent<MeshRenderer>();
+        mesh.Material = "Materials/ground_cover.tmat";
+        mesh.CastShadows = false;
+        mesh.BackFaceCulling = false;
+        mesh.SetMesh(points.ToArray(), indices.ToArray(), normals.ToArray(), uvs.ToArray());
+        chunk.Decorations.Add(cover);
+    }
+
+    private void RefreshChunkDecorations(ChunkKey key, LiveChunk chunk,
         ushort[] blocks)
     {
         chunk.ClearDecorations();
+        AddGroundCover(key, chunk, blocks);
         for (int y=0;y<16;y++)
         for (int z=0;z<16;z++)
         for (int x=0;x<16;x++)
@@ -1190,7 +1256,7 @@ public class BlockWorld : Script
 
                 long meshStart = ProfileStart();
                 live.Renderer.SetMesh(data.Vertices, data.Triangles, data.Normals, data.Uvs);
-                DecorateChestFronts(pair.Key, live, data.Blocks);
+                RefreshChunkDecorations(pair.Key, live, data.Blocks);
                 RecordChunkProfile(0, meshStart);
                 if (_colliders.Contains(pair.Key) &&
                     live.Object.GetComponent<MeshCollider>() is { } collider &&
@@ -1250,7 +1316,7 @@ public class BlockWorld : Script
             newChunk.VertexCount = data.Vertices.Length;
             newChunk.TriangleCount = data.Triangles.Length / 3;
             _loaded.Add(pair.Key,newChunk);
-            DecorateChestFronts(pair.Key,newChunk,data.Blocks);
+            RefreshChunkDecorations(pair.Key,newChunk,data.Blocks);
         }
 
         foreach (ChunkKey key in _scratch)
@@ -2009,15 +2075,16 @@ public class BlockWorld : Script
     public bool TryQueryFromRay(Vector3 origin, Vector3 direction, float reach,
         GameObject actingPlayer, out BlockPosition remove, out BlockPosition place) =>
         TryQueryFromRay(origin, direction, reach, actingPlayer,
-            out remove, out place, out _);
+            out remove, out place, out _, out _);
 
     public bool TryQueryFromRay(Vector3 origin, Vector3 direction, float reach,
         GameObject actingPlayer, out BlockPosition remove, out BlockPosition place,
-        out Vector3 hitNormal)
+        out Vector3 hitNormal, out float hitY)
     {
         remove = default;
         place = default;
         hitNormal = default;
+        hitY = default;
         if (!float.IsFinite(reach) || reach <= 0f ||
             !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) ||
             !float.IsFinite(origin.Z) || !float.IsFinite(direction.X) ||
@@ -2050,6 +2117,7 @@ public class BlockWorld : Script
             remove.Y + (int)MathF.Round(normal.Y),
             remove.Z + (int)MathF.Round(normal.Z));
         hitNormal = normal;
+        hitY = hit.Point.Y;
         return ChunkGenerator.InWorld(remove.Y) &&
             _edits.Get(remove.X, remove.Y, remove.Z, Seed) != 0;
     }
@@ -2069,9 +2137,9 @@ public class BlockWorld : Script
     /// <summary>Shared, side-effect-free placement rule for preview and server.</summary>
     public bool TryPlanPlacement(BlockPosition hit, BlockPosition adjacent,
         Vector3 hitNormal, BlockState selected,
-        out BlockPosition target, out ushort replacement) =>
+        out BlockPosition target, out ushort replacement, float? hitY = null) =>
         BlockPlacement.TryPlan(hit, adjacent, hitNormal,
-            new BlockState(BlockAt(hit)), selected, out target, out replacement);
+            new BlockState(BlockAt(hit)), selected, out target, out replacement, hitY);
 
     /// <summary>Presentation and collision share the same derived stair shape.
     /// The result is transient and must not be saved to world-edit data.</summary>
@@ -2210,7 +2278,8 @@ public class BlockWorld : Script
         out ushort previousState, out ushort replacementState,
         out BlockPosition editedPosition,
         out SectionedEditSnapshot beforeEdit,
-        out IReadOnlyDictionary<ChunkKey, int> beforeRevisions)
+        out IReadOnlyDictionary<ChunkKey, int> beforeRevisions,
+        bool aimSelectsHalf = false)
     {
         previousState = 0;
         replacementState = 0;
@@ -2221,7 +2290,7 @@ public class BlockWorld : Script
             (!breaking && (placeState == 0 || !BlockState.IsValid(placeState))) ||
             !TryQueryFromRay(origin, direction, reach, actingPlayer,
                 out BlockPosition remove, out BlockPosition adjacent,
-                out Vector3 hitNormal))
+                out Vector3 hitNormal, out float hitY))
             return false;
 
         BlockPosition target;
@@ -2234,7 +2303,8 @@ public class BlockWorld : Script
         else
         {
             if (!TryPlanPlacement(remove, adjacent, hitNormal,
-                    new BlockState(placeState), out target, out replacement) ||
+                    new BlockState(placeState), out target, out replacement,
+                    aimSelectsHalf ? hitY : null) ||
                 !CanPlaceAt(target, replacement))
                 return false;
         }

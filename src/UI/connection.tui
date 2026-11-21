@@ -1,0 +1,1 @@
+<panel id="connection"><panel class="box"><text class="head">Expedition lobby</text><text id="progress">Connecting…</text><button onclick="OnBack">Back to expeditions</button></panel></panel>

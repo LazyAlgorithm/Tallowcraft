@@ -2,6 +2,15 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Building, exploration and multiplayer playtest — 20 November 2026
+
+- **Building.** Q now cycles through six shapes. Corner posts and horizontal beams use the same half-cell geometry for rendering, picking and collision. F rotates them, and Ctrl raises a beam. A translucent preview shows the shape that will be placed, including merged slabs and derived stair corners.
+- **Exploration.** Meadow and Woodland grow grass tufts, with daisies scattered through Meadow. On gentle terrain, ruins open into a second chamber. Meadow has timber halls, Drylands has stone-brick arches and Highlands has paired watch pillars. Steeper sites retain the original courtyard. In seed 42, the nearest expanded Meadow hall to spawn is at X 66, Z 206. A native Linux walkthrough confirmed the standing player can cross its courtyard and enter the rear chamber.
+- **Network verification.** Two native Linux game processes with separate profiles used the engine's direct transport over loopback. A guest joined after the host built a rotated, upside-down stair, copied it with middle mouse and placed a duplicate. Both peers observed the same orientation and upper half. A guest-built upper beam replicated, Return to Spawn restored the guest's own spawn, and reconnecting restored the beam selection and Home waypoint on the compass.
+- **View distance.** The player manually tested the maximum setting of 64 chunks on their PC and reported no issues.
+- **Precise placement.** Side-face hit height selects the upper or lower half for stairs and slabs. The preview and authoritative placement use the same rule. Ctrl flips the selection, and middle-click preserves a copied orientation. The Linux playtest confirmed upper and lower slab placement and an upside-down stair against a side face.
+- **Open verification.** Run the Steam friends-list and invitation flow using two Steam accounts on App ID 480.
+
 ## HUD compass and stair-building follow-up — 20 November 2026
 
 **Committed to main, not locally playtested.** Removed the misaligned compass arrow controls and replaced the coarse 15° image marker bins with 61 positions at 3° intervals. Tallow's current public .tui element API does not support setting image pixel positions, so markers still quantize rather than interpolate continuously; the cardinal tick labels remain at 15°. The compass runs from `BlockEditor.LocalUpdate` via `TallowcraftUI.Refresh` and only changes UI elements when their labels or marker bins change.

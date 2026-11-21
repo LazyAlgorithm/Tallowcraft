@@ -12,9 +12,9 @@ internal static class HybridMeshTests
     {
         const int seed = 42;
         int cases = 0;
-        foreach (BlockShape shape in new[] { BlockShape.Slab, BlockShape.Stair, BlockShape.HalfWall })
+        foreach (BlockShape shape in new[] { BlockShape.Slab, BlockShape.Stair, BlockShape.HalfWall, BlockShape.Post, BlockShape.Beam })
         for (int facing = 0; facing < 4; facing++)
-        for (int upper = 0; upper < (shape == BlockShape.HalfWall ? 1 : 2); upper++)
+        for (int upper = 0; upper < (shape is BlockShape.HalfWall or BlockShape.Post ? 1 : 2); upper++)
         {
             Validate(new ChunkKey(0, 0), new Dictionary<BlockPosition, ushort>
             {

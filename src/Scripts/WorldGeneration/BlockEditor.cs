@@ -27,6 +27,11 @@ public class BlockEditor : Script
     [Sync] public bool PickedUpper = false;
     [Sync] public string PickFeedback = "";
     [Sync] public bool CreativeMode = true;
+    [Sync] public int TestWeapon;
+    [Sync] public int TestShotCount;
+    private float _testShotCooldown;
+
+    public string TestWeaponName => TestWeapon == 1 ? "Spark pistol" : "Pulse repeater";
     [Sync] public string InventoryState = "";
     [Sync] public string ToolState = "";
     [Sync] public bool ChestOpen = false;
@@ -55,7 +60,7 @@ public class BlockEditor : Script
         "Cobblestone", "Stone bricks", "Mossy stone", "Dark timber"
     };
     private static readonly string[] ShapeNames =
-        { "Cube", "Slab", "Stair", "Half wall" };
+        { "Cube", "Slab", "Stair", "Half wall", "Post", "Beam" };
     private static readonly string[] ItemShort =
         { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING", "CHT", "COB", "BRK", "MOS", "TMB" };
     private static readonly Color[] ItemColors =
@@ -111,6 +116,7 @@ public class BlockEditor : Script
     private Vector3 _returnDestination;
     private float _returnSecondsLeft;
     private int _returnSequence;
+    private int _reservedReturnOwner = -1;
     private bool _returnClientReady;
     private bool _returnLocalPending;
     private float _returnLocalSeconds;
@@ -190,6 +196,7 @@ public class BlockEditor : Script
         _returnClientReady = !Scene.IsNetworked || owner == 0;
         // This reservation keeps full 16³ chunks and Jolt colliders loaded
         // around the destination, regardless of the host camera's LOD.
+        _reservedReturnOwner = owner;
         _world.BeginServerReturnPreload(owner, destination);
         if (_returnClientReady)
         {
@@ -255,7 +262,8 @@ public class BlockEditor : Script
     {
         if (!ReturnToSpawnPending) return;
         ReturnToSpawnPending = false;
-        _world?.EndServerReturnPreload(GameObject.OwnerClientId);
+        _world?.EndServerReturnPreload(_reservedReturnOwner);
+        _reservedReturnOwner = -1;
         if (success) _returnToSpawnCooldown = 10f;
         Rpc(nameof(NotifyReturnFinished), GameObject.OwnerClientId,
             _returnSequence, success);
@@ -297,6 +305,8 @@ public class BlockEditor : Script
         ProfileReady = false;
         ProfileError = false;
     }
+
+    internal string PartyName { get; private set; } = "";
 
     private static string LocalIdentity(string role)
     {
@@ -445,14 +455,15 @@ public class BlockEditor : Script
     }
 
     [Rpc(RpcTarget.Server)]
-    private void BindPlayerProfile(string token)
+    private void BindPlayerProfile(string token, string displayName)
     {
         if (!Scene.IsServer || !Scene.IsNetworked ||
             GameObject.OwnerClientId <= 0 ||
             RpcSender != GameObject.OwnerClientId ||
             !PlayerIdentity.Valid(token))
             return;
-        TryBindProfile(token);
+        if (TryBindProfile(token))
+            PartyName = new string(displayName.Take(32).Where(c => !char.IsControl(c)).ToArray()).Trim();
     }
 
     public override void LocalUpdate(float deltaTime)
@@ -505,7 +516,7 @@ public class BlockEditor : Script
             if (_identityRetryClock <= 0f)
             {
                 _identityRetryClock = 1f;
-                try { Rpc(nameof(BindPlayerProfile), LocalIdentity("client")); }
+                try { Rpc(nameof(BindPlayerProfile), LocalIdentity("client"), Steam.UserName); }
                 catch (Exception exception)
                 {
                     _localIdentityFailed = true;
@@ -565,13 +576,12 @@ public class BlockEditor : Script
                     direction.X, direction.Y, direction.Z);
             }
 
-            // E is interaction-only: the Player/Use action no longer
-            // binds this key. Interacting requests the nearby chest on the
-            // server, which atomically opens both the chest and menu when
-            // a real placed chest is in range. No client voxel claim.
-            if (!InventoryOpen && ProfileReady &&
-                InputActions.Pressed("Player/Interact"))
-                Rpc(nameof(InteractNearbyChest));
+            if (!InventoryOpen && ProfileReady && InputActions.Pressed("Player/Interact") &&
+                Scene.Find("Main Camera") is { IsValid: true } eye)
+            {
+                Vector3 look = eye.Transform.Forward;
+                Rpc(nameof(InteractWithChest), look.X, look.Y, look.Z);
+            }
 
             // Server owns durability/equipment; hotkeys send only the tool id.
             // 1-6 continue selecting building blocks in the networked hotbar.
@@ -581,6 +591,10 @@ public class BlockEditor : Script
                 Input.GetKeyDown(KeyCode.Alpha0) ? 0 : -1;
             if (tool >= 0)
                 Rpc(nameof(EquipToolQuick), tool);
+            else if (CreativeMode && Input.GetKeyDown(KeyCode.Z))
+                Rpc(nameof(SelectTestWeapon), 1);
+            else if (CreativeMode && Input.GetKeyDown(KeyCode.X))
+                Rpc(nameof(SelectTestWeapon), 2);
         }
         _ui?.Refresh();
 
@@ -605,12 +619,16 @@ public class BlockEditor : Script
     {
         if (Scene.IsServer)
         {
+            if (_reservedReturnOwner >= 0)
+                _world?.EndServerReturnPreload(_reservedReturnOwner);
             SaveProfile();
             if (_profileToken.Length != 0)
                 PlayerProfileClaims.Release(_profileWorldId, _profileToken);
         }
-        if (!IsLocal)
-            return;
+        // The engine may already have destroyed the player identity. Only
+        // the local owner created a HUD and changed the shared input map.
+        if (!_uiObject.HasValue) return;
+        _world?.EndLocalReturnPreload();
         if (_uiObject is { IsValid: true } ui)
             ui.Destroy();
         _uiObject = null;
@@ -643,6 +661,7 @@ public class BlockEditor : Script
     // forward actions to the existing server-authoritative RPC endpoints.
     internal BlockInventory UiInventory => DisplayInventory();
     internal PlayerTools UiTools => DisplayTools();
+    public MiningTool VisibleTool => DisplayTools().Equipped;
     internal ChestContents UiChest => DisplayChest();
     internal bool UiNearForge => _nearForge;
     internal void UiMoveStack(int from, int to, bool split) =>
@@ -659,10 +678,6 @@ public class BlockEditor : Script
         Rpc(nameof(SmeltIron), quantity);
     internal void UiUnpack(int type) =>
         Rpc(nameof(RecoverLegacyMaterials), type);
-    internal void UiOpenChest() =>
-        Rpc(nameof(OpenNearbyChest));
-    internal void UiCloseChest() =>
-        Rpc(nameof(CloseChest));
     internal void UiCloseMenu() => CloseMenuLocally();
 
     /// <summary>Server-authoritative middle-click. The packet contains a
@@ -825,71 +840,28 @@ public class BlockEditor : Script
         if (current!=ChestState) ChestState=current;
     }
 
-    /// <summary>Common server-side check for both E interaction and the
-    /// Storage tab. Only placed chest voxels in range may open. No client
-    /// location, block position, or item contents are trusted.</summary>
-    private bool TryOpenChestNearPlayer()
+    [Rpc(RpcTarget.Server)]
+    private void InteractWithChest(float x, float y, float z)
     {
-        if (!Scene.IsServer || !ProfileReady)
-            return false;
+        if (!Scene.IsServer || !ProfileReady || InventoryOpen || ReturnToSpawnPending ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+        Vector3 eye = Transform.Position + Vector3.UnitY * EyeHeight;
         _world ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
-        BlockPosition? found = _world?.NearestChest(
-            Transform.Position + Vector3.UnitY * EyeHeight);
-        if (found is not { } pos || _world == null ||
+        if (_world == null || _world.PersistenceLocked ||
+            !_world.TryQueryFromRay(eye, new Vector3(x, y, z), 4.5f, GameObject,
+                out BlockPosition pos, out _) ||
+            Vector3.DistanceSquared(eye, new Vector3(pos.X+.5f,pos.Y+.5f,pos.Z+.5f)) > 4.5f*4.5f ||
             !_world.TryReadChest(pos, out ChestContents contents))
-        {
-            ChestOpen = false;
-            ChestState = "";
-            ChestStatus = "No placed chest within 4.5m. Move closer and try again.";
-            return false;
-        }
+            return;
         ChestX = pos.X;
         ChestY = pos.Y;
         ChestZ = pos.Z;
-        ChestOpen = true;
         ChestState = contents.Serialize();
-        ChestStatus = "Chest ready. Select a stack, then an empty storage slot.";
-        return true;
-    }
-
-    /// <summary>World interaction opened by E, not the block placement
-    /// action. The menu and chest open in the same server transaction,
-    /// avoiding the tab menu's InventoryOpen acknowledgment race.</summary>
-    [Rpc(RpcTarget.Server)]
-    private void InteractNearbyChest()
-    {
-        if (!Scene.IsServer || !ProfileReady || InventoryOpen ||
-            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
-            return;
-        if (!TryOpenChestNearPlayer())
-            return;
+        ChestStatus = "Choose a stack and its destination.";
+        ChestOpen = true;
         InventoryOpen = true;
         ResetMining();
-    }
-
-    [Rpc(RpcTarget.Server)]
-    private void OpenNearbyChest()
-    {
-        if (!Scene.IsServer ||
-            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
-            return;
-        if (!ProfileReady || !InventoryOpen)
-        {
-            ChestStatus = "Inventory is not ready; open it before using storage.";
-            return;
-        }
-        TryOpenChestNearPlayer();
-    }
-
-    [Rpc(RpcTarget.Server)]
-    private void CloseChest()
-    {
-        if (!Scene.IsServer ||
-            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
-            return;
-        ChestOpen = false;
-        ChestState = "";
-        ChestStatus = "";
     }
 
     [Rpc(RpcTarget.Server)]
@@ -1033,9 +1005,23 @@ public class BlockEditor : Script
             return;
         if (_tools.TryEquip((MiningTool)kind))
         {
+            TestWeapon = 0;
             ToolState = _tools.Serialize();
             _profileDirty = true;
         }
+    }
+
+    [Rpc(RpcTarget.Server)]
+    private void SelectTestWeapon(int weapon)
+    {
+        if (!Scene.IsServer || !CreativeMode || !ProfileReady || InventoryOpen ||
+            ReturnToSpawnPending || weapon is < 1 or > 2 ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
+            return;
+
+        TestWeapon = TestWeapon == weapon ? 0 : weapon;
+        _testShotCooldown = 0f;
+        ResetMining();
     }
 
     [Rpc(RpcTarget.Server)]
@@ -1044,6 +1030,7 @@ public class BlockEditor : Script
         if (!Scene.IsServer || !ProfileReady || InventoryOpen ||
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
+        TestWeapon = 0;
         if (_tools.TryEquipSlot(kind))
         {
             ToolState = _tools.Serialize();
@@ -1246,9 +1233,15 @@ public class BlockEditor : Script
                 BlockInventory.HotbarSlots;
         if (input.Pressed(InputButton.Ability1))
         {
-            PlaceShape = (PlaceShape + 1) % 4;
-            // Q changes the building shape intentionally; it resets the
-            // copied upper half. Hold crouch for an upper variant.
+            PlaceShape = (PlaceShape + 1) % (BlockState.MaxShape + 1);
+            // Selecting another shape restores aim-based placement while
+            // preserving the current facing at the moment of the change.
+            if (PickedAbsoluteFacing)
+            {
+                var look = Vector3.Transform(Vector3.UnitZ, input.LookRotation);
+                FacingOffset = (FacingOffset - BlockState.FacingTowardPlayer(look)) & 3;
+                PickedAbsoluteFacing = false;
+            }
             PickedUpper = false;
         }
         if (input.Pressed(InputButton.Ability2))
@@ -1270,11 +1263,28 @@ public class BlockEditor : Script
             heldType != BlockInventory.IronIngot ?
             heldType : 0;
         if (PlaceType == BlockInventory.Chest) PlaceShape = 0;
-        PlaceShape = Math.Clamp(PlaceShape, 0, 3);
+        PlaceShape = Math.Clamp(PlaceShape, 0, BlockState.MaxShape);
         FacingOffset &= 3;
         if (previousHotbar != SelectedHotbar || previousType != PlaceType ||
             previousShape != PlaceShape || previousFacing != FacingOffset)
             _profileDirty = true;
+
+        if (TestWeapon != 0)
+        {
+            ResetMining();
+            if (CreativeMode)
+            {
+                _testShotCooldown = MathF.Max(0, _testShotCooldown - deltaTime);
+                bool trigger = TestWeapon == 1 ? input.Pressed(InputButton.Use) : input.Held(InputButton.Use);
+                if (trigger && _testShotCooldown <= 0)
+                {
+                    _testShotCooldown = TestWeapon == 1 ? .32f : .16f;
+                    TestShotCount = TestShotCount == int.MaxValue ? 1 : TestShotCount + 1;
+                }
+                return;
+            }
+            TestWeapon = 0;
+        }
 
         bool breaking = input.Held(InputButton.Fire);
         bool placing = !breaking && input.Pressed(InputButton.Use);
@@ -1347,7 +1357,8 @@ public class BlockEditor : Script
             breaking, GameObject, selected.Packed,
             out ushort previous, out _, out BlockPosition editedPosition,
             out SectionedEditSnapshot beforeEdit,
-            out IReadOnlyDictionary<ChunkKey, int> beforeRevisions))
+            out IReadOnlyDictionary<ChunkKey, int> beforeRevisions,
+            aimSelectsHalf: !PickedAbsoluteFacing))
         {
             if (breaking)
             {

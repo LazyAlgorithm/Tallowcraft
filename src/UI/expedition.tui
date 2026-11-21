@@ -1,0 +1,28 @@
+<panel id="screen">
+  <panel class="book">
+    <panel class="print">
+      <image class="ridge" src="Textures/UI/ridge.png" />
+      <panel class="caption"><text class="brand">Tallowcraft</text><text class="legend">Build and explore with friends</text></panel>
+    </panel>
+    <panel class="choices">
+      <panel id="launch-options" class="choice-stack">
+        <text class="heading">Expeditions</text>
+        <text id="launch-note" class="description">Explore your saved world alone or host an expedition for Steam friends.</text>
+        <button class="start" onclick="OnHost">Host on Steam</button>
+        <button class="join" onclick="OnFriends">Join a Steam friend</button>
+        <panel class="rule" />
+        <button class="join" onclick="OnSolo">Play solo</button>
+        <button class="exit" onclick="OnQuit">Quit game</button>
+      </panel>
+      <panel id="friend-list" class="choice-stack">
+        <text class="heading">Friends’ worlds</text>
+        <text id="friends-status" class="friends-status">Checking Steam…</text>
+        <button id="friend-0" class="friend-row" onclick="OnFriend">Friend</button>
+        <button id="friend-1" class="friend-row" onclick="OnFriend">Friend</button>
+        <button id="friend-2" class="friend-row" onclick="OnFriend">Friend</button>
+        <panel class="friend-nav"><button id="friends-prev" onclick="OnPrevious">Previous</button><button id="friends-next" onclick="OnNext">Next</button></panel>
+        <button class="exit" onclick="OnFriends">Back</button>
+      </panel>
+    </panel>
+  </panel>
+</panel>

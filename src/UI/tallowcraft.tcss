@@ -1,20 +1,20 @@
 /* Tallowcraft UI - editable in Tallow's visual .tui editor.
    CSS is the engine's subset: flex row/column + absolute position. */
 #screen { width: 100%; height: 100% }
-.fps-counter { position: absolute; top: 18; right: 22; width: 100; height: 34; align-items: center; justify-content: center; background-color: #121916dc; border-radius: 6; border-width: 1; border-color: #b8c59455 }
-#fps-value { font-size: 17; color: #f3e3ad }
-.navigation-hud { position: absolute; top: 18; left: 22; width: 330; gap: 3; padding: 8 12; background-color: #121916dc; border-radius: 7; border-width: 1; border-color: #b8c59455 }
-.nav-coordinates { font-size: 15; color: #f3e3ad }
-.nav-target { font-size: 13; color: #c1d3c1 }
+.fps-counter { position: absolute; top: 18; right: 22; width: 100; height: 34; align-items: center; justify-content: center; background-color: #0d101ddc; border-radius: 6; border-width: 1; border-color: #949cbe55 }
+#fps-value { font-size: 17; color: #c3c6dd }
+.navigation-hud { position: absolute; top: 18; left: 22; width: 330; gap: 3; padding: 8 12; background-color: #0d101ddc; border-radius: 3; border-width: 1; border-color: #949cbe55 }
+.nav-coordinates { font-size: 15; color: #c3c6dd }
+.nav-target { font-size: 13; color: #bbbfd9 }
 /* 15-degree labels and 3-degree marker positions share one width.
    No decorative arrows: the ribbon does not extend beyond its frame.
    Tallow's TUI has no public pixel-position API, so use a fixed marker
    grid. The 244 image elements are created once, not every frame. */
-.compass-ribbon { position: absolute; top: 12; left: 25%; width: 50%; height: 64; align-items: center; justify-content: center; background-color: #121916ca; border-width: 1; border-color: #a7ad8366; border-radius: 7; padding: 3 7 }
+.compass-ribbon { position: absolute; top: 12; left: 25%; width: 50%; height: 64; align-items: center; justify-content: center; background-color: #0d101dca; border-width: 1; border-color: #6c7cbe66; border-radius: 3; padding: 3 7 }
 .compass-track { position: relative; width: 100%; height: 54 }
 .compass-tick-track { position: absolute; top: 0; left: 0; width: 100%; height: 23; flex-direction: row; align-items: center }
 .compass-bin { position: relative; width: 7.6923%; height: 23; align-items: center; justify-content: center }
-.compass-tick { width: 100%; text-align: center; font-size: 14; color: #e5e6d1 }
+.compass-tick { width: 100%; text-align: center; font-size: 14; color: #d2d4e5 }
 .compass-marker-track { position: absolute; top: 20; left: 0; width: 100%; height: 32; flex-direction: row; align-items: center }
 .compass-marker-bin { position: relative; width: 1.63934%; height: 30 }
 .compass-marker { position: absolute; top: 2; left: -10; width: 24; height: 26 }
@@ -24,102 +24,102 @@
 .compass-marker-3 { top: 7; left: -1 }
 /* Server-controlled return-to-spawn barrier; never hide the loading text
    until the authoritative ready handshake completes or times out. */
-.return-loading { position: absolute; top: 39%; left: 29%; width: 42%; height: 108; padding: 12; gap: 8; align-items: center; justify-content: center; background-color: #141e1ae8; border-width: 2; border-color: #e5c57e; border-radius: 10 }
-.return-loading-title { font-size: 19; color: #ffe1a3; text-align: center }
-.return-loading-status { font-size: 15; color: #eef1d9; text-align: center }
-.return-loading-subtitle { font-size: 12; color: #b8d0c5; text-align: center }
-.nav-feedback { font-size: 13; color: #e0bd7f; white-space: normal }
-.game-menu { width: 520; background-color: #1d2724fa; border-width: 2; border-color: #8aa077; border-radius: 16; padding: 30; gap: 16; align-items: center }
-.game-menu-kicker { font-size: 14; color: #dfb978 }
-.game-menu-title { font-size: 46; color: #f5e5b1 }
-.game-menu-subtitle { font-size: 17; color: #c6d5bf }
+.return-loading { position: absolute; top: 39%; left: 29%; width: 42%; height: 108; padding: 12; gap: 8; align-items: center; justify-content: center; background-color: #0f1322e8; border-width: 2; border-color: #a78cd7; border-radius: 10 }
+.return-loading-title { font-size: 19; color: #c4c7de; text-align: center }
+.return-loading-status { font-size: 15; color: #dee0ec; text-align: center }
+.return-loading-subtitle { font-size: 12; color: #bca8e0; text-align: center }
+.nav-feedback { font-size: 13; color: #a589d6; white-space: normal }
+.game-menu { width: 600; background-color: #141a2ffa; border-width: 2; border-color: #5b6db7; border-radius: 4; padding: 22; gap: 9; align-items: center }
+.game-menu-kicker { font-size: 14; color: #a083d4 }
+.game-menu-title { font-size: 46; color: #c7cadf }
+.game-menu-subtitle { font-size: 17; color: #bbbfd9 }
 .game-menu-actions, .world-settings { width: 100%; gap: 10; align-items: center }
-.game-menu-button, .game-menu-button-secondary, .game-menu-button-quit, .setting-button { width: 100%; height: 49; border-radius: 7; border-width: 1; font-size: 19; color: #f7f1dc; text-align: center }
-.game-menu-button { background-color: #52764d; border-color: #afd092 }
-.game-menu-button-secondary, .setting-button { background-color: #34483c; border-color: #778d70 }
-.game-menu-button-quit { background-color: #633b38; border-color: #a8746b }
+.game-menu-button, .game-menu-button-secondary, .game-menu-button-quit, .setting-button { width: 100%; height: 49; border-radius: 3; border-width: 1; font-size: 19; color: #e3e5f0; text-align: center }
+.game-menu-button { background-color: #3a4985; border-color: #9aa2c1 }
+.game-menu-button-secondary, .setting-button { background-color: #252e54; border-color: #4c5fac }
+.game-menu-button-quit { background-color: #663558; border-color: #af6499 }
 .world-settings { gap: 7 }
 .setting-button { height: 42; font-size: 17 }
-.settings-title { font-size: 23; color: #f2ddaa }
-.settings-help { width: 100%; height: 22; font-size: 14; color: #bbccb6; text-align: center }
-.game-menu-footer { font-size: 13; color: #9faf9d }
-.waypoint-help { font-size: 14; width: 100%; color: #c6d5bf; white-space: normal; text-align: center }
+.settings-title { font-size: 23; color: #c0c4dc }
+.settings-help { width: 100%; height: 22; font-size: 14; color: #adb3cd; text-align: center }
+.game-menu-footer { font-size: 13; color: #7f8dc7 }
+.waypoint-help { font-size: 14; width: 100%; color: #bbbfd9; white-space: normal; text-align: center }
 .waypoint-list { width: 100%; gap: 7 }
-.waypoint-row { width: 100%; height: 72; background-color: #283830; border-radius: 7; border-width: 1; border-color: #5e795e; padding: 7 11; gap: 5 }
-.waypoint-position { width: 100%; font-size: 15; color: #efdba8 }
+.waypoint-row { width: 100%; height: 72; background-color: #1d2441; border-radius: 3; border-width: 1; border-color: #405093; padding: 7 11; gap: 5 }
+.waypoint-position { width: 100%; font-size: 15; color: #bdc1da }
 .waypoint-actions { flex-direction: row; align-items: center; gap: 8; width: 100% }
-.waypoint-button { height: 31; width: 89; border-radius: 5; border-width: 1; border-color: #7d9876; background-color: #405a47; color: #f5efda; font-size: 13 }
-.waypoint-set { width: 123; background-color: #567b50; border-color: #a6c38f }
-.waypoint-clear { width: 77; background-color: #57433b; border-color: #977e6d }
-#crosshair { position: absolute; left: 49.6%; top: 49%; width: 24; height: 28; font-size: 27; color: #f3f3e6c0; text-align: center }
+.waypoint-button { height: 31; width: 89; border-radius: 5; border-width: 1; border-color: #5467b4; background-color: #2e3a69; color: #e1e3ee; font-size: 13 }
+.waypoint-set { width: 123; background-color: #3d4c8a; border-color: #9199bb }
+.waypoint-clear { width: 77; background-color: #3f266c; border-color: #7146be }
+#crosshair { position: absolute; left: 49.6%; top: 49%; width: 24; height: 28; font-size: 27; color: #e7e9f2c0; text-align: center }
 .hud { position: absolute; left: 0; right: 0; bottom: 22; height: 154; gap: 7; align-items: center; justify-content: center }
-.hud-title { flex-direction: row; gap: 18; align-items: center; background-color: #121916db; padding: 6 14; border-radius: 7; border-width: 1; border-color: #b8c59444 }
-#hud-name { font-size: 15; color: #f3e3ad }
-#hud-status { font-size: 14; color: #c1d3c1 }
-.hud-footer { flex-direction: row; gap: 28; align-items: center; background-color: #121916db; padding: 7 15; border-radius: 6 }
-#hud-held { font-size: 14; color: #f1e6b9 }
-#hud-tool { font-size: 14; color: #b6c8a2 }
+.hud-title { flex-direction: row; gap: 18; align-items: center; background-color: #0d101ddb; padding: 6 14; border-radius: 3; border-width: 1; border-color: #949cbe44 }
+#hud-name { font-size: 15; color: #c3c6dd }
+#hud-status { font-size: 14; color: #bbbfd9 }
+.hud-footer { flex-direction: row; gap: 28; align-items: center; background-color: #0d101ddb; padding: 7 15; border-radius: 6 }
+#hud-held { font-size: 14; color: #c9cce1 }
+#hud-tool { font-size: 14; color: #9ea6c4 }
 .slot-row { flex-direction: row; align-items: center; gap: 7 }
 .chest-row { flex-direction: row; align-items: center; gap: 3 }
-.hud-slot, .slot, .chest-slot { position: relative; background-color: #28322fee; border-width: 2; border-color: #51645b; border-radius: 5; padding: 0; align-items: center; justify-content: center }
-.hud-slot { width: 58; height: 60; background-color: #222d29f5; border-color: #5b7365 }
+.hud-slot, .slot, .chest-slot { position: relative; background-color: #1b223dee; border-width: 2; border-color: #36447b; border-radius: 5; padding: 0; align-items: center; justify-content: center }
+.hud-slot { width: 58; height: 60; background-color: #171d36f5; border-color: #3e4d8c }
 .slot { width: 58; height: 61 }
-.chest-slot { width: 39; height: 53; background-color: #3a3026; border-color: #7b6547 }
+.chest-slot { width: 39; height: 53; background-color: #2a1947; border-color: #543290 }
 .slot-art { position: absolute; left: 0; top: 5; width: 100%; height: 40; align-items: center; justify-content: center }
 .slot-icon { position: absolute; left: 12; top: 0; width: 34; height: 34 }
 .chest-icon { position: absolute; left: 5; top: 0; width: 30; height: 30 }
-.slot-count { position: absolute; right: 4; bottom: 2; height: 17; font-size: 13; color: #fff5da; text-align: right }
-.slot-key { position: absolute; left: 4; top: 2; height: 16; font-size: 11; color: #f4f1e2c2 }
-.slot-focus { position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-width: 3; border-color: #ecd187; border-radius: 5 }
-.overlay { position: absolute; top: 0; right: 0; bottom: 0; left: 0; align-items: center; justify-content: center; background-color: #0a100dd8 }
-.inventory-shell { width: 1110; height: 740; background-color: #1d2724fa; border-radius: 14; border-width: 2; border-color: #7b927d; padding: 18; gap: 12 }
-.menu-header { flex-direction: row; height: 70; justify-content: space-between; align-items: center; border-color: #526b59; border-width: 0 0 1 0 }
+.slot-count { position: absolute; right: 4; bottom: 2; height: 17; font-size: 13; color: #e7e9f2; text-align: right }
+.slot-key { position: absolute; left: 4; top: 2; height: 16; font-size: 11; color: #e5e7f1c2 }
+.slot-focus { position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-width: 3; border-color: #b098db; border-radius: 5 }
+.overlay { position: absolute; top: 0; right: 0; bottom: 0; left: 0; align-items: center; justify-content: center; background-color: #080a11d8 }
+.inventory-shell { width: 1110; height: 740; background-color: #141a2ffa; border-radius: 4; border-width: 2; border-color: #5467b4; padding: 18; gap: 12 }
+.menu-header { flex-direction: row; height: 70; justify-content: space-between; align-items: center; border-color: #394781; border-width: 0 0 1 0 }
 .heading { gap: 3 }
-.eyebrow { font-size: 13; color: #e1b97c }
-.menu-title { font-size: 29; color: #f6edd6 }
+.eyebrow { font-size: 13; color: #a488d5 }
+.menu-title { font-size: 29; color: #dfe1ed }
 .tabs { flex-direction: row; gap: 9; align-items: center }
-.tab { font-size: 17; padding: 13 19; background-color: #384c3f; border-radius: 7; border-width: 1; border-color: #718670; color: #f2ecd9 }
-.close { font-size: 21; padding: 10 17; background-color: #7d3a37; border-radius: 7; color: #ffefed }
+.tab { font-size: 17; padding: 13 19; background-color: #28325a; border-radius: 3; border-width: 1; border-color: #4a5ca7; color: #dee0ed }
+.close { font-size: 21; padding: 10 17; background-color: #773d66; border-radius: 3; color: #f3f4f9 }
 /* Give each column an explicit height. Tallow's percentage heights were
    resolving against the outer shell, causing both panels to extend below it. */
 .menu-content { flex-direction: row; gap: 18; height: 538 }
-.player-column { width: 610; height: 538; background-color: #26322b; border-radius: 9; padding: 16; gap: 9; border-width: 1; border-color: #4a604c }
+.player-column { width: 610; height: 538; background-color: #1a213c; border-radius: 4; padding: 16; gap: 9; border-width: 1; border-color: #334074 }
 .section-heading { flex-direction: row; justify-content: space-between; height: 26 }
-.section-title { font-size: 19; color: #e9d59e }
-.subtle { font-size: 13; color: #b1c2b0; white-space: normal }
+.section-title { font-size: 19; color: #bca7e0 }
+.subtle { font-size: 13; color: #a4abc7; white-space: normal }
 .slot-stack { gap: 7; align-items: center }
-.inventory-divider { height: 5; background-color: #455e49; width: 100% }
-.hotbar-label { color: #d8d09d; font-size: 12; height: 14 }
+.inventory-divider { height: 5; background-color: #313d6f; width: 100% }
+.hotbar-label { color: #a5acc8; font-size: 12; height: 14 }
 .controls { flex-direction: row; gap: 10; align-items: center }
-#selection-note { height: 24; font-size: 14; color: #efd39f }
-.secondary { background-color: #3d5045; border-width: 1; border-color: #738a74; border-radius: 6; font-size: 14; color: #e7eee2; padding: 9 12 }
-.primary { background-color: #5a8057; border-width: 1; border-color: #b5d6a6; border-radius: 6; color: #f6f2dc; font-size: 17; padding: 11 14 }
+#selection-note { height: 24; font-size: 14; color: #b7bbd7 }
+.secondary { background-color: #2a3560; border-width: 1; border-color: #4c5fac; border-radius: 6; font-size: 14; color: #e2e3ee; padding: 9 12 }
+.primary { background-color: #405092; border-width: 1; border-color: #aab1cb; border-radius: 6; color: #e3e4ef; font-size: 17; padding: 11 14 }
 .reserve { margin-top: 4; justify-content: space-between; height: 36 }
-#reserve-info { font-size: 13; color: #c8bc95 }
-.detail-column { width: 422; height: 538; background-color: #222e28; padding: 12; border-radius: 9; border-width: 1; border-color: #425a47 }
+#reserve-info { font-size: 13; color: #a488d5 }
+.detail-column { width: 422; height: 538; background-color: #181e37; padding: 12; border-radius: 4; border-width: 1; border-color: #2f3a6a }
 .detail { gap: 9; width: 100% }
 .recipe-scroll-controls { flex-direction: row; align-items: center; width: 100%; height: 29; gap: 5 }
-.recipe-scroll-button { width: 29; height: 27; border-radius: 4; background-color: #4b6352; color: #e9d59e; font-size: 15 }
-.recipe-scrollbar { width: 130; height: 18; background-color: #28392e }
-.recipe-scroll-status { font-size: 12; color: #c8d4bb }
+.recipe-scroll-button { width: 29; height: 27; border-radius: 4; background-color: #344176; color: #bca7e0; font-size: 15 }
+.recipe-scrollbar { width: 130; height: 18; background-color: #1d2442 }
+.recipe-scroll-status { font-size: 12; color: #b8bcd7 }
 .recipes { gap: 6; height: 230; margin-top: 2; margin-bottom: 4 }
-.recipe { flex-direction: row; align-items: center; gap: 13; width: 100%; height: 53; background-color: #354638; padding: 6 10; border-radius: 8; border-color: #688067; border-width: 1 }
+.recipe { flex-direction: row; align-items: center; gap: 13; width: 100%; height: 53; background-color: #252e54; padding: 6 10; border-radius: 8; border-color: #45569d; border-width: 1 }
 .recipe-image { width: 34; height: 34 }
-.recipe-title { font-size: 17; color: #f6f0db }
-.recipe-sub { font-size: 12; color: #b9c9b4 }
+.recipe-title { font-size: 17; color: #e2e4ef }
+.recipe-sub { font-size: 12; color: #aab1cb }
 .tool-list { gap: 6; margin-top: 2 }
-.tool-row { flex-direction: row; align-items: center; gap: 7; height: 41; width: 100%; background-color: #324235; padding: 4 7; border-radius: 6 }
-.tool-row text { flex-grow: 1; font-size: 13; color: #e2ddca }
-.tool-row button { width: 60; height: 30; font-size: 13; background-color: #557357; border-radius: 4; color: #f9f1dc }
+.tool-row { flex-direction: row; align-items: center; gap: 7; height: 41; width: 100%; background-color: #232b4f; padding: 4 7; border-radius: 6 }
+.tool-row text { flex-grow: 1; font-size: 13; color: #cbcee1 }
+.tool-row button { width: 60; height: 30; font-size: 13; background-color: #3c4b88; border-radius: 4; color: #e5e6f0 }
 .smelt { flex-direction: row; gap: 18; align-items: center; justify-content: center; margin-top: 36; margin-bottom: 18 }
-.recipe-arrow { font-size: 26; color: #deb978 }
+.recipe-arrow { font-size: 26; color: #a083d3 }
 .chest-stack { gap: 9; align-items: center; margin-top: 10; margin-bottom: 9 }
 .chest-actions { flex-direction: row; gap: 9; align-items: center; margin-top: 6; margin-bottom: 8 }
-.menu-footer { flex-direction: row; justify-content: space-between; align-items: center; height: 45; padding: 0 9; border-color: #526b59; border-width: 1 0 0 0 }
-#menu-hint { font-size: 13; color: #bfd0b9 }
-#hands-button { padding: 9 16; background-color: #435448; border-radius: 6; color: #eff5e6 }
-.notice { position: absolute; top: 35; left: 35; width: 530; background-color: #51382eea; padding: 13 18; border-radius: 8 }
-#notice { color: #ffe2c2; font-size: 18 }
+.menu-footer { flex-direction: row; justify-content: space-between; align-items: center; height: 45; padding: 0 9; border-color: #394781; border-width: 1 0 0 0 }
+#menu-hint { font-size: 13; color: #b4b8d5 }
+#hands-button { padding: 9 16; background-color: #2d3867; border-radius: 6; color: #e9eaf2 }
+.notice { position: absolute; top: 35; left: 35; width: 530; background-color: #37215eea; padding: 13 18; border-radius: 8 }
+#notice { color: #d8dae9; font-size: 18 }
 @media (max-height: 830) {
   .inventory-shell { height: 690; }
   .menu-content { height: 482 }
@@ -136,3 +136,21 @@
   .player-column { width: 58% }
   .detail-column { width: 40% }
 }
+
+.party-card { width: 100%; padding: 14 18; gap: 5; background-color: #d4d7e7; border-radius: 3 }
+.ledger-label { font-size: 12; color: #494672 }
+.ledger-value { width: 100%; white-space: normal; font-size: 18; color: #1e2543 }
+.game-menu-button, .primary { background-color: #855fc7; color: #1b213c; border-color: #b098db }
+
+.invite-fields { width: 100%; gap: 5 }
+.target-hint { font-size: 14; padding: 3 10; color: #c9cce1; background-color: #1c233fe0 }
+.friends-status { width: 100%; white-space: normal; color: #58607a; font-size: 16 }
+.friend-row { width: 100%; height: 38; background-color: #dcdeec; color: #21233d; font-size: 17 }
+.friend-nav { flex-direction: row; gap: 8 }
+.friend-nav button { width: 110; height: 32; font-size: 14; color: #f6f7fa; background-color: #4d4874 }
+
+.party-card { background-color: #272c48 }
+.ledger-label, .friends-status { color: #c0c6da }
+.ledger-value { color: #f0f1fb }
+.game-menu-button, .primary { background-color: #ac92f7; color: #17142d; border-color: #c6b8ff }
+.slot-focus { border-color: #ad96ff }

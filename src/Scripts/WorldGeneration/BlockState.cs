@@ -4,7 +4,7 @@ using System.Numerics;
 namespace WorldGeneration;
 
 /// <summary>Compact, network-serializable voxel identity (not a mesh or GameObject).</summary>
-public enum BlockShape : byte { Cube = 0, Slab = 1, Stair = 2, HalfWall = 3 }
+public enum BlockShape : byte { Cube = 0, Slab = 1, Stair = 2, HalfWall = 3, Post = 4, Beam = 5 }
 
 // Corner state is derived from neighboring stairs when meshing/colliding;
 // authoritative saved edits keep their original, straight stair encoding.
@@ -16,13 +16,17 @@ public enum StairCorner : byte
 
 public readonly record struct BlockState(ushort Packed)
 {
-    // Bits 0-7: type, 8-9: facing (+Z,+X,-Z,-X),
-    // 10-11: shape, 12: upper (slabs and stairs only).
-    // 13-15: transient stair corner geometry (0=straight), never required
-    // for persisted world data or replication.
+    // Extension tags 5 and 6 use previously invalid corner codes on cubes.
+    // Existing cube, slab, stair and wall encodings retain their meaning.
+    public const int MaxShape = (int)BlockShape.Beam;
     public int Type => Packed & 255;
     public int Facing => (Packed >> 8) & 3;
-    public BlockShape Shape => (BlockShape)((Packed >> 10) & 3);
+    public BlockShape Shape => (Packed >> 13) switch
+    {
+        5 => BlockShape.Post,
+        6 => BlockShape.Beam,
+        _ => (BlockShape)((Packed >> 10) & 3)
+    };
     public bool Upper => (Packed & 0x1000) != 0;
     public StairCorner Corner => Shape == BlockShape.Stair
         ? (StairCorner)((Packed >> 13) & 7) : StairCorner.Straight;
@@ -37,13 +41,19 @@ public readonly record struct BlockState(ushort Packed)
         int facing = 0, bool upper = false)
     {
         if (type < 1 || type > BlockInventory.MaxType ||
-            type == BlockInventory.IronIngot || (uint)shape > 3 ||
+            type == BlockInventory.IronIngot || (uint)shape > MaxShape ||
             (type == BlockInventory.Chest && shape != BlockShape.Cube))
             return default;
-        if (shape != BlockShape.Slab && shape != BlockShape.Stair)
+        if (shape != BlockShape.Slab && shape != BlockShape.Stair && shape != BlockShape.Beam)
             upper = false;
+        int shapeBits = shape switch
+        {
+            BlockShape.Post => 5 << 13,
+            BlockShape.Beam => 6 << 13,
+            _ => (int)shape << 10
+        };
         return new BlockState((ushort)(type | ((facing & 3) << 8) |
-            ((int)shape << 10) | (upper ? 0x1000 : 0)));
+            shapeBits | (upper ? 0x1000 : 0)));
     }
 
     public static bool IsValid(ushort packed)
@@ -53,6 +63,10 @@ public readonly record struct BlockState(ushort Packed)
             return false;
         int shape = (packed >> 10) & 3;
         int corner = (packed >> 13) & 7;
+        if (corner is 5 or 6)
+            return shape == 0 && (packed & 255) != BlockInventory.Chest &&
+                (packed & 255) != BlockInventory.IronIngot &&
+                (corner == 6 || (packed & 0x1000) == 0);
         if ((shape != (int)BlockShape.Stair && corner != 0) ||
             corner > (int)StairCorner.OuterRight)
             return false;
@@ -95,6 +109,8 @@ public readonly record struct BlockState(ushort Packed)
             BlockShape.Slab => y == (Upper ? 1 : 0),
             BlockShape.Stair => y == (Upper ? 1 : 0) || stairStep,
             BlockShape.HalfWall => back,
+            BlockShape.Post => back && left,
+            BlockShape.Beam => back && y == (Upper ? 1 : 0),
             _ => false
         };
     }
@@ -156,13 +172,17 @@ public static class StairCornerResolver
         if (Perpendicular(behind))
         {
             bool turningRight = behind.Facing == ((center.Facing + 1) & 3);
-            if (!StraightSide(turningRight ? left : right))
+            // Outer-left retains the left half of the raised step. Its left
+            // face still joins a straight stair. Only its right face recedes.
+            if (!StraightSide(turningRight ? right : left))
                 return turningRight ? StairCorner.OuterLeft : StairCorner.OuterRight;
         }
         if (Perpendicular(front))
         {
             bool turningRight = front.Facing == ((center.Facing + 1) & 3);
-            if (!StraightSide(turningRight ? right : left))
+            // Inner-left fills the left half of the lower step. The right
+            // face retains its straight profile and can continue the run.
+            if (!StraightSide(turningRight ? left : right))
                 return turningRight ? StairCorner.InnerLeft : StairCorner.InnerRight;
         }
         return StairCorner.Straight;

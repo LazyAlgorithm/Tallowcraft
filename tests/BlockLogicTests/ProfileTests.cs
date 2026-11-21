@@ -46,6 +46,14 @@ internal static class ProfileTests
                 equipment.Equipped == MiningTool.Hand,
                 "First-time players receive starter materials exactly once");
 
+            PlayerProfileStore.Save(dir, world, client, material, equipment,
+                BlockInventory.DarkTimber, (int)BlockShape.Beam, 2, 3);
+            check(PlayerProfileStore.Load(dir, world, client, out _, out _,
+                    out int trimType, out int trimShape, out int trimFacing, out int trimSlot)
+                == ProfileLoadResult.Loaded && trimType == BlockInventory.DarkTimber &&
+                trimShape == (int)BlockShape.Beam && trimFacing == 2 && trimSlot == 3,
+                "Decorative material and extended shape survive profile reload");
+
             check(material.TrySpend(3, 4) &&
                 equipment.TryCraft(material, MiningTool.Pickaxe) &&
                 equipment.TryEquip(MiningTool.Pickaxe) &&

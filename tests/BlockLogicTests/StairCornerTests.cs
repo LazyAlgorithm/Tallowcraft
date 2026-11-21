@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using WorldGeneration;
 
 /// <summary>
@@ -18,8 +20,105 @@ internal static class StairCornerTests
         return count;
     }
 
+    // Read the exposed tread from the triangles that also feed the chunk
+    // collider. An outer turn has a quarter-block tread, an inner turn has
+    // three quarters, and a straight stair has half, regardless of facing.
+    private static float TreadArea(BlockPosition center, bool upper,
+        Dictionary<BlockPosition, ushort> edits)
+    {
+        ChunkKey section = SectionedEditSnapshot.SectionOf(center);
+        ChunkMesh mesh = ChunkGenerator.GenerateMesh(section, 42, edits, CancellationToken.None);
+        int x = center.X - section.X * ChunkGenerator.Size;
+        int z = center.Z - section.Z * ChunkGenerator.Size;
+        int plane = center.Y - section.Y * ChunkGenerator.Size + (upper ? 0 : 1);
+        Vector3 normal = upper ? -Vector3.UnitY : Vector3.UnitY;
+        float area = 0;
+        for (int i = 0; i < mesh.Triangles.Length; i += 3)
+        {
+            int first = mesh.Triangles[i];
+            Vector3 a = mesh.Vertices[first];
+            if (mesh.Normals[first] != normal || a.Y != plane) continue;
+            Vector3 b = mesh.Vertices[mesh.Triangles[i + 1]];
+            Vector3 c = mesh.Vertices[mesh.Triangles[i + 2]];
+            Vector3 midpoint = (a + b + c) / 3f;
+            if (midpoint.X > x && midpoint.X < x + 1 && midpoint.Z > z && midpoint.Z < z + 1)
+                area += Vector3.Cross(b - a, c - a).Length() * .5f;
+        }
+        return area;
+    }
+
+    private static void TestConnectedRuns(Action<bool, string> check)
+    {
+        // Two chunk borders intersect here. Both arms can extend through
+        // the border, depending on the rotation and handedness of the turn.
+        BlockPosition center = new(-16, 46, 15);
+        for (int facing = 0; facing < 4; facing++)
+        foreach (bool upper in new[] { false, true })
+        foreach (bool outer in new[] { false, true })
+        foreach (int turn in new[] { -1, 1 })
+        {
+            var (fx, fz) = StairCornerResolver.Forward(facing);
+            int turnFacing = (facing + turn) & 3;
+            var (tx, tz) = StairCornerResolver.Forward(turnFacing);
+            int sign = outer ? -1 : 1;
+            BlockPosition bend = new(center.X + sign * fx, center.Y, center.Z + sign * fz);
+            BlockPosition continuation = new(center.X + sign * tx, center.Y, center.Z + sign * tz);
+            ushort straight = BlockState.Create(3, BlockShape.Stair, facing, upper).Packed;
+            ushort perpendicular = BlockState.Create(6, BlockShape.Stair, turnFacing, upper).Packed;
+            var edits = new Dictionary<BlockPosition, ushort> { [center] = straight, [bend] = perpendicular };
+            float cornerArea = outer ? .25f : .75f;
+            check(TreadArea(center, upper, edits) == cornerArea, "First arm forms a corner");
+            edits[continuation] = straight;
+            check(TreadArea(center, upper, edits) == cornerArea, "Connecting the second arm must preserve the corner tread");
+            edits.Remove(bend);
+            check(TreadArea(center, upper, edits) == .5f, "Removing the turn leaves the straight tread");
+            edits[bend] = perpendicular;
+            check(TreadArea(center, upper, edits) == cornerArea, "A turn added after its continuation must form the same corner");
+        }
+    }
+
+    private static void TestPlacementHalf(Action<bool, string> check)
+    {
+        var hit = new BlockPosition(-16, -4, 15);
+        var side = new BlockPosition(-17, -4, 15);
+        foreach (var shape in new[] { BlockShape.Slab, BlockShape.Stair })
+        {
+            var selected = BlockState.Create(3, shape, facing: 3);
+            foreach (var (normal, height, upper) in new[]
+            {
+                (-Vector3.UnitX, .25f, false),
+                (-Vector3.UnitX, .5f, false),
+                (-Vector3.UnitX, .75f, true),
+                (Vector3.UnitY, 1f, false),
+                (-Vector3.UnitY, 0f, true)
+            })
+            foreach (bool flip in new[] { false, true })
+            {
+                var manual = BlockState.Create(3, shape, selected.Facing, flip);
+                var adjacent = normal.Y == 0 ? side : hit with { Y = hit.Y + (int)normal.Y };
+                check(BlockPlacement.TryPlan(hit, adjacent, normal, BlockState.Create(6), manual,
+                        out var target, out ushort packed, hit.Y + height) &&
+                    target == adjacent &&
+                    packed == BlockState.Create(3, shape, 3, upper != flip).Packed,
+                    "Aim selects the correct half and preserves facing on side, top and bottom faces");
+            }
+
+            var copied = BlockState.Create(3, shape, facing: 1, upper: true);
+            check(BlockPlacement.TryPlan(hit, side, -Vector3.UnitX, BlockState.Create(6), copied,
+                    out _, out ushort copy) && copy == copied.Packed,
+                "Copied stairs and slabs retain the selected half and facing");
+        }
+
+        var beam = BlockState.Create(3, BlockShape.Beam, facing: 2);
+        check(BlockPlacement.TryPlan(hit, side, -Vector3.UnitX, BlockState.Create(6), beam,
+                out _, out ushort trim, hit.Y + .75f) && trim == beam.Packed,
+            "Beam height remains manually selected");
+    }
+
     public static void Run(Action<bool, string> check)
     {
+        TestConnectedRuns(check);
+        TestPlacementHalf(check);
         foreach (int material in new[] { 3, 6, 12, 13, 14, 15 })
         {
             BlockPosition hit = new(-1, 4, -16);
@@ -29,14 +128,14 @@ internal static class StairCornerTests
             check(BlockPlacement.TryPlan(hit,
                     new BlockPosition(hit.X, hit.Y + 1, hit.Z),
                     Vector3.UnitY, lower, upper, out var target,
-                    out ushort full) &&
+                    out ushort full, hit.Y + .5f) &&
                 target == hit && BlockPlacement.CanReplace(lower.Packed, full) &&
                 new BlockState(full).Shape == BlockShape.Cube &&
                 new BlockState(full).Type == material,
                 "Top-clicked lower slabs must merge to cubes with the same material");
             check(BlockPlacement.TryPlan(hit,
                     new BlockPosition(hit.X, hit.Y - 1, hit.Z),
-                    -Vector3.UnitY, upper, lower, out target, out full) &&
+                    -Vector3.UnitY, upper, lower, out target, out full, hit.Y + .5f) &&
                 target == hit && BlockPlacement.CanReplace(upper.Packed, full),
                 "Bottom-clicked upper slabs must merge to cubes");
             for (int x = 0; x < 2; x++)
@@ -79,23 +178,23 @@ internal static class StairCornerTests
             check(StairCornerResolver.Choose(stair, right, left) ==
                     StairCorner.OuterRight,
                 "Raised-side corner takes precedence when both ends turn");
-            // A perpendicular neighbor does not make a corner if a
-            // same-facing stair continues along the exposed side.
+            // Protect only the side whose face the corner would change.
             check(StairCornerResolver.Choose(stair, default, right,
-                    parallel, default) == StairCorner.Straight &&
+                    default, parallel) == StairCorner.Straight &&
                 StairCornerResolver.Choose(stair, default, left,
-                    default, parallel) == StairCorner.Straight,
+                    parallel, default) == StairCorner.Straight,
                 "Outer corner must not cut out a continuous stair row");
             check(StairCornerResolver.Choose(stair, right, default,
-                    default, parallel) == StairCorner.Straight &&
+                    parallel, default) == StairCorner.Straight &&
                 StairCornerResolver.Choose(stair, left, default,
-                    parallel, default) == StairCorner.Straight,
+                    default, parallel) == StairCorner.Straight,
                 "Inner corner must not extend into a continuous stair row");
             check(StairCornerResolver.Choose(stair, right, right,
-                    parallel, default) == StairCorner.InnerLeft,
+                    default, parallel) == StairCorner.InnerLeft,
                 "Suppressed outer corner may still form an inner corner");
+            var otherHalfParallel = BlockState.Create(6, BlockShape.Stair, facing, isUpper == 0);
             check(StairCornerResolver.Choose(stair, default, right,
-                    oppositeLayer, default) == StairCorner.OuterLeft,
+                    default, otherHalfParallel) == StairCorner.OuterLeft,
                 "Opposite-half side stair does not block a valid corner");
             // A turn must be geometrically continuous across the joining
             // voxel face, not just return the correct Corner enum name.

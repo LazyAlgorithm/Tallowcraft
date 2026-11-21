@@ -34,8 +34,8 @@ public static class PickupTransactionStore
     {
         if (!PlayerIdentity.Valid(receipt.WorldId) ||
             !PlayerIdentity.Valid(receipt.PlayerToken) ||
-            receipt.SelectedType is < 0 or > BlockInventory.Chest ||
-            receipt.SelectedShape is < 0 or > 3 ||
+            receipt.SelectedType is < 0 or > BlockInventory.MaxType ||
+            receipt.SelectedShape is < 0 or > BlockState.MaxShape ||
             receipt.Facing is < 0 or > 3 ||
             receipt.SelectedSlot is < 0 or >= BlockInventory.HotbarSlots)
             throw new InvalidDataException("Invalid pickup identity or player selection.");

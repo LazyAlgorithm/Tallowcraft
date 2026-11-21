@@ -17,52 +17,15 @@ public class FirstPersonCharacter : Script
     public float StandHeight = 2f;
     public float CrouchHeight = 1.2f;
     public float EyeHeight = 0.7f;
-    // Matches the native skinned-clip crossfade (SkinnedRig.Reload: 0.2 seconds).
     public float CrouchTransitionSeconds = 0.2f;
     public string CameraName = "Main Camera";
 
     private GameObject? _camera;
-    private GameObject? _characterVisual;
     private float _eyeNow;
     private float _eyeStart;
     private float _eyeTarget;
     private float _eyeTransitionTime;
     private bool _spawnAligned;
-
-    /// <summary>
-    /// Tallow attaches the skinned model's visible mesh to a MeshRenderer.
-    /// ShadowOnly is local renderer presentation, not a NetworkIdentity change.
-    /// Keep the owner's body out of the first-person view while still casting
-    /// its shadow; other clients continue drawing this player's whole model.
-    /// </summary>
-    private void UpdateLocalModelVisibility()
-    {
-        if (_characterVisual is not { IsValid: true })
-        {
-            if (GameObject.GetComponentInChildren<SkinnedMeshRenderer>() is
-                { IsValid: true } skinned)
-                _characterVisual = skinned.GameObject;
-        }
-
-        if (_characterVisual is { IsValid: true } visual &&
-            visual.GetComponent<MeshRenderer>() is { IsValid: true } renderer)
-        {
-            bool shadowOnly = ControlsCamera;
-            if (renderer.ShadowOnly != shadowOnly)
-                renderer.ShadowOnly = shadowOnly;
-            // ShadowOnly hides the owner's mesh from the camera, not from
-            // the shadow pass. Keep shadows ON for both local and remote
-            // character copies so animation can be judged in the shadow.
-            if (!renderer.CastShadows)
-                renderer.CastShadows = true;
-        }
-    }
-
-    // Run on every peer, including non-authoritative remote player copies.
-    // Ownership can arrive after Start and a skinned renderer can attach later;
-    // neither of those transitions should leave the camera blocked.
-    public override void LocalUpdate(float deltaTime) =>
-        UpdateLocalModelVisibility();
 
     private bool ControlsCamera =>
         !Scene.IsNetworked || GameObject.OwnerClientId == Scene.LocalClientId;
@@ -79,7 +42,6 @@ public class FirstPersonCharacter : Script
             Cursor.Locked = false;
             _camera = Scene.Find(CameraName);
         }
-        UpdateLocalModelVisibility();
     }
 
     public override void Update(TickInput input, float deltaTime)
@@ -126,7 +88,7 @@ public class FirstPersonCharacter : Script
 
             float target = EyeHeight - (StandHeight - controller.Height);
             // Physics immediately changes the capsule. Match the camera's
-            // visible transition to the rig's 0.2s pose crossfade instead
+            // visible transition to the crouch pose instead
             // of using an exponential lerp that never truly finishes.
             // CrouchLift compensates the native midair capsule shift.
             float lift = controller.CrouchLift;

@@ -12,11 +12,12 @@ public static class BlockPlacement
     /// <summary>
     /// On top of a lower slab (or below an upper slab), placing another slab
     /// of the same type fills the missing half and creates a normal full block.
-    /// Other faces/shapes use the adjacent whole-voxel position for now.
+    /// When given a hit height, orient ordinary slabs and stairs to the
+    /// clicked half. The selected upper flag then acts as a manual flip.
     /// </summary>
     public static bool TryPlan(BlockPosition hit, BlockPosition adjacent,
         Vector3 hitNormal, BlockState existing, BlockState selected,
-        out BlockPosition target, out ushort replacement)
+        out BlockPosition target, out ushort replacement, float? hitY = null)
     {
         target = adjacent;
         replacement = selected.Packed;
@@ -31,6 +32,13 @@ public static class BlockPlacement
         {
             target = hit;
             replacement = BlockState.Create(selected.Type).Packed;
+        }
+        else if (hitY is float y && selected.Shape is BlockShape.Slab or BlockShape.Stair)
+        {
+            bool upper = hitNormal.Y < -0.5f ||
+                (hitNormal.Y <= 0.5f && y - hit.Y > 0.5f);
+            replacement = BlockState.Create(selected.Type, selected.Shape,
+                selected.Facing, upper != selected.Upper).Packed;
         }
 
         return true;

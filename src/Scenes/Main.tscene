@@ -19,7 +19,7 @@ field nearClip 0.1
 field farClip 1000
 field orthographic 0
 field orthographicSize 5
-field viewmodelLayer -1
+field viewmodelLayer 30
 field viewmodelFieldOfView 55
 field viewmodelNearClip 0.01
 field viewmodelCastsShadows 0
@@ -88,9 +88,9 @@ field occluder 0
 object 6 parent 0 active 1 name "Network Session"
 transform 0 0 0 0 0 0 1 1 1 1
 component Tallow.NetworkSession enabled 1
-field mode Host
-field transport Direct
-field address "127.0.0.1"
+field mode Offline
+field transport Steam
+field address ""
 field port 7777
 field playerPrefab "Prefabs/Player.tprefab"
 field snapshotRelevanceRadius 0
@@ -118,3 +118,13 @@ component Tallow.SpawnPoint enabled 1
 field team 0
 field startOnly 0
 field clearRadius 1
+object 20 parent 0 active 1 name "Expedition desk"
+transform 0 0 0 0 0 0 1 1 1 1
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "WorldGeneration.ExpeditionMenu"
+field scriptAsset "2fa4191ba430413594f27f5757f54373"
+field fieldOverrides "ConnectionScreen	true\n"
+component Tallow.UIDocument enabled 1
+field referenceWidth 1200
+field referenceHeight 900
+field document "UI/connection.tui"

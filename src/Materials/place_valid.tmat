@@ -1,0 +1,6 @@
+material 1
+color .43 .88 .72 .34
+roughness 1
+unlit 1
+blend 2
+doubleSided 1

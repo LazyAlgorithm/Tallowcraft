@@ -9,6 +9,7 @@ internal static class DecorationTests
         const int seed = 42;
         var empty = new Dictionary<BlockPosition, ushort>();
         var ruins = new List<BlockPosition>();
+        var landmarks = new Dictionary<WorldBiomes.Biome, BlockPosition>();
         var bushes = new List<BlockPosition>();
         bool horizontalRuinSeam = false;
         bool verticalRuinSeam = false;
@@ -46,12 +47,45 @@ internal static class DecorationTests
             check((long)root.X * root.X + (long)root.Z * root.Z >=
                 112L * 112L, "Ruins must stay away from the protected spawn");
 
+            if (WorldDecorations.StructureAt(root.X, root.Y - 1, root.Z + 5, seed) != 0)
+            {
+                var biome = WorldBiomes.At(root.X, root.Z, seed);
+                var (dx, peak, material) = biome switch
+                {
+                    WorldBiomes.Biome.Meadow => (3, 4, BlockInventory.DarkTimber),
+                    WorldBiomes.Biome.Drylands => (0, 5, BlockInventory.StoneBricks),
+                    _ => (3, 6, BlockInventory.Cobblestone)
+                };
+                check(WorldDecorations.StructureAt(root.X + dx, root.Y + peak,
+                    root.Z + 6, seed) == material, "Landmark silhouette matches biome");
+                for (int dz = -3; dz <= 5; dz++)
+                for (int offset = -1; offset <= 1; offset++)
+                for (int dy = 0; dy <= 2; dy++)
+                    check(ChunkGenerator.BaseBlock(root.X + offset, root.Y + dy, root.Z + dz, seed) == 0,
+                        "Standing players have a continuous three-wide passage into the rear chamber");
+                if (!landmarks.TryGetValue(biome, out var previous) ||
+                    distanceSquared < (long)previous.X * previous.X + (long)previous.Z * previous.Z)
+                    landmarks[biome] = root;
+            }
             int lx = root.X - ChunkGenerator.FloorDiv(root.X, 16) * 16;
             int lz = root.Z - ChunkGenerator.FloorDiv(root.Z, 16) * 16;
             horizontalRuinSeam |= lx < 3 || lx >= 13 || lz < 3 || lz >= 13;
             verticalRuinSeam |= ChunkGenerator.FloorDiv(root.Y, 16) !=
                 ChunkGenerator.FloorDiv(root.Y + 2, 16);
         }
+        check(landmarks.Count == 3, "Seed contains all three explorable landmark variants");
+        foreach (var (biome, root) in landmarks)
+            Console.WriteLine($"Seed {seed} {biome} landmark at {root.X}, {root.Y}, {root.Z}");
+        var cover = new int[3];
+        for (int z = -36; z <= 36; z++)
+        for (int x = -36; x <= 36; x++)
+        {
+            int kind = WorldDecorations.GroundCoverAt(x, z, seed);
+            check(kind == WorldDecorations.GroundCoverAt(x, z, seed), "Ground cover repeats across visits");
+            cover[kind]++;
+        }
+        check(cover[0] > cover[1] && cover[1] > cover[2] && cover[2] > 0,
+            "Meadows have scattered grass and occasional daisies");
         check(ruins.Count > 8,
             "Seeded worlds should generate discoverable ruined buildings");
         check(horizontalRuinSeam && verticalRuinSeam,
@@ -106,9 +140,9 @@ internal static class DecorationTests
         for (int i = 0; i < Math.Min(10, ruins.Count); i++)
         {
             var root = ruins[i];
-            for (int dz = -3; dz <= 3; dz++)
+            for (int dz = -3; dz <= 6; dz++)
             for (int dx = -3; dx <= 3; dx++)
-            for (int dy = -1; dy <= 3; dy++)
+            for (int dy = -1; dy <= 6; dy++)
                 Compare(root.X + dx, root.Y + dy, root.Z + dz);
         }
         for (int i = 0; i < Math.Min(24, bushes.Count); i++)

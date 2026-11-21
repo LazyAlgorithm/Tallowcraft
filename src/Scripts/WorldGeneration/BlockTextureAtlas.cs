@@ -3,7 +3,7 @@ using System.Numerics;
 namespace WorldGeneration;
 
 /// <summary>
-/// Twelve 32×32 pixel-art tiles packed in a 144×144 PNG
+/// Sixteen 32×32 pixel-art tiles packed in a 144×144 PNG
 /// with 2px extruded gutters. Texture import settings in the adjacent
 /// .png.import file disable filtering, mipmaps, and GPU compression.
 /// The PNG is a committed asset, not created on every game startup.
@@ -41,7 +41,7 @@ public static class BlockTextureAtlas
     // 0 grass top, 1 grass side, 2 dirt, 3 stone,
     // 4 log bark, 5 log end, 6 forge side, 7 forge front, 8 planks,
     // 9 coal ore, 10 iron ore, 11 opaque leaves, 12 cobblestone, 13 stone
-    // bricks, 14 mossy stone, 15 dark timber. Tiles 0–11 are unchanged.
+    // bricks, 14 mossy stone, 15 dark timber.
     public static int TileFor(BlockState state, int face) =>
         state.Type switch
         {

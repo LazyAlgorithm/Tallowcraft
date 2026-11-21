@@ -6,7 +6,9 @@ A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# ga
 
 Requires the current Tallow **feature/csharp-gameplay** engine branch (including the raycast-normal and MeshCollider.Refresh physics update). The local engine path in project.tallow is machine-specific; change it if you clone this project elsewhere.
 
-Open project.tallow with Tallow and press Play. The Main scene starts a local **Host** network session on UDP port **7777**. It spawns the local player from src/Prefabs/Player.tprefab at one of four Spawn Points. Start a second instance as a client with the engine's --connect 127.0.0.1 option, or select Client in the Network Session component.
+Open `project.tallow` and press Play. **Play solo** opens your local world. For multiplayer, sign into Steam and select **Host on Steam**. Select **Invite Steam friends** in the lobby to send an invitation. Friends can also select **Join a Steam friend** from the title screen or **Join Game** in Steam. Both players should run Tallowcraft before accepting an invitation when using Spacewar (App ID 480). The lobby remains accessible from the pause menu during play.
+
+To package Steam support, place the Steamworks runtime for your platform in `Libraries/` before building. Use `libsteam_api.so` on Linux or `steam_api64.dll` on Windows. Tallow copies it next to the executable during export.
 
 World settings are available on the main and Escape menus. View distance ranges from 4 to 64 chunks ahead, with shorter side and rear ranges. The experimental **Quadtree terrain LOD** toggle switches between the new coarse-distance terrain and the original full-chunk renderer (capped at 20 chunks). The **LOD quality** setting scales the near-to-distant transition boundaries. Chunk threads can use Auto or a fixed count up to the detected maximum. Changes apply immediately and are saved for the local player (including compatibility with older display-settings files). Larger distances can use considerably more memory and CPU. **64 chunks is an experimental cap, not a validated frame-rate guarantee.**
 
@@ -52,26 +54,26 @@ The current repository has **not** been verified by a Linux/Windows in-editor ru
 - Shift: sprint
 - Ctrl: crouch
 - Left mouse: place the selected block
-- **Middle mouse: pick block** under the crosshair. In both modes, an existing matching hotbar stack is selected; a matching backpack stack is swapped into the active hotbar slot. Survival mode never generates materials. In Creative mode, an absent material can be added as one item in a free slot without deleting existing stacks. The picked block's shape, absolute orientation, and upper/lower slab or stair are copied. Rotate a copied block with F; crouch while placing to invert its upper/lower half. Switching hotbar slots restores normal relative placement rotation.
+- **Middle mouse: pick block** under the crosshair. In both modes, an existing matching hotbar stack is selected; a matching backpack stack is swapped into the active hotbar slot. Survival mode never generates materials. In Creative mode, an absent material can be added as one item in a free slot without deleting existing stacks. The selection copies the shape, facing and upper or lower half, including beams. Rotate a copied block with F; crouch while placing to invert its upper/lower half. Switching hotbar slots restores normal relative placement rotation.
 - Hold right mouse: mine the targeted block (stone and ores take longer than dirt and leaves). A pixelated, progressively spreading **ten-stage crack overlay** appears on the actual cube/slab/stair/half-wall faces. It resets immediately on release, target changes or breaking.
 - **E (Interact):** open the nearest placed chest within 4.5m directly into the Storage UI. E never places blocks; use **left mouse** (or controller North) to place. E does nothing if no chest is nearby.
 - 1–6: select the first six physical hotbar slots (not fixed material types); scroll the mouse wheel for all nine slots
 - 7, 8, 9: equip a crafted pickaxe, axe or shovel; 0: switch back to hands
 - Mouse wheel: cycle selected block
-- Q: cycle cube, slab, stair and half-wall shapes
+- Q cycles through cube, slab, stair, half-wall, corner post and horizontal beam
 - F: rotate the next placed block in 90° increments
-- Ctrl while placing: place an upper slab or upside-down stair
+- Aim at the upper or lower half of a side face to place a slab or stair at that height. Clicking a top face selects a lower piece, and clicking underneath selects an upper piece. Ctrl flips the previewed half and raises beams. Press Q to resume aim-based placement after copying a block.
 - Left-click a lower slab's top (or an upper slab's bottom) with the same slab type selected to combine both halves into one full block
 - The new **.tui nine-slot HUD** displays the generated icon for each material, the live quantity, selected slot, building shape/rotation, and equipped tool durability. The C# UI creates one local-only UIDocument per player; all gameplay state stays on the server.
 - Escape: open the main/pause menu. **Waypoints and coordinates** lets you mark, track and clear four saved landmarks; the HUD shows XYZ and the tracked landmark's compass direction and distance. **Return to spawn** is available from the pause menu with confirmation, and does not consume or drop items.
-- Tab (or gamepad West): open/close the **36-slot inventory** (9 hotbar + 27 backpack), crafting, forge, and storage pages. Stand near a placed chest, then click the Storage tab to open its 27-slot storage; click a source stack then a destination to transfer it. Toggle Move half to transfer half a stack. Escape (or gamepad East) also closes it. While it is open, gameplay input—including mouse look—is disabled instead of merely freezing the camera, so closing the screen does not snap to an accumulated mouse angle. The on-screen Close button works too.
+- Tab (or gamepad West): open/close the **36-slot inventory** (9 hotbar + 27 backpack), crafting and forge pages. Aim at a placed chest within 4.5m and press E to open its 27-slot inventory; click a source stack then a destination to transfer it. Toggle Move half to transfer half a stack. Escape (or gamepad East) also closes it. While it is open, gameplay input—including mouse look—is disabled instead of merely freezing the camera, so closing the screen does not snap to an accumulated mouse angle. The on-screen Close button works too.
 - Craft stone tools in the Crafting page with stone and planks: pickaxe (3 stone + 2 planks), axe (2 stone + 2 planks), or shovel (1 stone + 2 planks). Click Equip to select one, or Use hands to unequip. Recraft a damaged tool to repair it.
 - **Forge progression:** place a Forge block (hotbar slot 5), stand within 3.5 m of it, press Tab, then select **Forge page**. Smelt 1 iron ore + 1 coal into 1 iron ingot, or smelt batches of five. Use the ingots and planks to craft an iron pickaxe (3 ingots), axe (2), or shovel (1); each costs 2 planks. Iron tools mine their specialty blocks faster and last longer. The server checks proximity to the actual forge for every smelt/iron-craft request.
 - Use **7/8/9** for pickaxe/axe/shovel; those keys automatically select the iron version if you own it, otherwise the stone version. Use **0** for bare hands. Iron ingots are inventory items, not placeable voxel blocks.
 - Pickaxes mine stone, ores and forges faster; axes mine logs and planks faster; shovels mine dirt and grass faster. Each successfully mined block consumes one durability point. A broken tool automatically unequips. Iron tools have higher durability and a 5.5× effective-mining speed multiplier versus stone's 3×.
 - Mining a block now spawns a **small floating item entity** with gravity. The server checks actual player distance before collecting it into an inventory stack. Nearby identical drops merge (up to 64), drops expire after five minutes, and at most 256 may exist per scene. If spawning fails at the limit, the server credits the item directly rather than losing it. Coal, iron ore and leaves can be moved into any hotbar slot and placed if their voxel types support placement. Stack limit is 64 per slot; click a stack and then a destination to move or swap, or enable Move half to split a stack in half.
 - `BlockEditor.CreativeMode` is **enabled by default** to preserve unrestricted test-building. Disable it on the player prefab's BlockEditor component for survival building: the player starts with a small supply of each of the six hotbar materials, and successful placements consume one material. Empty slots cannot place blocks; mining replenishes stock. Mined items use physical server-owned drop entities.
-- Red wireframe shows the voxel that right-click will remove; green wireframe previews the chosen block shape/orientation on left-click. Orange indicates blocked placement. Previews are client-local and gameplay edits remain server-authoritative.
+- The red outline marks the mining target. A translucent mint preview shows where left-click will place your selected shape. Amber means placement is blocked.
 
 Blocks can only be edited within 6 metres, and placement is refused when another physics body occupies the destination.
 
@@ -79,11 +81,11 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 
 - **Streaming:** directional visible chunks around the local player's camera, plus physical chunks around **every player on the server**.
 - **Mesh:** 16×16×16 blocks, 0.5-metre occupancy for partial shapes, deterministic terrain, and greedy merging of compatible half-cell faces within each block. Atlas UV seams deliberately prevent merging textured quads across entire blocks; this is an explicit performance tradeoff pending a tiling shader. Cube-only chunks now take a one-metre meshing fast path (8× fewer occupancy cells); chunks with slabs/stairs/half-walls or neighboring partial blocks use the original half-metre path to preserve edge geometry. Neighboring chunk faces consult edits across boundaries.
-- **Character:** a real **Quaternius Universal Base Characters** CC0 skinned humanoid (free Standard *Superhero Male* model) plus the CC0 **Universal Animation Library**. Idle/Walk/Sprint/Jump are native library clips retargeted by joint name using `SkinnedMeshRenderer.clipLibrary`, not the old procedural .tanim motions. The Jolt capsule remains an invisible collision proxy and the model retains first-person shadow-only visibility. Sources and licensing: `src/Models/QUATERNIUS_LICENSE.md`.
+- **Character:** The block explorer has separate head, torso, upper and lower limb meshes. Its procedural pose follows idling, walking, sprinting, crouching, jumping, mining and test-weapon recoil. Your own character casts an animated shadow in first person. Other players see the character and equipped item.
 - **Building UX:** on-screen local-player hotbar driven by authoritative network `TickInput` (`Custom1..8`, Ability1 and Ability2). The project includes an `Input.tinput` map for number keys and mouse wheel. Mouse-middle pick-block is a local input event carried by an owner-authorized RPC; the server raycasts against authoritative voxels within the normal interaction reach, selects/moves a real stack (or safely grants a single Creative item), and syncs exact block shape/absolute facing/upper-half to the preview. Pick feedback is visible on the navigation HUD. Copied absolute orientation is session-local (not yet persisted as a player-profile mode), while the existing selected shape/facing continue to save normally.
 - **Breaking overlay:** `BuildPreview` draws one local-only, collider-free `MeshRenderer` around only the mined block, with `BlockDamageMesh` generating outward partial-shape faces using the same 2×2×2 occupancy as the world mesher. Its cutout material uses `Shaders/block_break_damage.tsgraph` (editable Shader Graph), a generated `.tshader` and a 160×16 lossless crack-stage atlas. Server-authoritative, quantized `MiningPercent` and synced mining target select the crack stage. A target change rebuilds only this tiny overlay mesh, not a terrain chunk. No extra networked crack objects or engine changes.
 - **Inventory and tools:** authoritative per-player 9-slot hotbar + 27-slot backpack `BlockInventory` with 64-item physical stacks of nine voxel types and iron ingots, and `PlayerTools` with three stone and three iron tools. Validated/versioned `[Sync] InventoryState` and `[Sync] ToolState` replicate quantity, equipped tool and durability. Server-only RPCs validate crafting/equip commands. Tool durability is spent only on a successful server-authoritative block break. The server persists inventory, equipped tool/durability and selected block/shape/facing per world and per persistent player token. Current inventory tracks materials rather than individual oriented or partial shapes.
-- **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes: cube, slab, stair, half-wall. Rotations affect stairs, half-walls, and the forge's front texture.
+- **Block states:** packed 16-bit type + facing + shape + upper flag. Types: grass, dirt, stone, wood, forge, planks. Shapes include cube, slab, stair, half-wall, corner post and horizontal beam. Rotations affect stairs, half-walls, and the forge's front texture.
 - **Storage chests:** craft a chest from 8 planks, put it into a hotbar slot, and place it like any block. It has a dedicated lid/lock texture overlay and a separate dropped-item icon. Chest contents are 27 physical item stacks, shared by players, saved with the **same atomic world generation** as voxel edits, and recovered together on corruption. Empty the chest before mining it to prevent loss or duplication. The server validates proximity, selected chest, and both slot indices for every transfer.
 - **Item artwork:** `src/Textures/inventory_icons.png` is a new 5×2 sprite sheet of ten transparent 32×32 pixel-art icons including iron ingots, with nearest-neighbor sampling and compression/mips disabled. The atlas is used on world item-drop sprites through `Materials/item_drop.tmat`. The inventory, hotbar, chest, forge, and crafting screens now use `src/UI/tallowcraft.tui` and `tallowcraft.tcss`, which support real images. The generated sprite atlas has been split into 10 individual uncompressed 32x32 icons under `src/Textures/UI`; the existing `chest_item.png` provides the eleventh icon. The code-behind is `TallowcraftUI.cs`.
 - **Textures:** the approved 3×3 block artwork is now in `src/Textures/block_atlas.png`: a lossless, indexed-color 108×108 PNG with nine 32×32 pixel-art tiles and 2px extruded borders. UVs point at texel centers; chunky source pixels are preserved by nearest-neighbor sampling. `src/Textures/block_atlas.png.import` configures `filter = nearest`, `wrap = clamp`, `mipmaps = 0`, `compression = 0`, and `fullResolution = 1`. Tallowcraft's build config also explicitly excludes this atlas from BC1/BC3 compression. Greedy chunk meshes share the atlas.
@@ -100,11 +102,11 @@ Blocks can only be edited within 6 metres, and placement is refused when another
 
 Supported block types are 0 (air), 1 (grass), 2 (dirt), 3 (stone), 4 (wood), 5 (forge), 6 (planks), 7 (coal), 8 (iron) and 9 (leaves). The vertical world currently spans Y=-32..47, and chunk collision/rendering on a dedicated server has not yet been separated into headless-only physics chunks. Half-cell meshing is more expensive than the previous full-cube greedy mesher; profiling is required before increasing render radius. Moving/removing a block requires its chunk collider to have been generated first.
 
-### Rigged-character caveats
+### Block character and equipment
 
-The first-person player's **own** rigged body is rendered as shadow-only on their machine: it stays out of the camera view while still casting its full animated shadow on the ground. Remote clients continue rendering the character body and shadow normally. The imported Quaternius clips play close to their authored speed while movement-driven animation switching remains smoothed. Whether these animations look right in motion and shadow still needs an in-game test. Ownership and local visibility are checked in `FirstPersonCharacter.LocalUpdate` without disabling the player or its collider. This needs a host/client runtime check, especially when ownership arrives after spawning.
+The explorer, all six mining tools and the two test weapons are built from small cuboids. Each tool and weapon exports as one GLB mesh with one material. The explorer's articulated parts have independent pivots. Run `python3 tools/generate_block_models.py` to rebuild the models.
 
-The new player art is Quaternius's CC0 humanoid with **65 matching skeleton joints** to the Universal Animation Library, not a block-built character. The model and animation files are versioned in the repository; the original procedural Adventurer and .tanim clips are retained as unused fallback assets. Character and animation provenance is documented in `src/Animations/QuaterniusImport.json`. This is a **first integration pass**: verify skinning, animation ordering, network interpolation, camera/head occlusion, crouch, and feet placement in Play mode. No passing Tallow build has been recorded for this commit. A local-player-specific head visibility mask is still needed if the model occludes the first-person camera.
+In Creative mode, **Z** equips the **Spark pistol**, which fires one pulse per left click. **X** equips the **Pulse repeater**, which fires while left click is held. Press the same key again to holster, or press **0** to return to hands. The test weapons play recoil, sound, muzzle flashes and contact sparks. Pulses are cosmetic.
 
 ### Texture import requirements
 
@@ -112,7 +114,7 @@ This atlas uses the per-picture import controls from the current Tallow `feature
 
 ### Targeting preview
 
-The red target outline and shape-specific green placement outline use the same ray-to-block targeting and placement-planning methods as the authoritative server. Same-material slabs can stack into a full block; the preview also changes to the resulting cube. Some partial blocks show internal half-cell grid lines in the initial wireframe; these are previews only, not additional colliders. Actual blocks and collision remain unchanged. In a multiplayer client, selection previews are based on the latest replicated selection state and may briefly lag a fast hotbar key press. Verify the outlines against server placement on vertical faces, chunk seams and partial shapes.
+The translucent mesh follows the server's placement rules. It shows the result of combining two matching slabs, turning a stair corner, rotating a corner post and flipping a beam into the upper half of a block. The preview follows the most recently synchronized selection.
 
 ### Testing checklist
 
@@ -277,8 +279,7 @@ existing owner-authorized `BlockEditor` server RPCs.
   gameplay. The .tui API exposes
   click events but no native drag-and-drop hook, so click/click replaces
   the former immediate-mode drag gesture.
-* Dedicated tabs for crafting, forge smelting/iron tools, and nearby chest
-  storage (27 slots). Content is synchronized with the server, not stored
+* Crafting and forge tabs in the backpack, with a separate storage view for each targeted chest (27 slots). Content is synchronized with the server, not stored
   in the UI. Close with Tab, Escape, controller Cancel or X.
 * The planks icon is now a valid 32×32 RGBA pixel-art cube (the original
   PNG had a corrupt image-data stream and displayed as a white square).
@@ -298,11 +299,7 @@ gameplay compile. Asset checks do not verify final on-screen layout.
 
 ### Chest storage interaction (fixed)
 
-Open **Tab → Storage** while standing within **4.5m** of a placed chest.
-The UI now waits for the server's inventory-open acknowledgement before
-requesting the chest, avoiding a dropped one-shot RPC if you switch tabs
-quickly. The chest panel displays either its coordinates and storage slots,
-or the server's actual reason for rejecting the request.
+Aim at a chest within **4.5m** and press **E**. The server opens the first chest under the crosshair and the storage panel shows its coordinates.
 
 To store a stack, click any backpack/hotbar stack and click **Store
 selected**. To withdraw, click an occupied chest slot and choose **Take
@@ -314,20 +311,6 @@ in the chest. The per-material inventory cap still applies. All transfers remain
 share chest state between players, and use the existing persisted world
 storage; the UI cannot create or duplicate items.
 
-If nothing moves, read the status line at the top of the Storage tab.
+If nothing moves, read the status line at the top of the chest inventory.
 It now reports out-of-range chests, incompatible/full slots and failed
 server-authorized transfers instead of silently ignoring them.
-
-### Chest E-key interaction
-
-Standing within 4.5m of a placed chest, press **E** to open it directly.
-The server checks the actual chest block and the player's position, then
-opens the inventory menu and Storage page together. E is now bound to
-`Player/Interact`, completely separate from `Player/Use` (left mouse to
-place). The action doesn't place voxels or transfer inventory automatically.
-If no chest exists within range, the menu stays closed. Press Tab, Escape
-or X to close storage and return to gameplay.
-
-When opening Storage through Tab, the UI still waits for the server's
-inventory-open acknowledgment before requesting a chest, so rapid tab
-switching does not silently lose the open request.

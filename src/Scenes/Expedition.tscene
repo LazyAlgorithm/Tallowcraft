@@ -1,0 +1,13 @@
+scene "Expedition"
+object 1 parent 0 active 1 name "Main Camera"
+transform 0 0 0 0 0 0 1 1 1 1
+component Tallow.Camera enabled 1
+object 20 parent 0 active 1 name "Expedition desk"
+transform 0 0 0 0 0 0 1 1 1 1
+component Tallow.CSharpBehaviour enabled 1
+field scriptType "WorldGeneration.ExpeditionMenu"
+field scriptAsset "2fa4191ba430413594f27f5757f54373"
+component Tallow.UIDocument enabled 1
+field referenceWidth 1200
+field referenceHeight 900
+field document "UI/expedition.tui"

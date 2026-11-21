@@ -30,9 +30,11 @@ public sealed class TallowcraftUI : Script
     private bool _gameMenuBefore;
     private bool _chestBefore;
     private string _chestMessageBefore = "";
-    // The Storage tab may be clicked before the server acknowledges
-    // SetInventoryOpen. Defer the chest RPC until that acknowledgment.
-    private bool _chestOpenRequested;
+    private bool _partyOpen;
+    private readonly SteamParty _friends = new();
+    private bool _inviteOpen;
+    private BuildPreview? _preview;
+    private BlockWorld? _partyWorld;
     private int _selectedBefore = -1;
     private int _source = -1;
     private bool _moveHalf;
@@ -325,8 +327,28 @@ public sealed class TallowcraftUI : Script
         }
     }
 
+    public void OnParty()
+    {
+        _partyOpen = !_partyOpen;
+        _inviteOpen = false;
+    }
+
+    public void OnInvite() => _inviteOpen = !_inviteOpen;
+    public void OnFriend(string id)
+    {
+        if (_inviteOpen && Scene.IsServer && Network.IsConnected(Scene)) _friends.Choose(id, true);
+    }
+    public void OnPrevious() => _friends.Turn(-1);
+    public void OnNext() => _friends.Turn(1);
+    public void OnLeave()
+    {
+        Network.Leave(Scene);
+        SceneManager.Load(ExpeditionMenu.Title);
+    }
+
     public void OnPlay()
     {
+        Audio.PlayOneShot2D("Audio/tap.wav", .45f);
         _owner?.UiStartGame();
         _waypointsOpen = false;
         _respawnConfirm = false;
@@ -515,10 +537,7 @@ public sealed class TallowcraftUI : Script
             $"Chest at {editor.ChestX}, {editor.ChestY}, {editor.ChestZ}" +
                 (editor.ChestStatus.Length > 0 ? " - " + editor.ChestStatus : "") :
             editor.ChestStatus.Length > 0 ? editor.ChestStatus :
-            _chestOpenRequested ?
-                "Opening nearby chest..." :
-                "No chest open. Stand within 4.5m and click Find nearby chest.");
-        Visible("open-chest", !editor.ChestOpen);
+            "Chest closed.");
         Visible("chest-stack", editor.ChestOpen);
         Visible("chest-actions", editor.ChestOpen);
     }
@@ -561,6 +580,10 @@ public sealed class TallowcraftUI : Script
 
     private void RefreshPage()
     {
+        bool storage = _owner?.ChestOpen == true;
+        Text("inventory-title", storage ? "Chest inventory" : "Inventory");
+        Visible("tab_craft", !storage);
+        Visible("tab_forge", !storage);
         UpdateRecipeScroll();
         Visible("page_craft", _page == "craft");
         Visible("page_forge", _page == "forge");
@@ -585,7 +608,8 @@ public sealed class TallowcraftUI : Script
             (editor.PickedUpper ? "   /   Upper" : ""));
         Text("hud-pick-feedback", editor.PickFeedback);
         var tool = editor.UiTools.Equipped;
-        Text("hud-tool", tool == MiningTool.Hand ? "Hands" :
+        Text("hud-tool", editor.TestWeapon != 0 ? editor.TestWeaponName :
+            tool == MiningTool.Hand ? "Hands" :
             $"{PlayerTools.Name(tool)}   {editor.UiTools.Durability(tool)}/" +
                 PlayerTools.MaxDurability(tool));
         Text("menu-hint", _page == "chest" ?
@@ -606,6 +630,8 @@ public sealed class TallowcraftUI : Script
         if (!editor.UiGameMenuVisible)
         {
             _waypointsOpen = false;
+            _partyOpen = false;
+            _inviteOpen = false;
             _respawnConfirm = false;
         }
         if (!editor.UiGameMenuVisible)
@@ -629,7 +655,7 @@ public sealed class TallowcraftUI : Script
         Visible("game-menu", editor.UiGameMenuVisible);
         Visible("inventory-panel", editor.IsInventoryVisible);
         Visible("game-menu-actions", editor.UiGameMenuVisible &&
-            !editor.UiSettingsOpen && !_waypointsOpen && !_respawnConfirm);
+            !editor.UiSettingsOpen && !_waypointsOpen && !_respawnConfirm && !_partyOpen);
         Visible("world-settings", editor.UiGameMenuVisible &&
             editor.UiSettingsOpen && !_waypointsOpen && !_respawnConfirm);
         Visible("waypoint-panel", editor.UiGameMenuVisible && _waypointsOpen);
@@ -637,8 +663,23 @@ public sealed class TallowcraftUI : Script
         Visible("respawn-menu-button", editor.UiPaused);
         Visible("play-game", editor.UiMainMenu);
         Visible("resume-game", editor.UiPaused);
-        Text("game-menu-subtitle", editor.UiPaused ? "Game menu" :
-            "Explore, build, and shape your world.");
+        bool lobby = editor.UiMainMenu || _partyOpen;
+        Text("game-menu-subtitle", lobby ? "Expedition lobby" : "Expedition paused");
+        Visible("party-button", editor.UiPaused);
+        Visible("party-back", _partyOpen);
+        Visible("party-card", editor.UiGameMenuVisible && lobby &&
+            !editor.UiSettingsOpen && !_waypointsOpen && !_respawnConfirm);
+        if (editor.UiGameMenuVisible && lobby)
+        {
+            _partyWorld ??= Scene.Find("BlockWorld")?.GetComponent<BlockWorld>();
+            Text("party-roster", _partyWorld?.PartyRoster is { Length: > 0 } roster ? roster : Network.InSession(Scene) ? "Joining…" : "Solo expedition");
+            bool canInvite = Scene.IsServer && Network.InSession(Scene) && Steam.IsReady;
+            Visible("invite-button", canInvite);
+            Visible("invite-fields", canInvite && _inviteOpen);
+            Text("invite-button", _inviteOpen ? "Close friends list" : "Invite Steam friends");
+            if (_inviteOpen && canInvite) _friends.Refresh(Document, true, Time.DeltaTime);
+
+        }
 
         bool open = editor.IsInventoryVisible;
         if (!_initialized || open != _menuBefore ||
@@ -650,7 +691,7 @@ public sealed class TallowcraftUI : Script
             if (!open)
             {
                 _source = -1;
-                _chestOpenRequested = false;
+                if (_page == "chest") _page = "craft";
             }
             _menuBefore = open;
             _gameMenuBefore = editor.UiGameMenuVisible;
@@ -676,27 +717,11 @@ public sealed class TallowcraftUI : Script
             UpdateInventory();
             RefreshPage();
         }
-        // The menu opens locally before InventoryOpen is replicated.
-        // Waiting for the server's acknowledgment avoids dropping the
-        // only OpenNearbyChest RPC on high-latency connections.
-        if (open && _page == "chest" && _chestOpenRequested &&
-            editor.InventoryOpen && editor.ProfileReady)
+        if (open && (editor.ChestOpen != (_page == "chest")))
         {
-            _chestOpenRequested = false;
-            // Always reissue on entering Storage. The previous CloseChest
-            // RPC may still be in flight, while the old replicated
-            // ChestOpen value momentarily remains true on this client.
-            editor.UiOpenChest();
-        }
-        // E opens the chest and inventory together on the server. When
-        // that open state replicates, switch straight to the Storage page.
-        // This also works when the player opens a chest from the Storage
-        // tab, with no local/persisted inventory slot changes.
-        if (open && editor.ChestOpen && !_chestBefore)
-        {
-            _page = "chest";
+            _page = editor.ChestOpen ? "chest" : "craft";
+            if (editor.ChestOpen) Audio.PlayOneShot2D("Audio/latch.wav", .6f);
             _source = -1;
-            _chestOpenRequested = false;
             RefreshPage();
             UpdateSelection();
         }
@@ -739,6 +764,10 @@ public sealed class TallowcraftUI : Script
             _refreshClock = 0.2f;
             RefreshPage();
             UpdateNavigation();
+            _preview ??= editor.GameObject.GetComponent<BuildPreview>();
+            string targetHint = _preview?.TargetHint() ?? "";
+            Text("target-hint", targetHint);
+            Visible("target-hint", targetHint.Length > 0);
         }
         _initialized = true;
     }
@@ -894,17 +923,10 @@ public sealed class TallowcraftUI : Script
     public void OnTab(string id)
     {
         if (_owner is not { } editor) return;
-        string next = id switch
-        {
-            "tab_forge" => "forge",
-            "tab_chest" => "chest",
-            _ => "craft"
-        };
-        if (_page == "chest" && next != "chest")
-            editor.UiCloseChest();
-        _page = next;
+        if (editor.ChestOpen) return;
+        _page = id == "tab_forge" ? "forge" : "craft";
         _source = -1;
-        _chestOpenRequested = _page == "chest";
+        Audio.PlayOneShot2D("Audio/tap.wav", .32f);
         RefreshPage();
         UpdateChest();
         UpdateSelection();
@@ -990,14 +1012,6 @@ public sealed class TallowcraftUI : Script
                 editor.UiUnpack(type);
                 return;
             }
-    }
-
-    public void OnOpenChest()
-    {
-        if (_owner is not { } editor || !editor.IsInventoryVisible)
-            return;
-        _chestOpenRequested = true;
-        UpdateChest();
     }
 
     public void OnClose() => _owner?.UiCloseMenu();

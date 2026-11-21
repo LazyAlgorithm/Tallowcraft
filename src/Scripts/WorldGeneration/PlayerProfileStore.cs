@@ -112,8 +112,8 @@ public static class PlayerProfileStore
         int selectedSlot)
     {
         if (!PlayerIdentity.Valid(worldId) ||
-            selectedType is < 0 or > BlockInventory.Chest ||
-            selectedShape is < 0 or > 3 ||
+            selectedType is < 0 or > BlockInventory.MaxType ||
+            selectedShape is < 0 or > BlockState.MaxShape ||
             facing is < 0 or > 3 ||
             selectedSlot is < 0 or >= BlockInventory.HotbarSlots)
             throw new ArgumentException("Invalid saved player values.");
@@ -165,7 +165,7 @@ public static class PlayerProfileStore
                     Invariant, out int shape) ||
                 !int.TryParse(fields[6], NumberStyles.None,
                     Invariant, out int rotation) ||
-                hotbar is < 0 or > BlockInventory.Chest || shape is < 0 or > 3 ||
+                hotbar is < 0 or > BlockInventory.MaxType || shape is < 0 or > BlockState.MaxShape ||
                 rotation is < 0 or > 3)
                 return false;
             int hotbarSlot = Math.Clamp(hotbar - 1, 0, 8);
