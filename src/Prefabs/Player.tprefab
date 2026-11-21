@@ -32,7 +32,7 @@ field height 2
 field boxSize 0.8 1 0.8
 field edgeRadius 0.1
 field center 0 0 0
-field stepHeight 0.4
+field stepHeight 0.6
 field maxSlope 50
 field mass 70
 field pushStrength 100
