@@ -57,12 +57,13 @@ public class BlockEditor : Script
     {
         "Grass", "Dirt", "Stone", "Log", "Forge", "Planks",
         "Coal", "Iron", "Leaves", "Iron ingots", "Chest",
-        "Cobblestone", "Stone bricks", "Mossy stone", "Dark timber"
+        "Cobblestone", "Stone bricks", "Mossy stone", "Dark timber",
+        "Glass", "Red bricks", "Sandstone", "Slate"
     };
     private static readonly string[] ShapeNames =
         { "Cube", "Slab", "Stair", "Half wall", "Post", "Beam" };
     private static readonly string[] ItemShort =
-        { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING", "CHT", "COB", "BRK", "MOS", "TMB" };
+        { "GRS", "DRT", "STN", "LOG", "FRG", "PLK", "COL", "ORE", "LEF", "ING", "CHT", "COB", "BRK", "MOS", "TMB", "GLS", "RED", "SND", "SLT" };
     private static readonly Color[] ItemColors =
     {
         new(.33f,.66f,.20f), new(.48f,.30f,.19f), new(.50f,.53f,.54f),
@@ -70,7 +71,9 @@ public class BlockEditor : Script
         new(.25f,.27f,.30f), new(.65f,.53f,.45f), new(.25f,.58f,.23f),
         new(.75f,.73f,.69f), new(.61f,.38f,.19f),
         new(.48f,.50f,.53f), new(.58f,.59f,.60f),
-        new(.27f,.50f,.31f), new(.49f,.31f,.19f)
+        new(.27f,.50f,.31f), new(.49f,.31f,.19f),
+        new(.58f,.78f,.85f), new(.64f,.32f,.27f),
+        new(.77f,.65f,.47f), new(.30f,.36f,.40f)
     };
 
     private BlockWorld? _world;
