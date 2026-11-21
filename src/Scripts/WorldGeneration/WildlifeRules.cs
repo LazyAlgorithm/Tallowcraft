@@ -47,6 +47,8 @@ public static class WildlifeRules
             WorldBiomes.Biome.Meadow => roll < 67 ? Sheep : Pig,
             WorldBiomes.Biome.Woodland => roll < 34 ? Sheep : Pig,
             WorldBiomes.Biome.Highlands => roll < 92 ? Sheep : 0,
+            WorldBiomes.Biome.Wetlands => roll < 22 ? Sheep : Pig,
+            // Drylands and Badlands are too sparse for grazing livestock.
             _ => 0
         };
     }
