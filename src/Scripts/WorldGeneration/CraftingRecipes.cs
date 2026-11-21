@@ -29,6 +29,10 @@ public static class CraftingRecipes
         new(9, "Mossy stone", BlockInventory.Cobblestone, 3,
             9, 1, BlockInventory.MossyStone, 4),
         new(10, "Dark timber", 4, 2, 0, 0, BlockInventory.DarkTimber, 4),
+        new(11, "Glass", 3, 2, 7, 1, BlockInventory.Glass, 4),
+        new(12, "Red bricks", 2, 4, 7, 1, BlockInventory.RedBricks, 4),
+        new(13, "Sandstone", 3, 4, 0, 0, BlockInventory.Sandstone, 4),
+        new(14, "Slate", 3, 4, 7, 1, BlockInventory.Slate, 4),
     };
 
     public static System.Collections.Generic.IReadOnlyList<CraftingRecipe> All => Recipes;
