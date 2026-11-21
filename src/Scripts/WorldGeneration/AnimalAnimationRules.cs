@@ -7,7 +7,7 @@ namespace WorldGeneration;
 /// These values never alter Jolt physics or the server's navigation.</summary>
 public static class AnimalAnimationRules
 {
-    public const float DeathDuration = 1.55f;
+    public const float DeathDuration = 0.72f;
     public const float WalkingThreshold = 0.15f;
     public const float GrazeIdleSeconds = 0.8f;
 
