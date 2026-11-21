@@ -2,6 +2,18 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Wildlife roaming, fleeing and drops — 20 November 2026
+
+- [x] Move the single active 48 m wildlife navigation region in bounded steps with the host's exploration position, creating it only after nearby voxel collision is ready. Despawn distant non-dying mobs to bound population and bake cost.
+- [x] Sample deterministic world biomes and spawning positions (Meadow both, Woodland pigs preferred, Highlands sheep preferred, Drylands neither), respect ground clearance, distance from the player, herd-cell spacing, max population and short kill-site cooldown.
+- [x] Interrupt grazing on nonlethal server-resolved hits, path away from the shooter, synchronize frightened animation and restore ordinary behavior after the flee window.
+- [x] Spawn 1–3 persistent server-owned wool or raw pork pickups after the full death animation. Use existing WorldDrop save/replication and pickup transactions.
+- [x] Introduce inventory resources 20 and 21, preserving all old voxel IDs and supporting older 19-type v5 profile payloads. Add 32-pixel icons to all hotbar, inventory and chest slots with nearest/no-compression import settings.
+- [x] Add isolated .NET regressions for biome sampling, safety, fleeing, drop item IDs/quantities, resource pickup codecs, non-placeability and save migration. Update mesh tests for the new cosmetic resource cubes.
+- [ ] **Runtime gate:** build and run tests on Linux; validate spawning in multiple biomes after 24+ m travel, wildlife nav surface rebakes, shooting/fleeing at hills and 1 m steps, loot appearance, inventory/chest icons, save/rejoin consistency and host/guest ownership.
+- [ ] Expand beyond a single host-following navigation surface to multiple distant players, plus streamed NPC persistence and world-edit-triggered navmesh rebakes.
+- [ ] Add wool crafting and raw pork cooking/eating with the upcoming survival gameplay systems.
+
 ## Creative block catalog — 20 November 2026
 
 - [x] Add a **Creative** inventory tab to the existing .tui panel, visible in Creative Mode but hidden in Survival or while a chest is open.
