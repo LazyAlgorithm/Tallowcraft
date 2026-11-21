@@ -18,7 +18,9 @@ public readonly record struct ItemStack(int Type, int Quantity)
 /// </summary>
 public sealed class BlockInventory
 {
-    public const int MaxType = 19;
+    public const int MaxType = 21;
+    public const int Wool = 20;
+    public const int RawPork = 21;
     public const int Glass = 16;
     public const int RedBricks = 17;
     public const int Sandstone = 18;
@@ -147,8 +149,10 @@ public sealed class BlockInventory
 
     /// <summary>Creative catalog items are placeable block types, not the
     /// iron-ingot crafting resource. The server separately checks CreativeMode.</summary>
-    public static bool IsCreativeBlock(int type) =>
-        type is >= 1 and <= MaxType && type != IronIngot;
+    public static bool IsPlaceableBlock(int type) =>
+        type is >= 1 and <= Slate && type != IronIngot;
+
+    public static bool IsCreativeBlock(int type) => IsPlaceableBlock(type);
 
     /// <summary>
     /// Add a creative block grant entirely into physical inventory slots.
@@ -344,6 +348,7 @@ public sealed class BlockInventory
         string[] reserve = fields[2].Split(',');
         if (items.Length != SlotCount ||
             reserve.Length != (legacySlots ? 10 : legacyFour ? 15 : MaxType) &&
+            !(reserve.Length == Slate && !legacySlots && !legacyFour) &&
             !(legacyFour && reserve.Length == 11))
             return false;
 
