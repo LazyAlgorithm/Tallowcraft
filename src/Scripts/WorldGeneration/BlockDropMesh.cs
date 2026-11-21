@@ -19,7 +19,7 @@ public sealed class BlockDropMesh
     /// <summary>All actual blocks are cubes; coal/iron ore are rendered as
     /// collectible billboards rather than tiny stone cubes.</summary>
     public static bool IsCube(int type) =>
-        type is 1 or 2 or 3 or 4 or 5 or 6 or 9 or 11 or 12 or 13 or 14 or 15;
+        type is 1 or 2 or 3 or 4 or 5 or 6 or 9 or 11 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19;
 
     public static BlockDropMesh ForType(int type)
     {
@@ -43,10 +43,18 @@ public sealed class BlockDropMesh
                 normals[start+i] = face.Normal;
 
             int tile = BlockTextureAtlas.TileFor(block, faceId);
-            uvs[start] = BlockTextureAtlas.FaceUV(tile, faceId, 0f, 0f);
-            uvs[start+1] = BlockTextureAtlas.FaceUV(tile, faceId, 1f, 0f);
-            uvs[start+2] = BlockTextureAtlas.FaceUV(tile, faceId, 1f, 1f);
-            uvs[start+3] = BlockTextureAtlas.FaceUV(tile, faceId, 0f, 1f);
+            uvs[start] = type >= BlockInventory.Glass ?
+                AdditionalBlockMesher.FaceUV(type, faceId, 0f, 0f) :
+                BlockTextureAtlas.FaceUV(tile, faceId, 0f, 0f);
+            uvs[start+1] = type >= BlockInventory.Glass ?
+                AdditionalBlockMesher.FaceUV(type, faceId, 1f, 0f) :
+                BlockTextureAtlas.FaceUV(tile, faceId, 1f, 0f);
+            uvs[start+2] = type >= BlockInventory.Glass ?
+                AdditionalBlockMesher.FaceUV(type, faceId, 1f, 1f) :
+                BlockTextureAtlas.FaceUV(tile, faceId, 1f, 1f);
+            uvs[start+3] = type >= BlockInventory.Glass ?
+                AdditionalBlockMesher.FaceUV(type, faceId, 0f, 1f) :
+                BlockTextureAtlas.FaceUV(tile, faceId, 0f, 1f);
 
             int index = faceId * 6;
             triangles[index] = start;
