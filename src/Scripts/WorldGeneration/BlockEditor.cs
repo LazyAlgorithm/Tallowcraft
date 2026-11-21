@@ -1184,6 +1184,65 @@ public class BlockEditor : Script
         return true;
     }
 
+    /// <summary>
+    /// Resolve gun impacts from the server's own character position and
+    /// replicated look input. The client never supplies a target or damage.
+    /// Jolt's raycast includes CharacterControllers, so peaceful mobs need
+    /// no duplicate physics bodies or extra shooting hitboxes.
+    /// </summary>
+    private void FireAtPeacefulAnimals(int weapon, Quaternion lookRotation)
+    {
+        if (!Scene.IsServer || AnimalCombatRules.Damage(weapon) == 0)
+            return;
+
+        Vector3 direction = Vector3.Transform(Vector3.UnitZ, lookRotation);
+        Vector3 origin = Transform.Position + Vector3.UnitY * EyeHeight;
+        foreach (PhysicsHit hit in Scene.RaycastAll(origin, direction,
+                     AnimalCombatRules.Range(weapon)))
+        {
+            if (hit.HitObject is not { IsValid: true } struck)
+                break; // An unknown physics obstruction still stops the shot.
+
+            // The local player's character controller may be encountered
+            // first. Ignore only this player and its own visual children.
+            GameObject current = struck;
+            bool ownObject = false;
+            for (int i = 0; i < 16; i++)
+            {
+                if (current == GameObject) { ownObject = true; break; }
+                if (current.Parent is not { IsValid: true } parent) break;
+                current = parent;
+            }
+            if (ownObject) continue;
+
+            // The Jolt character should return the mob root, but walking
+            // parents also supports future colliders on detailed model parts.
+            current = struck;
+            for (int i = 0; i < 16; i++)
+            {
+                PeacefulAnimal? animal = current.GetComponent<PeacefulAnimal>();
+                if (animal != null)
+                {
+                    int damage = AnimalCombatRules.Damage(weapon);
+                    if (animal.TryTakeDamage(damage, out int remaining))
+                    {
+                        PickFeedback = remaining == 0
+                            ? $"{animal.Species} defeated"
+                            : $"{animal.Species} -{damage} ({remaining} HP)";
+                        _pickFeedbackSeconds = .85f;
+                    }
+                    return;
+                }
+                if (current.Parent is not { IsValid: true } parent) break;
+                current = parent;
+            }
+
+            // Terrain, glass, props and other players obstruct bullets.
+            // Do not accidentally damage an animal behind the nearest hit.
+            break;
+        }
+    }
+
     public override void Update(TickInput input, float deltaTime)
     {
         if (!Scene.IsServer)
@@ -1283,6 +1342,7 @@ public class BlockEditor : Script
                 {
                     _testShotCooldown = TestWeapon == 1 ? .32f : .16f;
                     TestShotCount = TestShotCount == int.MaxValue ? 1 : TestShotCount + 1;
+                    FireAtPeacefulAnimals(TestWeapon, input.LookRotation);
                 }
                 return;
             }
