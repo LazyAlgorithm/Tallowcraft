@@ -154,3 +154,25 @@
 .ledger-value { color: #f0f1fb }
 .game-menu-button, .primary { background-color: #ac92f7; color: #17142d; border-color: #c6b8ff }
 .slot-focus { border-color: #ad96ff }
+
+
+/* Creative tab uses five compact rows in the existing inventory detail
+   column. Fixed-size cells avoid TUI's non-scrollable overflow issue. */
+.creative-page { gap: 7; width: 100% }
+.creative-toolbar { flex-direction: row; align-items: center; width: 100%; height: 34 }
+.creative-amount-button { height: 31; width: 200; font-size: 13; padding: 5 8 }
+.creative-grid { width: 100%; height: 374; gap: 6; align-items: center }
+.creative-row { flex-direction: row; width: 100%; height: 70; gap: 6; justify-content: center }
+.creative-item { width: 92; height: 70; gap: 1; padding: 3 2; align-items: center; justify-content: center; background-color: #273157; border-width: 1; border-color: #5a6bb0; border-radius: 5 }
+.creative-image { width: 28; height: 28 }
+.creative-label { width: 100%; font-size: 12; color: #e8e9f4; text-align: center }
+.creative-owned { width: 100%; font-size: 10; color: #b4bcdc; text-align: center }
+.creative-status { width: 100%; height: 31; font-size: 13; color: #baa1f0; white-space: normal }
+@media (max-height: 830) {
+  .creative-page { gap: 4 }
+  .creative-grid { height: 328; gap: 4 }
+  .creative-row { height: 62; gap: 5 }
+  .creative-item { height: 62; padding: 2; gap: 0 }
+  .creative-image { width: 24; height: 24 }
+  .creative-status { height: 27 }
+}
