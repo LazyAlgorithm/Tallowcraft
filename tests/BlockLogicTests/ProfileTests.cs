@@ -140,7 +140,7 @@ internal static class ProfileTests
             check(PlayerProfileStore.Load(legacyFolder, legacyWorld,
                     legacyToken, out var migratedItems, out var migratedTools,
                     out _, out _, out _) == ProfileLoadResult.Loaded &&
-                migratedItems.Serialize().StartsWith("4|") &&
+                migratedItems.Serialize().StartsWith("5|") &&
                 migratedTools.Serialize().StartsWith("2|"),
                 "Migrated inventories write the new version on next save");
 
