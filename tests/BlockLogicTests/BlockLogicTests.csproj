@@ -44,6 +44,8 @@
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkGenerator.cs" Link="ChunkGenerator.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldGeology.cs" Link="WorldGeology.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldBiomes.cs" Link="WorldBiomes.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WorldWater.cs" Link="WorldWater.cs" />
+    <Compile Include="../../src/Scripts/WorldGeneration/WorldLandmarks.cs" Link="WorldLandmarks.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldFlora.cs" Link="WorldFlora.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/WorldDecorations.cs" Link="WorldDecorations.cs" />
     <Compile Include="../../src/Scripts/WorldGeneration/ChunkScheduling.cs" Link="ChunkScheduling.cs" />
