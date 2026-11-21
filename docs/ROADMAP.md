@@ -2,6 +2,15 @@
 
 Tallowcraft is the gameplay and integration testbed for Tallow's `feature/csharp-gameplay` engine branch. All Tallowcraft implementation commits go directly to **main**; do not create feature branches. A merged or committed source change is **not** the same as a successful Linux/Windows build or in-editor test.
 
+## Frame-rate camera presentation and faster animal deaths — 20 November 2026
+
+- [x] Move the local camera's final position/rotation writes out of replayable `Update(TickInput)` into per-render-frame `LocalLateUpdate`.
+- [x] Retain the original simulation look and physics movement as authoritative. Smooth the view toward its latest predicted tick pose with exponential, frame-rate-independent follow and teleport snapping. Game-side values: rotation response 48, position response 75.
+- [x] Accelerate animal death roll from 1.55 s to 0.72 s (plus the short existing despawn hold).
+- [x] Add isolated pose-follow, rotation, teleport and death duration tests.
+- [ ] **Runtime gate:** validate slow mouse turns vs fast turns at stable 60/120/144+ FPS; check frame-to-frame camera smoothness, input lag, shot aim consistency, stair climbing/crouch, return-to-spawn, and host/client camera ownership. No local engine player run here.
+- [ ] If jitter persists, profile actual frame times vs fixed simulation input-tick cadence in Tallow before attempting any engine change.
+
 ## Transparent glass and companion building materials — 20 November 2026
 
 - [x] Add four cube-only block types (IDs 16–19): glass, red bricks, sandstone and slate; preserve existing block IDs and the original pixel atlas.
