@@ -18,7 +18,11 @@ public readonly record struct ItemStack(int Type, int Quantity)
 /// </summary>
 public sealed class BlockInventory
 {
-    public const int MaxType = 15;
+    public const int MaxType = 19;
+    public const int Glass = 16;
+    public const int RedBricks = 17;
+    public const int Sandstone = 18;
+    public const int Slate = 19;
     public const int Cobblestone = 12;
     public const int StoneBricks = 13;
     public const int MossyStone = 14;
@@ -257,8 +261,8 @@ public sealed class BlockInventory
     }
 
     /// <summary>
-    /// v4 lists 36 real stacks and per-type reserves. Legacy saves with
-    /// only 11 reserve fields are padded with zeros for the four new types.
+    /// v5 lists 36 real stacks and per-type reserves. Legacy saves with
+    /// 10/11/15 reserve fields are padded with zeros for added block types.
     /// The payload stays under 700 characters, well inside the sync bridge.
     /// </summary>
     public string Serialize()
@@ -268,7 +272,7 @@ public sealed class BlockInventory
             slots[i] = _slots[i].IsEmpty ? "0" :
                 _slots[i].Type.ToString(CultureInfo.InvariantCulture) + ":" +
                 _slots[i].Quantity.ToString(CultureInfo.InvariantCulture);
-        return "4|" + string.Join(',', slots) + "|" +
+        return "5|" + string.Join(',', slots) + "|" +
             string.Join(',', _reserve[1..]);
     }
 
@@ -296,15 +300,16 @@ public sealed class BlockInventory
             return true;
         }
         bool legacySlots = encoded.StartsWith("3|", StringComparison.Ordinal);
-        if (!legacySlots &&
-            !encoded.StartsWith("4|", StringComparison.Ordinal)) return false;
+        bool legacyFour = encoded.StartsWith("4|", StringComparison.Ordinal);
+        if (!legacySlots && !legacyFour &&
+            !encoded.StartsWith("5|", StringComparison.Ordinal)) return false;
         string[] fields = encoded.Split('|');
         if (fields.Length != 3) return false;
         string[] items = fields[1].Split(',');
         string[] reserve = fields[2].Split(',');
         if (items.Length != SlotCount ||
-            reserve.Length != (legacySlots ? 10 : MaxType) &&
-            !( !legacySlots && reserve.Length == 11))
+            reserve.Length != (legacySlots ? 10 : legacyFour ? 15 : MaxType) &&
+            !(legacyFour && reserve.Length == 11))
             return false;
 
         var next = new ItemStack[SlotCount];
