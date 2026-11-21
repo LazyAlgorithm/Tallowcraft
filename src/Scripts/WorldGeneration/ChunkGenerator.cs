@@ -122,7 +122,7 @@ public static class ChunkGenerator
 
     public static int Index(int x, int y, int z) => (y * Size + z) * Size + x;
 
-    public static int Height(int worldX, int worldZ, int seed)
+    public static int RawHeight(int worldX, int worldZ, int seed)
     {
         float height = 8f
             + 3f * MathF.Sin(((long)worldX + seed) * 0.11f)
@@ -130,6 +130,30 @@ public static class ChunkGenerator
         height += WorldBiomes.HeightOffset(worldX, worldZ, seed);
         return Math.Clamp((int)MathF.Round(height), 1, 35);
     }
+
+    public static int Height(int worldX, int worldZ, int seed)
+    {
+        int original = RawHeight(worldX, worldZ, seed);
+        float carved = WorldWater.Carve(worldX, worldZ, seed, original);
+        return Math.Clamp((int)MathF.Round(original - carved), 1, 35);
+    }
+
+    public static ushort SurfaceMaterial(WorldBiomes.Biome biome) =>
+        biome switch
+        {
+            WorldBiomes.Biome.Highlands => 3,
+            WorldBiomes.Biome.Drylands => 2,
+            WorldBiomes.Biome.Badlands => BlockInventory.Sandstone,
+            _ => 1
+        };
+
+    public static ushort SubsurfaceMaterial(WorldBiomes.Biome biome) =>
+        biome switch
+        {
+            WorldBiomes.Biome.Highlands => 3,
+            WorldBiomes.Biome.Badlands => BlockInventory.Slate,
+            _ => 2
+        };
 
     public static ushort BaseBlock(int worldX, int y, int worldZ, int seed)
     {
@@ -153,10 +177,8 @@ public static class ChunkGenerator
         }
         WorldBiomes.Biome biome = WorldBiomes.At(worldX, worldZ, seed);
         if (y == height - 1)
-            return biome == WorldBiomes.Biome.Highlands ? (ushort)3
-                : biome == WorldBiomes.Biome.Drylands ? (ushort)2 : (ushort)1;
-        return y >= height - 4 && biome != WorldBiomes.Biome.Highlands
-            ? (ushort)2 : (ushort)3;
+            return SurfaceMaterial(biome);
+        return y >= height - 4 ? SubsurfaceMaterial(biome) : (ushort)3;
     }
 
     public static ushort GetBlock(int worldX, int y, int worldZ, int seed,
@@ -191,10 +213,9 @@ public static class ChunkGenerator
                     }
                     if (worldY >= height) continue;
                     ushort type = worldY == height - 1
-                        ? biome == WorldBiomes.Biome.Highlands ? (ushort)3
-                            : biome == WorldBiomes.Biome.Drylands ? (ushort)2 : (ushort)1
-                        : worldY >= height - 4 && biome != WorldBiomes.Biome.Highlands
-                            ? (ushort)2 : (ushort)3;
+                        ? SurfaceMaterial(biome)
+                        : worldY >= height - 4
+                            ? SubsurfaceMaterial(biome) : (ushort)3;
                     blocks[Index(x, y, z)] = type;
                 }
             }
