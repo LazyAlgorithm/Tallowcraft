@@ -40,8 +40,7 @@ public readonly record struct BlockState(ushort Packed)
     public static BlockState Create(int type, BlockShape shape = BlockShape.Cube,
         int facing = 0, bool upper = false)
     {
-        if (type < 1 || type > BlockInventory.MaxType ||
-            type == BlockInventory.IronIngot || (uint)shape > MaxShape ||
+        if (!BlockInventory.IsPlaceableBlock(type) || (uint)shape > MaxShape ||
             ((type == BlockInventory.Chest || type >= BlockInventory.Glass) &&
              shape != BlockShape.Cube))
             return default;
@@ -60,7 +59,7 @@ public readonly record struct BlockState(ushort Packed)
     public static bool IsValid(ushort packed)
     {
         if (packed == 0) return true;
-        if ((packed & 255) is < 1 or > BlockInventory.MaxType)
+        if (!BlockInventory.IsPlaceableBlock(packed & 255))
             return false;
         int shape = (packed >> 10) & 3;
         int corner = (packed >> 13) & 7;
