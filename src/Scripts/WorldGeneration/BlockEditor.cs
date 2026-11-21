@@ -27,6 +27,7 @@ public class BlockEditor : Script
     [Sync] public bool PickedUpper = false;
     [Sync] public string PickFeedback = "";
     [Sync] public bool CreativeMode = true;
+    [Sync] public string CreativeStatus = "";
     [Sync] public int TestWeapon;
     [Sync] public int TestShotCount;
     private float _testShotCooldown;
@@ -681,6 +682,8 @@ public class BlockEditor : Script
         Rpc(nameof(SmeltIron), quantity);
     internal void UiUnpack(int type) =>
         Rpc(nameof(RecoverLegacyMaterials), type);
+    internal void UiGiveCreativeBlock(int type, int quantity) =>
+        Rpc(nameof(GrantCreativeBlock), type, quantity);
     internal void UiCloseMenu() => CloseMenuLocally();
 
     /// <summary>Server-authoritative middle-click. The packet contains a
@@ -794,6 +797,33 @@ public class BlockEditor : Script
             return;
         SelectedHotbar = slot;
         _profileDirty = true;
+    }
+
+    /// <summary>
+    /// Creative catalog clicks are only suggestions. The authoritative server
+    /// validates the owning player, creative privileges, item type, quantity,
+    /// physical inventory capacity and persistent profile before granting.
+    /// A client can never supply the resulting serialized inventory state.
+    /// </summary>
+    [Rpc(RpcTarget.Server)]
+    private void GrantCreativeBlock(int type, int quantity)
+    {
+        if (!Scene.IsServer || !ProfileReady || !CreativeMode ||
+            !InventoryOpen || ChestOpen || ReturnToSpawnPending ||
+            (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId) ||
+            !BlockInventory.IsCreativeBlock(type) ||
+            quantity is not (1 or BlockInventory.StackLimit))
+            return;
+
+        if (!_inventory.TryGrantCreativeBlock(type, quantity))
+        {
+            CreativeStatus = "Not enough space, or 999 of this block already owned.";
+            return;
+        }
+
+        InventoryState = _inventory.Serialize();
+        _profileDirty = true;
+        CreativeStatus = $"Added {quantity} {BlockNames[type - 1]} to inventory.";
     }
 
     [Rpc(RpcTarget.Server)]
@@ -972,6 +1002,7 @@ public class BlockEditor : Script
             (Scene.IsNetworked && RpcSender != GameObject.OwnerClientId))
             return;
         InventoryOpen = open;
+        if (open) CreativeStatus = "";
         if (!open)
         {
             ChestOpen = false;
