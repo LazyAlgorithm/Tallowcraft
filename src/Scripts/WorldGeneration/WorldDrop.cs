@@ -250,7 +250,11 @@ public sealed class WorldDrop : Script
             if (BlockDropMesh.IsCube(ItemType))
             {
                 BlockDropMesh mesh = BlockDropMesh.ForType(ItemType);
-                _visualRenderer.Material = "Materials/block_drop.tmat";
+                _visualRenderer.Material = ItemType == BlockInventory.Glass
+                    ? "Materials/glass.tmat"
+                    : ItemType >= BlockInventory.RedBricks
+                        ? "Materials/extra_blocks.tmat"
+                        : "Materials/block_drop.tmat";
                 _visualRenderer.BackFaceCulling = true;
                 _visualRenderer.SetMesh(mesh.Positions, mesh.Triangles,
                     mesh.Normals, mesh.Uvs);
