@@ -2,6 +2,16 @@
 
 A voxel world built in [Tallow](https://tallowengine.com/) to exercise the C# gameplay, Jolt physics, ECS and networking APIs.
 
+## Roaming sheep and pigs, fleeing and animal loot (20 November)
+
+Sheep and pigs now populate a **moving wildlife habitat** around the currently explored area instead of being confined to the original spawn point. The server waits for nearby terrain/physics meshes to load, then bakes one bounded 48 m navigation surface, periodically moving it when the exploration focus gets more than 24 m away (with a 12-second throttle). A maximum of 10 nearby animals are active at a time. New spawns are spread out, avoid the player's immediate position, and respect the world's deterministic biome sampling: **Meadows** contain sheep and pigs, **Woodlands** lean toward pigs, **Highlands** favor sheep, and **Drylands** have neither. Herd-cell spacing avoids duplicates and defeated animals have a short respawn cooldown. Existing grazing and walk animations remain.
+
+When a player shoots an animal but does not kill it, the server stops its wander tree and asks its navigation agent to **run away from the shooter's position** for up to 4.5 seconds, then restarts its grazing behavior. The frightened state replicates to other clients and quickens the visual gait. On death the animal completes its existing fall animation, then spawns **1–3 wool** (sheep) or **1–3 raw pork** (pig) as real physical, server-owned world drops. These persist through the existing world-drop save and player inventory pickup transaction flow. Their new pixel icons use nearest-neighbor filtering and no texture compression. They are **resources, not placeable blocks**. Crafting with wool and cooking/eating pork will come with the later survival milestone.
+
+Animal loot extends the inventory from item types 1–19 to **1–21** (20 wool, 21 raw pork), keeping every existing building block ID unchanged. Older 19-resource v5 player inventories still load; the two additional item counts start empty. Existing mining, block placement, creative catalog, save files and world-drop records remain compatible. Gameplay mutation (hit, flee, spawn, death, drop, pickup) is server-authoritative. Pure .NET tests check biome rules, flee directions, item validity, quantities and save migration.
+
+**Scope/verification:** The first pass still maintains **one active bounded navigation region centered around the host/exploration focus**, not independent navmesh streaming for multiple widely separated players. The region follows exploration, but this is not world-persistent wildlife simulation. The code, icon assets and tests are committed, but a Linux Play-mode build, two-client multiplayer test, route accuracy over one-block steps and actual loot collection have not been executed here.
+
 ## Creative inventory catalog (20 November)
 
 Open the inventory with **Tab**, then choose the **Creative** tab (visible only when the server has Creative Mode enabled for your player). The grid includes all **18 placeable block types** available in the current game: grass, dirt, stone, log, forge, planks, coal, iron ore, leaves, chest, cobblestone, stone bricks, mossy stone, dark timber, glass, red bricks, sandstone and slate. Iron ingots are a crafting resource, not a block, so they are not included.
