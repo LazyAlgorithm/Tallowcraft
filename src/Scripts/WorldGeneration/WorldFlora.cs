@@ -52,7 +52,9 @@ public static class WorldFlora
             return false;
         // Avoid trunks or canopies obstructing a natural ruin. This depends
         // only on the same world seed, not on whether the ruin chunk is loaded.
-        if (WorldDecorations.NearRuin(x, z, seed, 8))
+        if (WorldDecorations.NearRuin(x, z, seed, 8) ||
+            WorldLandmarks.TryNear(x, z, seed, out _) ||
+            WorldWater.HasSurface(x, z, seed))
             return false;
         WorldBiomes.Biome biome = WorldBiomes.At(x, z, seed);
         uint chance = biome switch
@@ -60,6 +62,7 @@ public static class WorldFlora
             WorldBiomes.Biome.Woodland => 680u,
             WorldBiomes.Biome.Meadow => 120u,
             WorldBiomes.Biome.Highlands => 240u,
+            WorldBiomes.Biome.Wetlands => 310u,
             _ => 0u
         };
         if ((hash & 1023u) >= chance)
