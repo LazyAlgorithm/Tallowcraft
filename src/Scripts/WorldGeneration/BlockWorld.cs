@@ -1526,8 +1526,36 @@ public class BlockWorld : Script
             MarkDirty(key);
     }
 
+    // Coalesce all edits made during one frame into a single AABB. A wildlife
+    // habitat only rebuilds navigation intersecting its own local region.
+    private bool _wildlifeEditPending;
+    private Vector3 _wildlifeEditMin, _wildlifeEditMax;
+
+    public bool TryDrainWildlifeEditBounds(out Vector3 min, out Vector3 max)
+    {
+        min = _wildlifeEditMin;
+        max = _wildlifeEditMax;
+        if (!Scene.IsServer || !_wildlifeEditPending) return false;
+        _wildlifeEditPending = false;
+        return true;
+    }
+
     private void MarkBlockDirty(BlockPosition position)
     {
+        if (Scene.IsServer)
+        {
+            Vector3 point = new(position.X, position.Y, position.Z);
+            if (!_wildlifeEditPending)
+            {
+                _wildlifeEditMin = _wildlifeEditMax = point;
+                _wildlifeEditPending = true;
+            }
+            else
+            {
+                _wildlifeEditMin = Vector3.Min(_wildlifeEditMin, point);
+                _wildlifeEditMax = Vector3.Max(_wildlifeEditMax, point);
+            }
+        }
         foreach (TerrainTileKey tile in TerrainQuadtree.Ancestors(position.X, position.Z))
         {
             _distantVersions[tile] = DistantVersion(tile) + 1;
