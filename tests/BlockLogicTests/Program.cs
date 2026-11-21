@@ -53,6 +53,7 @@ static class Program
             AnimalCombatTests.Run(Check);
             AnimalAnimationTests.Run(Check);
             WildlifeTests.Run(Check);
+            WorldExpansionTests.Run(Check);
             CameraPresentationTests.Run(Check);
             CreativeInventoryTests.Run(Check);
             WaypointCompassTests.Run(Check);
