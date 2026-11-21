@@ -8,7 +8,7 @@ namespace WorldGeneration;
 /// </summary>
 public static class WorldBiomes
 {
-    public enum Biome { Meadow, Woodland, Drylands, Highlands }
+    public enum Biome { Meadow, Woodland, Drylands, Highlands, Wetlands, Badlands }
 
     private static float Clamp01(float value) => Math.Clamp(value, 0f, 1f);
     private static float Smooth(float t) => t * t * (3f - 2f * t);
@@ -40,7 +40,11 @@ public static class WorldBiomes
         float moisture = Moisture(x, z, seed);
         float relief = Relief(x, z, seed);
         if (relief > 0.64f) return Biome.Highlands;
+        if (moisture < 0.29f && temperature > 0.66f &&
+            relief > 0.43f) return Biome.Badlands;
         if (moisture < 0.35f && temperature > 0.48f) return Biome.Drylands;
+        if (moisture > 0.70f && relief < 0.54f &&
+            temperature > 0.42f) return Biome.Wetlands;
         if (moisture > 0.57f) return Biome.Woodland;
         return Biome.Meadow;
     }
@@ -56,7 +60,15 @@ public static class WorldBiomes
         float valley = Smooth(Clamp01((0.40f - relief) / 0.25f));
         float detail = WorldGeology.ClimateNoise(x * 0.044f,
             z * 0.044f, seed, 0xD37A11u);
-        return DevelopmentBlend(x, z) *
-            (mountain * (11f + detail * 10f) - valley * 3.5f);
+        float climateHeight = mountain * (11f + detail * 10f) -
+            valley * 3.5f;
+        // Wetlands flatten into broader low fields; Badlands have shallow
+        // eroded terraces. Only the additional two climates diverge.
+        Biome biome = At(x, z, seed);
+        if (biome == Biome.Wetlands)
+            climateHeight -= 2f + MathF.Min(2f, climateHeight * .25f);
+        if (biome == Biome.Badlands)
+            climateHeight += 2f + MathF.Round(detail * 3f);
+        return DevelopmentBlend(x, z) * climateHeight;
     }
 }
