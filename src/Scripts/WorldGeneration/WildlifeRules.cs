@@ -37,7 +37,11 @@ public static class WildlifeRules
     public static int SpeciesAt(int x, int z, int seed)
     {
         WorldBiomes.Biome biome = WorldBiomes.At(x, z, seed);
-        uint roll = Hash(seed, x / SpatialCell, z / SpatialCell) % 100;
+        // Floor-divide signed world coordinates: C# integer division
+        // truncates toward zero and would shift herds at the negative axes.
+        int cellX = (int)MathF.Floor(x / (float)SpatialCell);
+        int cellZ = (int)MathF.Floor(z / (float)SpatialCell);
+        uint roll = Hash(seed, cellX, cellZ) % 100;
         return biome switch
         {
             WorldBiomes.Biome.Meadow => roll < 67 ? Sheep : Pig,
