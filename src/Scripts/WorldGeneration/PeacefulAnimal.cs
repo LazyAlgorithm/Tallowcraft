@@ -19,6 +19,7 @@ public sealed class PeacefulAnimal : Script
     [Sync] public int LastDamage;
     [Sync] public bool Dying;
     [Sync] public bool Eating;
+    [Sync] public bool Frightened;
 
     private enum VisualKind : byte { Body, Face, Leg, Tail }
 
@@ -40,6 +41,8 @@ public sealed class PeacefulAnimal : Script
     private float _grazeTimeLeft;
     private float _idleSeconds;
     private int _grazeCycle;
+    private float _fleeSeconds;
+    private bool _lootSpawned;
     private Vector3 _lastPosition;
     private bool _showingFlash;
     private bool _initialized;
@@ -97,7 +100,7 @@ public sealed class PeacefulAnimal : Script
     }
 
     /// <summary>Only the server may change replicated health.</summary>
-    public bool TryTakeDamage(int amount, out int remaining)
+    public bool TryTakeDamage(int amount, Vector3 attacker, out int remaining)
     {
         remaining = Health;
         if (!Scene.IsServer || Dying ||
@@ -110,16 +113,31 @@ public sealed class PeacefulAnimal : Script
         Eating = false;
         _grazeTimeLeft = 0f;
         _grazeCooldown = 6f;
+        NavigationAgent agent = GetComponent<NavigationAgent>();
+        // The wander tree must not overwrite the server's flee destination
+        // or restart while the mob is lying on its side.
+        GameObject.RemoveComponent<BehaviorTreeRunner>();
         if (Health == 0)
         {
             Dying = true;
+            Frightened = false;
+            _fleeSeconds = 0f;
             _deathSeconds = AnimalAnimationRules.DeathDuration + 0.18f;
-            NavigationAgent agent = GetComponent<NavigationAgent>();
             if (agent.IsValid) agent.StopMovement();
-            // The old tree would start another wander during the falling
-            // animation. Removing the runner on the server stops future
-            // wander commands without touching any engine code.
-            GameObject.RemoveComponent<BehaviorTreeRunner>();
+        }
+        else
+        {
+            Frightened = true;
+            _fleeSeconds = WildlifeRules.FleeSeconds;
+            if (agent.IsValid)
+            {
+                Vector3 target = WildlifeRules.FleeTarget(
+                    Transform.Position, attacker, (int)GameObject.Id);
+                NavigationSurface surface = NavigationSurface.Find(Scene);
+                if (surface.IsValid &&
+                    surface.SamplePosition(target, 6f, out Vector3 reachable))
+                    agent.SetDestination(reachable, 3.8f, .35f);
+            }
         }
         return true;
     }
@@ -158,7 +176,8 @@ public sealed class PeacefulAnimal : Script
     {
         float wantedWalk = Dying || Eating ? 0f :
             _walkBlend; // Movement smoothing already reflects this frame.
-        _walkPhase += dt * (6.4f + wantedWalk * 1.1f);
+        _walkPhase += dt * (6.4f + wantedWalk *
+            (Frightened ? 4.1f : 1.1f));
         float bob = MathF.Abs(MathF.Sin(_walkPhase)) * .028f * _walkBlend +
             MathF.Sin(_clock * 1.9f) * .008f * (1f - _grazeBlend);
 
@@ -226,7 +245,28 @@ public sealed class PeacefulAnimal : Script
         float speed = dt > 0f && distance < 1.25f ? distance / dt : 0f;
 
         if (Scene.IsServer && !Dying)
-            TickGrazing(dt, speed);
+        {
+            if (Frightened)
+            {
+                _fleeSeconds = MathF.Max(0f, _fleeSeconds - dt);
+                if (_fleeSeconds <= 0f)
+                {
+                    Frightened = false;
+                    NavigationAgent agent = GetComponent<NavigationAgent>();
+                    if (agent.IsValid) agent.StopMovement();
+                    if (!GameObject.GetComponent<BehaviorTreeRunner>().IsValid)
+                    {
+                        BehaviorTreeRunner runner =
+                            GameObject.AddComponent<BehaviorTreeRunner>();
+                        runner.Tree = "AI/PeacefulGrazer.tbt";
+                        runner.TickInterval = .35f;
+                        runner.RestartWhenDone = true;
+                    }
+                }
+            }
+            else
+                TickGrazing(dt, speed);
+        }
 
         float targetWalk = !Dying && !Eating &&
             speed >= AnimalAnimationRules.WalkingThreshold ? 1f : 0f;
@@ -267,6 +307,26 @@ public sealed class PeacefulAnimal : Script
             _deathSeconds = AnimalAnimationRules.DeathDuration + .18f;
         _deathSeconds -= dt;
         if (_deathSeconds <= 0f && GameObject.IsValid)
+        {
+            if (!_lootSpawned)
+            {
+                _lootSpawned = true;
+                int species = string.Equals(Species, "Pig",
+                    StringComparison.OrdinalIgnoreCase) ?
+                    WildlifeRules.Pig : WildlifeRules.Sheep;
+                int type = WildlifeRules.DropType(species);
+                Vector3 here = Transform.Position;
+                int seed = Scene.Find("BlockWorld")?
+                    .GetComponent<BlockWorld>()?.Seed ?? 0;
+                int amount = WildlifeRules.DropAmount(species, seed,
+                    (int)MathF.Floor(here.X), (int)MathF.Floor(here.Z));
+                // WorldDrop persists and replicates through the existing
+                // server-owned pickup / save transaction pipeline.
+                if (!WorldDrop.TrySpawn(Scene, type, here, amount))
+                    Console.WriteLine(
+                        $"Tallowcraft wildlife: drop pool full; {Species} loot not spawned.");
+            }
             GameObject.Destroy();
+        }
     }
 }
